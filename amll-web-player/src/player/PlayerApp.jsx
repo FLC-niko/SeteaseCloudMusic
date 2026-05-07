@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSetAtom, useAtomValue } from "jotai";
 import * as AMLL from "@applemusic-like-lyrics/react-full";
 import "@applemusic-like-lyrics/react-full/style.css";
-import { parseLrc } from "@applemusic-like-lyrics/lyric";
+import { parseLrc, parseYrc } from "@applemusic-like-lyrics/lyric";
 import { postToNative, createBridge } from "./bridge";
 
 const demoLrc = `[00:00.00]Setease Cloud Music\n[00:04.00]空间扭曲魔法 2.0 部署完毕！\n[00:08.00]按钮尺寸恢复，封面呈现！`;
@@ -68,7 +68,21 @@ export default function PlayerApp() {
           break;
         case "SET_TRACK":
           if (typeof msg.payload?.lrc === "string") {
-            setLyricLines(parseLrc(msg.payload.lrc || demoLrc));
+            const raw = msg.payload.lrc.trim();
+            if (raw) {
+              // 检测是否为 YRC 格式（云音乐逐字歌词）
+              if (raw.includes("(") && raw.includes(")") && raw.includes("[")) {
+                try {
+                  setLyricLines(parseYrc(raw));
+                } catch(e) {
+                  setLyricLines(parseLrc(raw));
+                }
+              } else {
+                setLyricLines(parseLrc(raw));
+              }
+            } else {
+              setLyricLines(parseLrc(demoLrc));
+            }
           }
           if (msg.payload?.title) setMusicName(msg.payload.title);
           if (msg.payload?.artist) setMusicArtists([msg.payload.artist]);
@@ -156,16 +170,29 @@ export default function PlayerApp() {
                 padding: 0 4vw !important;
               }
 
-              /* 4. 🚨 修复歌词：强制膨胀，把控件狠狠挤到底部！ */
+              /* ========================================================= */
+              /* 🚨 修复 size: [0, 0] 和 top: NaN 的物理坍塌 Bug */
+              /* ========================================================= */
               .-DaA0W_lyric {
+                flex: 1 1 0 !important;
                 width: 100% !important;
                 max-width: 500px !important;
-                flex: 1 1 auto !important; /* 核心魔法：吃掉所有剩余空间 */
-                min-height: 20vh !important;
-                position: relative !important;
+                height: 100% !important;      /* 强迫占据所有高度 */
+                min-height: 250px !important;
+                margin: 0 auto !important;
+                position: relative !important; /* 作为内部绝对定位的基准 */
+                opacity: 1 !important;
+              }
+
+              /* 🚨 终极杀招：直接点名内部崩溃的 DOM 节点，强制它们 100% 铺满！ */
+              .-DaA0W_lyric > div,
+              .amll-lyric-player,
+              .amll-lyric-player.dom {
+                width: 100% !important;
+                height: 100% !important;
+                position: absolute !important;
+                top: 0 !important;
                 left: 0 !important;
-                transform: none !important;
-                mask-image: linear-gradient(#0000 0%, #000 10% 90%, #0000 100%) !important;
               }
 
               /* 5. 底部附属菜单 (歌词切换等) */

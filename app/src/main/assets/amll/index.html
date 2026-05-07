@@ -1,22 +1,29 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
-    <title>Setease Web Player</title>
+    <title>AMLL React Full Player</title>
     <style>
+        /* 针对移动端 WebView 的高度坍塌补救 */
         html, body, #root {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #000;
+          margin: 0;
+          padding: 0;
+          width: 100% !important;
+          height: 100% !important;
+          /* 强制固定定位，防止 Android 顶部状态栏导致的高度计算跳变 */
+          position: fixed;
+          left: 0;
+          top: 0;
+          overflow: hidden;
+          background: #000;
         }
+        * { box-sizing: border-box; }
     </style>
+  <script type="module" crossorigin src="./assets/index-BCDqXF-N.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-u98ZksQX.css">
 </head>
 <body>
-<div id="root"></div>
-<script type="module" src="/src/main.jsx"></script>
+<div id="root"></div>
 </body>
 </html>

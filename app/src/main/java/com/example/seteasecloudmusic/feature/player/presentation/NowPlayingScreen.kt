@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
+import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun NowPlayingScreen(
@@ -25,11 +27,18 @@ fun NowPlayingScreen(
     onSeekTo: (Int) -> Unit
 ) {
     val searchViewModel: SearchViewModel = hiltViewModel()
+    val playerViewModel: PlayerViewModel = hiltViewModel()
 
     Box(modifier = Modifier.fillMaxSize()) {
         WebPlayerScreen(
             musicPlayerController = searchViewModel.musicPlayerController,
-            ttmlProvider = null // 先用空提供器，后续接真实歌词接口
+            ttmlProvider = { songId ->
+                try {
+                    playerViewModel.getLyricDataDirectly(songId.toLong())
+                } catch (e: Exception) {
+                    null
+                }
+            }
         )
 
         IconButton(

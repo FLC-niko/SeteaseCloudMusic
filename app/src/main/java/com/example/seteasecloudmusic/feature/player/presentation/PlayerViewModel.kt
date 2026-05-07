@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import android.util.Log
 
 /**
  * 播放器 ViewModel：
@@ -48,6 +49,19 @@ class PlayerViewModel @Inject constructor(
     }
 
     private var currentLyricTrackId: Long? = null
+
+    suspend fun getLyricDataDirectly(songId: Long): String? {
+        val res = getLyricUseCase(songId)
+        Log.d("PlayerViewModel", "getLyricDataDirectly: songId=$songId, result isSuccess=${res.isSuccess}")
+        val data = res.getOrNull()
+        if (res.isFailure) {
+            Log.e("PlayerViewModel", "API Error: ", res.exceptionOrNull())
+        }
+        val yrcLyric = data?.yrc?.lyric
+        val lrcLyric = data?.lrc?.lyric
+        Log.d("PlayerViewModel", "yrc length=${yrcLyric?.length}, lrc length=${lrcLyric?.length}")
+        return yrcLyric.takeIf { !it.isNullOrBlank() } ?: lrcLyric.takeIf { !it.isNullOrBlank() }
+    }
 
     private fun fetchLyric(songId: Long) {
         viewModelScope.launch {
