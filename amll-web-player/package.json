@@ -20,6 +20,7 @@
     "@pixi/filter-bulge-pinch": "^5.1.1",
     "@pixi/filter-color-matrix": "^7.4.3",
     "@pixi/sprite": "^7.4.3",
+    "@radix-ui/themes": "^3.3.0",
     "jotai": "^2.19.1",
     "jss": "^10.10.0",
     "jss-preset-default": "^10.10.0",
