@@ -824,12 +824,7 @@ fun AppNavigation(
 
         if (showNowPlaying) {
             NowPlayingScreen(
-                playbackState = playbackState,
-                onClose = { showNowPlaying = false },
-                onPlayPause = { searchViewModel.onMiniPlayerPlayPause() },
-                onNext = { searchViewModel.onMiniPlayerNext() },
-                onPrevious = { /* TODO */ },
-                onSeekTo = { /* TODO */ }
+                onClose = { showNowPlaying = false }
             )
         }
 

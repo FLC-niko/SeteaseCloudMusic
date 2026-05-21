@@ -8,28 +8,53 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.example.seteasecloudmusic.core.player.PlaybackState
-import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
+import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricData
+import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricView
+import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricDataAdapter
+import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricUIConfig
 
 @Composable
 fun NowPlayingScreen(
-    playbackState: PlaybackState,
-    onClose: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onSeekTo: (Int) -> Unit
+    onClose: () -> Unit
 ) {
-    val searchViewModel: SearchViewModel = hiltViewModel()
+    val viewModel: PlayerViewModel = hiltViewModel()
+    val playbackState by viewModel.playbackState.collectAsState()
+    val lyricsState by viewModel.lyricsState.collectAsState()
+    val currentPosition by viewModel.currentPositionMs.collectAsState()
+
+    val flamingoData = remember(lyricsState) {
+        val state = lyricsState
+        if (state is LyricsUiState.Success) {
+            LyricDataAdapter.toFlamingoFormat(state.lyrics)
+        } else {
+            FlamingoLyricData(emptyList(), emptyList())
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        WebPlayerScreen(
-            musicPlayerController = searchViewModel.musicPlayerController,
-            ttmlProvider = null // 先用空提供器，后续接真实歌词接口
+        FlamingoLyricView(
+            lyrics = flamingoData.lyrics,
+            sideFlags = flamingoData.sideFlags,
+            currentTimeMs = { currentPosition },
+            onSeek = { positionMs -> viewModel.seekTo(positionMs) },
+            translationEnabled = true,
+            blurEnabled = true,
+            uiConfig = LyricUIConfig(
+                mainTextSize = 34,
+                subTextSize = 16,
+                mainTextBasicColor = 0xFFF2F2F2,
+                subTextBasicColor = 0xFF919191,
+                fontWeight = FontWeight.ExtraBold
+            ),
+            modifier = Modifier.fillMaxSize()
         )
 
         IconButton(
