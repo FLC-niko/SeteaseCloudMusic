@@ -1078,7 +1078,6 @@ private fun SearchMiniPlayerBar(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .clickable { onBarClick() }
             .drawBackdrop(
                 backdrop = backdrop,
                 shape = { RoundedRectangle(cornerRadius) },
@@ -1089,6 +1088,7 @@ private fun SearchMiniPlayerBar(
                 },
                 onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
             )
+            .clickable { onBarClick() }
     ) {
         Row(
             modifier = Modifier

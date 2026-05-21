@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -8,11 +9,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -30,6 +33,10 @@ fun NowPlayingScreen(
     val lyricsState by viewModel.lyricsState.collectAsState()
     val currentPosition by viewModel.currentPositionMs.collectAsState()
 
+    LaunchedEffect(playbackState.currentTrack?.id) {
+        playbackState.currentTrack?.let { viewModel.loadLyrics(it.id) }
+    }
+
     val flamingoData = remember(lyricsState) {
         val state = lyricsState
         if (state is LyricsUiState.Success) {
@@ -39,7 +46,7 @@ fun NowPlayingScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A))) {
         FlamingoLyricView(
             lyrics = flamingoData.lyrics,
             sideFlags = flamingoData.sideFlags,
@@ -65,7 +72,8 @@ fun NowPlayingScreen(
         ) {
             Icon(
                 imageVector = Icons.Filled.Close,
-                contentDescription = "关闭"
+                contentDescription = "关闭",
+                tint = Color.White
             )
         }
     }
