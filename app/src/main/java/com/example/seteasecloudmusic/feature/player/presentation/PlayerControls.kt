@@ -57,6 +57,7 @@ fun PlayerControls(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
+    onLyricsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -158,7 +159,7 @@ fun PlayerControls(
         ) {
             // 歌词图标（类似信息符号，中间有单边双引号 "）
             IconButton(
-                onClick = { /* TODO: 歌词功能 */ },
+                onClick = onLyricsClick,
                 modifier = Modifier.size(40.dp)
             ) {
                 Canvas(modifier = Modifier.size(24.dp)) {
