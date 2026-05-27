@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
  * @param subTextBasicColor 次要文本的底色 (ARGB Long)
  * @param fontWeight 歌词字重
  * @param lineBalance 是否启用平衡行模式
+ * @param letterSpacing 字间距 (sp)，Apple Music 风格建议负值
  */
 @Stable
 data class LyricUIConfig(
@@ -23,10 +24,11 @@ data class LyricUIConfig(
     val formatText: Boolean = true,
     val noLrcText: String = "No lyrics",
     val blankHeight: Int = 70,
-    val mainTextSize: Int = 34,
+    val mainTextSize: Int = 32,
     val subTextSize: Int = 16,
     val mainTextBasicColor: Long = 0xFFF2F2F2,
     val subTextBasicColor: Long = 0xFF919191,
-    val fontWeight: FontWeight = FontWeight.ExtraBold,
-    val lineBalance: Boolean = false
+    val fontWeight: FontWeight = FontWeight.Bold,
+    val lineBalance: Boolean = false,
+    val letterSpacing: Float = -0.02f
 )

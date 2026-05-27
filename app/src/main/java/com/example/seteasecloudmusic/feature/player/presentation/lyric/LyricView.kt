@@ -126,7 +126,7 @@ fun FlamingoLyricView(
     modifier: Modifier = Modifier,
     onEmptyAreaClick: () -> Unit = {}
 ) {
-    println("重组：FlamingoLyricView")
+
     val context = LocalContext.current
     val mainTextBasicColor = Color(uiConfig.mainTextBasicColor)
     val subTextBasicColor = Color(uiConfig.subTextBasicColor)
@@ -295,7 +295,7 @@ fun FlamingoLyricView(
                         if (!showStateAnimation.value || index == currentLyricIndex.intValue || !blurEnabled || !supportBlur) {
                             0f
                         } else {
-                            (abs(index - currentLyricIndex.intValue) * 2.5f).coerceAtMost(8f)
+                            (abs(index - currentLyricIndex.intValue) * 3.5f).coerceAtMost(12f)
                         }
                     }
                 }
@@ -537,7 +537,7 @@ fun LazyItemScope.LyricItem(
     liveTimeMs: () -> Int,
     onClick: () -> Unit
 ) {
-    println("重组：歌词 $mainLyric")
+
 
     val viewAlign = if (otherSide) Alignment.End else Alignment.Start
     val focusedColor = Color(0xFFFFFFFF)
@@ -699,7 +699,7 @@ fun LazyItemScope.LyricItem(
                     }
 
                     val thisAlphaAnimated = animateFloatAsState(
-                        targetValue = if (isCurrentLambda()) 1f else 0.14f,
+                        targetValue = if (isCurrentLambda()) 1f else 0.18f,
                         animationSpec = if (isCurrentLambda()) alphaTweenSpecWithDelay else alphaTweenSpecWithoutDelay
                     )
 
@@ -877,7 +877,7 @@ fun LazyItemScope.LyricItem(
                     AnimatedVisibility(showTranslation && translation != null) {
                         translation?.let {
                             val translationAlpha = animateFloatAsState(
-                                targetValue = if (isCurrentLambda()) 0.5f else 0.14f,
+                                targetValue = if (isCurrentLambda()) 0.5f else 0.18f,
                                 animationSpec = if (isCurrentLambda()) alphaTweenSpecWithDelay else alphaTweenSpecWithoutDelay
                             )
 
@@ -981,12 +981,12 @@ fun CountdownAnimation(progress: () -> Float, colorLambda: () -> Color) {
 
 @Composable
 internal fun rememberLyricTextStyle(config: LyricUIConfig): TextStyle {
-    return remember(config.mainTextSize, config.fontWeight, config.lineBalance) {
+    return remember(config.mainTextSize, config.fontWeight, config.lineBalance, config.letterSpacing) {
         TextStyle(
             fontSize = config.mainTextSize.sp,
-            lineHeight = (config.mainTextSize + 10).sp,
+            lineHeight = (config.mainTextSize + 8).sp,
             fontWeight = config.fontWeight,
-            letterSpacing = 0.05.sp,
+            letterSpacing = config.letterSpacing.sp,
             lineHeightStyle = LineHeightStyle(
                 alignment = LineHeightStyle.Alignment.Center,
                 trim = LineHeightStyle.Trim.None
