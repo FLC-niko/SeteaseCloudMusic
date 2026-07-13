@@ -62,8 +62,13 @@ fun PlayerControls(
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
     onLyricsClick: () -> Unit = {},
+    lyricsActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val functionIconTint = Color.White.copy(alpha = 0.65f)
+    val activeFunctionIconTint = Color.White
+    val activeFunctionBackground = dominantColor.copy(alpha = 0.28f)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -173,12 +178,17 @@ fun PlayerControls(
             // 歌词图标
             IconButton(
                 onClick = onLyricsClick,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = if (lyricsActive) activeFunctionBackground else Color.Transparent,
+                        shape = CircleShape
+                    )
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Article,
                     contentDescription = "歌词",
-                    tint = Color.White.copy(alpha = 0.65f),
+                    tint = if (lyricsActive) activeFunctionIconTint else functionIconTint,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -191,7 +201,7 @@ fun PlayerControls(
                 Icon(
                     imageVector = Icons.Filled.SpeakerGroup,
                     contentDescription = "播放设备",
-                    tint = Color.White.copy(alpha = 0.65f),
+                    tint = functionIconTint,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -204,7 +214,7 @@ fun PlayerControls(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                     contentDescription = "播放列表",
-                    tint = Color.White.copy(alpha = 0.65f),
+                    tint = functionIconTint,
                     modifier = Modifier.size(22.dp)
                 )
             }

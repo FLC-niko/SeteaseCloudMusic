@@ -51,6 +51,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +64,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -155,6 +157,7 @@ fun FlamingoLyricView(
     } else {
         val scrollState = rememberLazyListState()
         val currentLyricIndex = remember { mutableIntStateOf(-1) }
+        val latestCurrentTimeMs = rememberUpdatedState(currentTimeMs)
 
         // 内部同步当前歌词行
         LaunchedEffect(lyrics) {
@@ -164,7 +167,7 @@ fun FlamingoLyricView(
         LaunchedEffect(Unit) {
             while (isActive) {
                 if (lyrics.isNotEmpty()) {
-                    val liveTime = currentTimeMs()
+                    val liveTime = latestCurrentTimeMs.value()
                     val nextIndex = lyrics.indexOfFirst { line ->
                         line.first().first > liveTime
                     }
@@ -173,7 +176,7 @@ fun FlamingoLyricView(
                         nextIndex == 0 -> -1
                         else -> lyrics.size - 1
                     }
-                    if (newIndex >= 0 && newIndex != currentLyricIndex.intValue) {
+                    if (newIndex != currentLyricIndex.intValue) {
                         currentLyricIndex.intValue = newIndex
                     }
                 }
@@ -324,7 +327,8 @@ fun FlamingoLyricView(
                         }
                     },
                     otherSide = otherSide,
-                    liveTimeMs = currentTimeMs,
+                    liveTimeMs = { latestCurrentTimeMs.value() },
+                    uiConfig = uiConfig,
                     onClick = {
                         LyricVibrator.doubleClick(context)
                         currentLyricIndex.intValue = index
@@ -389,7 +393,7 @@ fun FlamingoLyricView(
                         try {
                             if (currentLyricIndex.intValue - 1 < 0) false
                             else (
-                                (lyrics[(currentLyricIndex.intValue - 1)][1].second.isBlank())
+                                lyrics[(currentLyricIndex.intValue - 1)].all { it.second.isBlank() }
                             )
                         } catch (_: Exception) {
                             false
@@ -422,7 +426,7 @@ fun FlamingoLyricView(
                 if (currentLyricIndex.intValue != -1) {
                     return@LaunchedEffect
                 }
-                val liveTime = currentTimeMs()
+                val liveTime = latestCurrentTimeMs.value()
                 val nextIndex = lyrics.indexOfFirst { line ->
                     line.first().first > liveTime
                 }
@@ -535,20 +539,22 @@ fun LazyItemScope.LyricItem(
     nextTime: () -> Float,
     otherSide: Boolean,
     liveTimeMs: () -> Int,
+    uiConfig: LyricUIConfig,
     onClick: () -> Unit
 ) {
 
 
     val viewAlign = if (otherSide) Alignment.End else Alignment.Start
-    val focusedColor = Color(0xFFFFFFFF)
-    val unfocusedColor = Color(0x2EFFFFFF)
+    val focusedColor = mainTextBasicColor
+    val unfocusedColor = mainTextBasicColor.copy(alpha = uiConfig.inactiveTextAlpha)
     val unfocusedSolidBrush = SolidColor(unfocusedColor)
 
     val isNotOneByOne = remember(mainLyric) {
         mainLyric.all { it.first == mainLyric.firstOrNull()?.first }
     }
 
-    val liveTime = remember(mainLyric) { mutableIntStateOf(liveTimeMs()) }
+    val latestLiveTimeMs = rememberUpdatedState(liveTimeMs)
+    val liveTime = remember(mainLyric) { mutableIntStateOf(latestLiveTimeMs.value()) }
 
     val launch = remember(mainLyric) {
         derivedStateOf {
@@ -559,7 +565,7 @@ fun LazyItemScope.LyricItem(
         LaunchedEffect(Unit) {
             while (isActive) {
                 withContext(Dispatchers.Main) {
-                    liveTime.intValue = liveTimeMs()
+                    liveTime.intValue = latestLiveTimeMs.value()
                 }
                 delay(10L)
             }
@@ -590,7 +596,11 @@ fun LazyItemScope.LyricItem(
         }
 
         val scale = animateFloatAsState(
-            targetValue = if (isCurrentLambda()) 1.005f else 1f,
+            targetValue = if (isCurrentLambda()) {
+                uiConfig.activeTextScale
+            } else {
+                uiConfig.inactiveTextScale
+            },
             animationSpec = if (isCurrentLambda()) tweenSpecWithDelay else tweenSpecWithoutDelay
         )
 
@@ -699,7 +709,7 @@ fun LazyItemScope.LyricItem(
                     }
 
                     val thisAlphaAnimated = animateFloatAsState(
-                        targetValue = if (isCurrentLambda()) 1f else 0.18f,
+                        targetValue = if (isCurrentLambda()) 1f else uiConfig.inactiveTextAlpha,
                         animationSpec = if (isCurrentLambda()) alphaTweenSpecWithDelay else alphaTweenSpecWithoutDelay
                     )
 
@@ -726,19 +736,26 @@ fun LazyItemScope.LyricItem(
                         }
                     }
 
-                    val showHighLight = remember(mainLyric) {
-                        derivedStateOf {
-                            if (isNotOneByOne) {
-                                true
-                            } else {
-                                liveTime.intValue >= mainLyric[mainLyric.size - (if (translation != null) 3 else 1)].first
-                            }
-                        }
+                    val alignedTextStyle = if (otherSide) {
+                        mainTextStyle.copy(textAlign = TextAlign.End)
+                    } else {
+                        mainTextStyle
+                    }
+                    val lineTextStyle = if (isCurrentLambda() && uiConfig.activeGlowRadius > 0f) {
+                        alignedTextStyle.copy(
+                            shadow = Shadow(
+                                color = Color(uiConfig.activeGlowColor),
+                                offset = Offset.Zero,
+                                blurRadius = uiConfig.activeGlowRadius
+                            )
+                        )
+                    } else {
+                        alignedTextStyle
                     }
 
                     Line(
                         lines = mainLyric,
-                        style = if (otherSide) mainTextStyle.copy(textAlign = TextAlign.End) else mainTextStyle,
+                        style = lineTextStyle,
                         measurer = measurer,
                         modifier = Modifier
                             .graphicsLayer {
@@ -762,21 +779,11 @@ fun LazyItemScope.LyricItem(
                         }
 
                         if (!isCurrentLambda()) {
-                            if (showHighLight.value) {
-                                return@Line onDrawWithContent {
-                                    drawText(
-                                        textLayoutResult = measureResult,
-                                        color = focusedColor,
-                                        topLeft = Offset(0F, -4F)
-                                    )
-                                }
-                            } else {
-                                return@Line onDrawWithContent {
-                                    drawText(
-                                        textLayoutResult = measureResult,
-                                        color = unfocusedColor
-                                    )
-                                }
+                            return@Line onDrawWithContent {
+                                drawText(
+                                    textLayoutResult = measureResult,
+                                    color = unfocusedColor
+                                )
                             }
                         }
 
@@ -813,7 +820,7 @@ fun LazyItemScope.LyricItem(
                                 val charWord = char.toString()
                                 val layout = measurer.measure(
                                     text = charWord,
-                                    style = if (otherSide) mainTextStyle.copy(textAlign = TextAlign.End) else mainTextStyle,
+                                    style = lineTextStyle,
                                     constraints = measureResult.layoutInput.constraints
                                 )
 
@@ -877,7 +884,7 @@ fun LazyItemScope.LyricItem(
                     AnimatedVisibility(showTranslation && translation != null) {
                         translation?.let {
                             val translationAlpha = animateFloatAsState(
-                                targetValue = if (isCurrentLambda()) 0.5f else 0.18f,
+                                targetValue = if (isCurrentLambda()) 0.58f else uiConfig.inactiveTextAlpha,
                                 animationSpec = if (isCurrentLambda()) alphaTweenSpecWithDelay else alphaTweenSpecWithoutDelay
                             )
 
@@ -891,7 +898,7 @@ fun LazyItemScope.LyricItem(
                                 text = it,
                                 fontSize = subTextSize.sp,
                                 color = subTextBasicColor,
-                                fontWeight = FontWeight.Normal,
+                                fontWeight = mainTextStyle.fontWeight ?: FontWeight.Bold,
                                 modifier = Modifier
                                     .graphicsLayer {
                                         this.alpha = translationAlpha.value

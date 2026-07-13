@@ -55,7 +55,7 @@ class MusicPlayerController @Inject constructor(
     // Media3 控制端（连接到 MusicService 的 MediaSession）
     private var controller: MediaController? = null
 
-    // 进度轮询任务：每 500ms 同步一次 position/duration 到 UI
+    // 进度轮询任务：同步 position/duration 到 UI，歌词逐字高亮需要更密的节奏。
     private var progressJob: Job? = null
     private var playJob: Job? = null
     private var latestPlayRequestId: Long = 0L
@@ -307,7 +307,7 @@ class MusicPlayerController @Inject constructor(
                         durationMs = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
                     )
                 }
-                delay(500L)
+                delay(100L)
             }
         }
     }

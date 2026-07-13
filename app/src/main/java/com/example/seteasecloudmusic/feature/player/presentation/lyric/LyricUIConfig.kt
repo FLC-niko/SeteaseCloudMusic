@@ -17,6 +17,11 @@ import androidx.compose.ui.text.font.FontWeight
  * @param fontWeight 歌词字重
  * @param lineBalance 是否启用平衡行模式
  * @param letterSpacing 字间距 (sp)，Apple Music 风格建议负值
+ * @param activeTextScale 当前播放行缩放
+ * @param inactiveTextScale 非当前播放行缩放
+ * @param inactiveTextAlpha 非当前播放行透明度
+ * @param activeGlowColor 当前播放行发光色 (ARGB Long)
+ * @param activeGlowRadius 当前播放行发光半径
  */
 @Stable
 data class LyricUIConfig(
@@ -30,5 +35,10 @@ data class LyricUIConfig(
     val subTextBasicColor: Long = 0xFF919191,
     val fontWeight: FontWeight = FontWeight.Bold,
     val lineBalance: Boolean = false,
-    val letterSpacing: Float = -0.02f
+    val letterSpacing: Float = -0.02f,
+    val activeTextScale: Float = 1.08f,
+    val inactiveTextScale: Float = 0.9f,
+    val inactiveTextAlpha: Float = 0.22f,
+    val activeGlowColor: Long = 0x7AFFFFFF,
+    val activeGlowRadius: Float = 18f
 )

@@ -25,7 +25,7 @@ object LyricDataAdapter {
                 val prevEnd = filteredLines[i - 1].endTime.toFloat()
                 val gap = line.startTime - prevEnd
                 if (gap > EMPTY_LINE_GAP_MS) {
-                    lyrics.add(listOf(prevEnd to ""))
+                    lyrics.add(emptyFlamingoLine(prevEnd))
                     sideFlags.add(false)
                 }
             }
@@ -49,10 +49,12 @@ object LyricDataAdapter {
             result.add(line.startTime.toFloat() to text)
         }
 
-        if (line.translatedLyric.isNotBlank()) {
-            result.add(0f to line.translatedLyric)
-        }
+        result.add(0f to line.translatedLyric)
 
         return result
+    }
+
+    private fun emptyFlamingoLine(timeMs: Float): List<Pair<Float, String>> {
+        return listOf(timeMs to "", 0f to "")
     }
 }

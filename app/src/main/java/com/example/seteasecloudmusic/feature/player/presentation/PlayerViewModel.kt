@@ -36,7 +36,7 @@ class PlayerViewModel @Inject constructor(
 
     val activeLineIndex: StateFlow<Int> = combine(_lyricsState, currentPositionMs) { state, pos ->
         if (state !is LyricsUiState.Success) return@combine -1
-        state.lyrics.lines.indexOfLast { it.startTime <= pos }.coerceAtLeast(0)
+        state.lyrics.lines.indexOfLast { it.startTime <= pos }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0)
 
     private var loadLyricsJob: Job? = null
