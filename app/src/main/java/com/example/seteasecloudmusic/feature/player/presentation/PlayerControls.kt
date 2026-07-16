@@ -1,9 +1,20 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,8 +72,10 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.example.seteasecloudmusic.core.player.QueueRepeatMode
+import kotlinx.coroutines.launch
 
 @Composable
 fun PlayerControls(
@@ -88,6 +102,20 @@ fun PlayerControls(
     val functionIconTint = Color.White.copy(alpha = 0.65f)
     val activeFunctionIconTint = Color.White
     val activeFunctionBackground = dominantColor.copy(alpha = 0.28f)
+    val shuffleTint by animateColorAsState(
+        targetValue = if (shuffleEnabled) activeFunctionIconTint else Color.White.copy(alpha = 0.5f),
+        animationSpec = tween(durationMillis = 180),
+        label = "shuffle_tint"
+    )
+    val repeatTint by animateColorAsState(
+        targetValue = if (repeatMode == QueueRepeatMode.OFF) {
+            Color.White.copy(alpha = 0.5f)
+        } else {
+            activeFunctionIconTint
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "repeat_tint"
+    )
 
     Column(
         modifier = modifier
@@ -119,7 +147,7 @@ fun PlayerControls(
                 Icon(
                     imageVector = Icons.Filled.Shuffle,
                     contentDescription = if (shuffleEnabled) "关闭随机播放" else "开启随机播放",
-                    tint = if (shuffleEnabled) activeFunctionIconTint else Color.White.copy(alpha = 0.5f),
+                    tint = shuffleTint,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -143,11 +171,9 @@ fun PlayerControls(
                 pressedScale = 0.86f,
                 modifier = Modifier.size(64.dp)
             ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "暂停" else "播放",
-                    tint = Color.White,
-                    modifier = Modifier.size(54.dp)
+                AnimatedPlayPauseIcon(
+                    isPlaying = isPlaying,
+                    size = 54.dp
                 )
             }
 
@@ -169,24 +195,30 @@ fun PlayerControls(
                 onClick = onRepeatClick,
                 modifier = Modifier.size(32.dp)
             ) {
-                Icon(
-                    imageVector = if (repeatMode == QueueRepeatMode.ONE) {
-                        Icons.Filled.RepeatOne
-                    } else {
-                        Icons.Filled.Repeat
+                AnimatedContent(
+                    targetState = repeatMode,
+                    transitionSpec = {
+                        (fadeIn(tween(150)) + scaleIn(tween(180), initialScale = 0.68f))
+                            .togetherWith(fadeOut(tween(90)) + scaleOut(tween(110), targetScale = 1.18f))
                     },
-                    contentDescription = when (repeatMode) {
-                        QueueRepeatMode.OFF -> "开启列表循环"
-                        QueueRepeatMode.ALL -> "开启单曲循环"
-                        QueueRepeatMode.ONE -> "关闭循环播放"
-                    },
-                    tint = if (repeatMode == QueueRepeatMode.OFF) {
-                        Color.White.copy(alpha = 0.5f)
-                    } else {
-                        activeFunctionIconTint
-                    },
-                    modifier = Modifier.size(22.dp)
-                )
+                    contentAlignment = Alignment.Center,
+                    label = "repeat_mode_icon"
+                ) { mode ->
+                    Icon(
+                        imageVector = if (mode == QueueRepeatMode.ONE) {
+                            Icons.Filled.RepeatOne
+                        } else {
+                            Icons.Filled.Repeat
+                        },
+                        contentDescription = when (mode) {
+                            QueueRepeatMode.OFF -> "开启列表循环"
+                            QueueRepeatMode.ALL -> "开启单曲循环"
+                            QueueRepeatMode.ONE -> "关闭循环播放"
+                        },
+                        tint = repeatTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
 
@@ -266,7 +298,7 @@ fun AppleMusicIconButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
+    val pressedStateScale by animateFloatAsState(
         targetValue = if (isPressed) pressedScale else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -274,6 +306,8 @@ fun AppleMusicIconButton(
         ),
         label = "apple_music_button_scale"
     )
+    val clickPulseScale = remember { Animatable(1f) }
+    val animationScope = rememberCoroutineScope()
     val alpha by animateFloatAsState(
         targetValue = when {
             !enabled -> 0.38f
@@ -287,8 +321,9 @@ fun AppleMusicIconButton(
     Box(
         modifier = modifier
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                val combinedScale = pressedStateScale * clickPulseScale.value
+                scaleX = combinedScale
+                scaleY = combinedScale
                 this.alpha = alpha
             }
             .clickable(
@@ -296,11 +331,75 @@ fun AppleMusicIconButton(
                 role = Role.Button,
                 indication = null,
                 interactionSource = interactionSource,
-                onClick = onClick
+                onClick = {
+                    animationScope.launch {
+                        clickPulseScale.snapTo(1f)
+                        clickPulseScale.animateTo(
+                            targetValue = pressedScale,
+                            animationSpec = tween(
+                                durationMillis = 65,
+                                easing = FastOutLinearInEasing
+                            )
+                        )
+                        clickPulseScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = 0.58f,
+                                stiffness = 520f
+                            )
+                        )
+                    }
+                    onClick()
+                }
             ),
         contentAlignment = Alignment.Center
     ) {
         content()
+    }
+}
+
+@Composable
+fun AnimatedPlayPauseIcon(
+    isPlaying: Boolean,
+    size: Dp,
+    tint: Color = Color.White
+) {
+    AnimatedContent(
+        targetState = isPlaying,
+        transitionSpec = {
+            (fadeIn(
+                animationSpec = tween(
+                    durationMillis = 170,
+                    delayMillis = 35,
+                    easing = FastOutSlowInEasing
+                )
+            ) + scaleIn(
+                initialScale = 0.58f,
+                animationSpec = tween(
+                    durationMillis = 210,
+                    delayMillis = 20,
+                    easing = FastOutSlowInEasing
+                )
+            )).togetherWith(
+                fadeOut(animationSpec = tween(durationMillis = 100)) +
+                    scaleOut(
+                        targetScale = 1.24f,
+                        animationSpec = tween(
+                            durationMillis = 135,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+            )
+        },
+        contentAlignment = Alignment.Center,
+        label = "play_pause_icon_transition"
+    ) { playing ->
+        Icon(
+            imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = if (playing) "暂停" else "播放",
+            tint = tint,
+            modifier = Modifier.size(size)
+        )
     }
 }
 

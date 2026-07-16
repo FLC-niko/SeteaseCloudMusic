@@ -14,6 +14,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,8 +55,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Share
@@ -231,18 +230,45 @@ fun NowPlayingScreen(
     )
 
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var isDraggingToDismiss by remember { mutableStateOf(false) }
+    var isDragDismissalRunning by remember { mutableStateOf(false) }
+    var dismissalStartOffsetY by remember { mutableFloatStateOf(0f) }
+    var dismissalPathLinearFactor by remember { mutableFloatStateOf(0.3f) }
     val density = LocalDensity.current
     val dismissThreshold = with(density) { 200.dp.toPx() }
+    val dismissVelocityThreshold = with(density) { 1100.dp.toPx() }
+    val maximumTrackedDismissVelocity = with(density) { 3600.dp.toPx() }
     val layerOffsetPx = with(density) { 22.dp.toPx() }
 
     val draggableState = rememberDraggableState { delta ->
         dragOffsetY = (dragOffsetY + delta).coerceAtLeast(0f)
     }
 
-    val dragProgress = (dragOffsetY / dismissThreshold).coerceIn(0f, 1f)
+    val settledDragOffsetY by animateFloatAsState(
+        targetValue = dragOffsetY,
+        animationSpec = if (isDraggingToDismiss) {
+            snap()
+        } else {
+            spring(dampingRatio = 0.82f, stiffness = 520f)
+        },
+        label = "drag_offset_settle"
+    )
+    val visibleDragOffsetY = if (isDragDismissalRunning) {
+        // 保持手指释放时的位置，再与外层关闭进度一起回到迷你播放器，避免先闪回全屏。
+        val travelProgress = parabolicVerticalProgress(
+            linearProgress = 1f - clampedPresentationProgress,
+            initialVelocityFactor = dismissalPathLinearFactor
+        )
+        dismissalStartOffsetY * (1f - travelProgress)
+    } else if (isDraggingToDismiss) {
+        dragOffsetY
+    } else {
+        settledDragOffsetY
+    }
+    val dragProgress = (visibleDragOffsetY / dismissThreshold).coerceIn(0f, 1f)
     val animatedScale = 1f - (dragProgress * 0.08f)
     val animatedCorner by animateDpAsState(
-        targetValue = if (dragOffsetY > 0f) 26.dp else 0.dp,
+        targetValue = if (visibleDragOffsetY > 0.5f) 26.dp else 0.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "corner"
     )
@@ -252,7 +278,7 @@ fun NowPlayingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .offset { IntOffset(0, dragOffsetY.roundToInt()) }
+            .offset { IntOffset(0, visibleDragOffsetY.roundToInt()) }
             .graphicsLayer {
                 scaleX = animatedScale
                 scaleY = animatedScale
@@ -261,12 +287,28 @@ fun NowPlayingScreen(
             .draggable(
                 state = draggableState,
                 orientation = Orientation.Vertical,
-                enabled = pageProgress <= 0.001f && clampedPresentationProgress >= 0.999f,
-                onDragStopped = {
-                    if (dragOffsetY > dismissThreshold) {
+                enabled = pageProgress <= 0.001f &&
+                    clampedPresentationProgress >= 0.999f &&
+                    !isDragDismissalRunning,
+                onDragStarted = {
+                    isDraggingToDismiss = true
+                },
+                onDragStopped = { velocity ->
+                    isDraggingToDismiss = false
+                    val dismissByDistance = dragOffsetY > dismissThreshold
+                    val dismissByVelocity = velocity > dismissVelocityThreshold
+                    if (dismissByDistance || dismissByVelocity) {
+                        dismissalStartOffsetY = dragOffsetY
+                        val normalizedVelocity = (
+                            velocity.coerceAtLeast(0f) / maximumTrackedDismissVelocity
+                            ).coerceIn(0f, 1f)
+                        dismissalPathLinearFactor = 0.18f + (0.54f * normalizedVelocity)
+                        isDragDismissalRunning = true
                         onClose()
+                    } else {
+                        // target 归零后由 settledDragOffsetY 负责弹簧回弹。
+                        dragOffsetY = 0f
                     }
-                    dragOffsetY = 0f
                 }
             )
     ) {
@@ -330,6 +372,10 @@ fun NowPlayingScreen(
                     presentationProgress = clampedPresentationProgress,
                     contentRevealProgress = contentRevealProgress,
                     sourceArtworkBounds = sourceArtworkBounds,
+                    allowArtworkBoundsUpdate = !isDraggingToDismiss &&
+                        !isDragDismissalRunning &&
+                        visibleDragOffsetY < 0.5f,
+                    artworkPathLinearFactor = dismissalPathLinearFactor,
                     onPlayPause = { viewModel.onPlayPause() },
                     onNext = { viewModel.onNext() },
                     onPrevious = { viewModel.onPrevious() },
@@ -752,6 +798,8 @@ private fun AlbumModeContent(
     presentationProgress: Float,
     contentRevealProgress: Float,
     sourceArtworkBounds: Rect,
+    allowArtworkBoundsUpdate: Boolean,
+    artworkPathLinearFactor: Float,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -792,6 +840,8 @@ private fun AlbumModeContent(
                 swipeProgress = swipeProgress,
                 presentationProgress = presentationProgress,
                 sourceArtworkBounds = sourceArtworkBounds,
+                allowBoundsUpdate = allowArtworkBoundsUpdate,
+                pathLinearFactor = artworkPathLinearFactor,
                 modifier = Modifier.size(coverSize)
             )
 
@@ -904,6 +954,8 @@ private fun AlbumArtwork(
     swipeProgress: Float,
     presentationProgress: Float,
     sourceArtworkBounds: Rect,
+    allowBoundsUpdate: Boolean,
+    pathLinearFactor: Float,
     modifier: Modifier = Modifier
 ) {
     val artworkScale by animateFloatAsState(
@@ -938,15 +990,21 @@ private fun AlbumArtwork(
         280f
     }
     val sharedScale = sourceScale + ((targetScale - sourceScale) * transitionProgress)
-    val sharedTranslationX = sourceTranslationX * (1f - transitionProgress)
-    val sharedTranslationY = sourceTranslationY * (1f - transitionProgress)
+    val travelProgress = 1f - transitionProgress
+    val sharedTranslationX = sourceTranslationX * travelProgress
+    val sharedTranslationY = sourceTranslationY * parabolicVerticalProgress(
+        linearProgress = travelProgress,
+        initialVelocityFactor = pathLinearFactor
+    )
     val artworkCorner = 8.dp + (10.dp * transitionProgress)
     val artworkShape = RoundedCornerShape(artworkCorner)
 
     Box(
         modifier = modifier
             .onGloballyPositioned { coordinates ->
-                targetArtworkBounds = coordinates.boundsInRoot()
+                if (allowBoundsUpdate) {
+                    targetArtworkBounds = coordinates.boundsInRoot()
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -1262,15 +1320,14 @@ private fun LyricsBottomControls(
 
             AppleMusicIconButton(
                 onClick = onPlayPause,
+                pressedScale = 0.86f,
                 modifier = Modifier
                     .size(58.dp)
                     .background(Color.White.copy(alpha = 0.16f), CircleShape)
             ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "暂停" else "播放",
-                    tint = Color.White,
-                    modifier = Modifier.size(38.dp)
+                AnimatedPlayPauseIcon(
+                    isPlaying = isPlaying,
+                    size = 38.dp
                 )
             }
 
@@ -1358,4 +1415,17 @@ private fun formatPlayerTime(ms: Int): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+/**
+ * 纵向采用 y(t) = at + (1-a)t²：初速度由松手速度决定且全程单调，随后自然加速。
+ * 横向保持线性后，封面在二维空间中的轨迹就是稳定、可复现的抛物线。
+ */
+private fun parabolicVerticalProgress(
+    linearProgress: Float,
+    initialVelocityFactor: Float = 0.3f
+): Float {
+    val t = linearProgress.coerceIn(0f, 1f)
+    val linearFactor = initialVelocityFactor.coerceIn(0.05f, 0.9f)
+    return (linearFactor * t) + ((1f - linearFactor) * t * t)
 }
