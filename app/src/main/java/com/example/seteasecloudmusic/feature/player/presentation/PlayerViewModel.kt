@@ -1,5 +1,7 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import android.content.Context
+import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
@@ -8,6 +10,7 @@ import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.player.domain.GetLyricsUseCase
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,8 +25,17 @@ import javax.inject.Inject
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val controller: MusicPlayerController,
-    private val getLyricsUseCase: GetLyricsUseCase
+    private val getLyricsUseCase: GetLyricsUseCase,
+    @ApplicationContext context: Context
 ) : ViewModel() {
+
+    private val favoritesPreferences = context.getSharedPreferences(
+        FAVORITES_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
+    private val _favoriteTrackIds = MutableStateFlow(
+        favoritesPreferences.getStringSet(FAVORITE_TRACK_IDS, emptySet()).orEmpty().toSet()
+    )
 
     val playbackState: StateFlow<PlaybackState> = controller.playbackState
 
@@ -38,6 +50,13 @@ class PlayerViewModel @Inject constructor(
         if (state !is LyricsUiState.Success) return@combine -1
         state.lyrics.lines.indexOfLast { it.startTime <= pos }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0)
+
+    val isCurrentTrackFavorite: StateFlow<Boolean> = combine(
+        playbackState,
+        _favoriteTrackIds
+    ) { state, favoriteIds ->
+        state.currentTrack?.id?.toString() in favoriteIds
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private var loadLyricsJob: Job? = null
 
@@ -74,8 +93,38 @@ class PlayerViewModel @Inject constructor(
         controller.playPrevious()
     }
 
+    fun onQueueTrackClick(index: Int) {
+        controller.playQueueItem(index)
+    }
+
+    fun onShuffleClick() {
+        controller.toggleShuffle()
+    }
+
+    fun onRepeatClick() {
+        controller.cycleRepeatMode()
+    }
+
+    fun setVolume(volume: Float) {
+        controller.setVolume(volume)
+    }
+
+    fun toggleCurrentTrackFavorite() {
+        val trackId = playbackState.value.currentTrack?.id?.toString() ?: return
+        val updated = _favoriteTrackIds.value.toMutableSet().apply {
+            if (!add(trackId)) remove(trackId)
+        }.toSet()
+        _favoriteTrackIds.value = updated
+        favoritesPreferences.edit { putStringSet(FAVORITE_TRACK_IDS, updated) }
+    }
+
     fun seekTo(positionMs: Int) {
         controller.seekTo(positionMs)
+    }
+
+    private companion object {
+        const val FAVORITES_PREFERENCES = "player_favorites"
+        const val FAVORITE_TRACK_IDS = "favorite_track_ids"
     }
 }
 

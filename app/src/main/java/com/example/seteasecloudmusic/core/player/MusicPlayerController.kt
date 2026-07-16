@@ -31,6 +31,8 @@ import javax.inject.Singleton
 
 enum class PlayerStatus { IDLE, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
 
+enum class QueueRepeatMode { OFF, ALL, ONE }
+
 data class PlaybackState(
     val status: PlayerStatus = PlayerStatus.IDLE,
     val currentTrack: Track? = null,
@@ -38,7 +40,10 @@ data class PlaybackState(
     val durationMs: Int = 0,
     val errorMessage: String? = null,
     val queueTracks: List<Track> = emptyList(),
-    val currentQueueIndex: Int = -1
+    val currentQueueIndex: Int = -1,
+    val shuffleEnabled: Boolean = false,
+    val repeatMode: QueueRepeatMode = QueueRepeatMode.OFF,
+    val volume: Float = 1f
 )
 
 @Singleton
@@ -59,6 +64,7 @@ class MusicPlayerController @Inject constructor(
     private var progressJob: Job? = null
     private var playJob: Job? = null
     private var latestPlayRequestId: Long = 0L
+    private val playedShuffleIndices = mutableSetOf<Int>()
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
@@ -76,7 +82,7 @@ class MusicPlayerController @Inject constructor(
             }
 
             if (mapped == PlayerStatus.ENDED) {
-                if (playNextInternal()) {
+                if (playNextInternal(fromCompletion = true)) {
                     return
                 }
             }
@@ -99,6 +105,10 @@ class MusicPlayerController @Inject constructor(
             if (isPlaying) startProgressTicker() else stopProgressTicker()
         }
 
+        override fun onVolumeChanged(volume: Float) {
+            _playbackState.update { it.copy(volume = volume.coerceIn(0f, 1f)) }
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             stopProgressTicker()
             _playbackState.update {
@@ -118,6 +128,7 @@ class MusicPlayerController @Inject constructor(
                     .onSuccess { c ->
                         controller = c
                         c.addListener(playerListener)
+                        _playbackState.update { it.copy(volume = c.volume.coerceIn(0f, 1f)) }
                     }
                     .onFailure { e ->
                         _playbackState.update {
@@ -154,6 +165,8 @@ class MusicPlayerController @Inject constructor(
                 errorMessage = null
             )
         }
+        playedShuffleIndices.clear()
+        playedShuffleIndices += startIndex
 
         playQueueIndex(startIndex)
     }
@@ -163,16 +176,56 @@ class MusicPlayerController @Inject constructor(
     }
 
     fun playNext() {
-        playNextInternal()
+        playNextInternal(fromCompletion = false)
     }
 
     fun playPrevious() {
         val state = _playbackState.value
-        val previousIndex = state.currentQueueIndex - 1
-        if (previousIndex !in state.queueTracks.indices) {
+        if (state.currentPositionMs > PREVIOUS_RESTART_THRESHOLD_MS) {
+            seekTo(0)
             return
         }
+
+        val previousIndex = when {
+            state.currentQueueIndex > 0 -> state.currentQueueIndex - 1
+            state.repeatMode == QueueRepeatMode.ALL && state.queueTracks.isNotEmpty() -> {
+                state.queueTracks.lastIndex
+            }
+            else -> return
+        }
         playQueueIndex(previousIndex)
+    }
+
+    fun playQueueItem(index: Int) {
+        playQueueIndex(index)
+    }
+
+    fun toggleShuffle() {
+        _playbackState.update { state ->
+            val enabled = !state.shuffleEnabled
+            playedShuffleIndices.clear()
+            if (enabled && state.currentQueueIndex in state.queueTracks.indices) {
+                playedShuffleIndices += state.currentQueueIndex
+            }
+            state.copy(shuffleEnabled = enabled)
+        }
+    }
+
+    fun cycleRepeatMode() {
+        _playbackState.update { state ->
+            val nextMode = when (state.repeatMode) {
+                QueueRepeatMode.OFF -> QueueRepeatMode.ALL
+                QueueRepeatMode.ALL -> QueueRepeatMode.ONE
+                QueueRepeatMode.ONE -> QueueRepeatMode.OFF
+            }
+            state.copy(repeatMode = nextMode)
+        }
+    }
+
+    fun setVolume(volume: Float) {
+        val safeVolume = volume.coerceIn(0f, 1f)
+        controller?.volume = safeVolume
+        _playbackState.update { it.copy(volume = safeVolume) }
     }
 
     fun replayCurrent() {
@@ -213,6 +266,9 @@ class MusicPlayerController @Inject constructor(
         }
 
         val track = queue[index]
+        if (_playbackState.value.shuffleEnabled) {
+            playedShuffleIndices += index
+        }
         playJob?.cancel()
         val requestId = nextPlayRequestId()
         playJob = scope.launch {
@@ -275,9 +331,21 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
-    private fun playNextInternal(): Boolean {
+    private fun playNextInternal(fromCompletion: Boolean): Boolean {
         val state = _playbackState.value
-        val nextIndex = state.currentQueueIndex + 1
+        if (state.queueTracks.isEmpty()) return false
+
+        if (fromCompletion && state.repeatMode == QueueRepeatMode.ONE) {
+            playQueueIndex(state.currentQueueIndex)
+            return true
+        }
+
+        val nextIndex = when {
+            state.shuffleEnabled -> nextShuffleIndex(state)
+            state.currentQueueIndex < state.queueTracks.lastIndex -> state.currentQueueIndex + 1
+            state.repeatMode == QueueRepeatMode.ALL -> 0
+            else -> -1
+        }
         if (nextIndex !in state.queueTracks.indices) {
             _playbackState.update {
                 it.copy(status = PlayerStatus.ENDED, errorMessage = null)
@@ -287,6 +355,20 @@ class MusicPlayerController @Inject constructor(
 
         playQueueIndex(nextIndex)
         return true
+    }
+
+    private fun nextShuffleIndex(state: PlaybackState): Int {
+        val unplayed = state.queueTracks.indices.filterNot(playedShuffleIndices::contains)
+        if (unplayed.isNotEmpty()) return unplayed.random()
+        if (state.repeatMode != QueueRepeatMode.ALL) return -1
+
+        playedShuffleIndices.clear()
+        playedShuffleIndices += state.currentQueueIndex
+        return state.queueTracks.indices
+            .filterNot { it == state.currentQueueIndex }
+            .takeIf { it.isNotEmpty() }
+            ?.random()
+            ?: state.currentQueueIndex
     }
 
     private fun nextPlayRequestId(): Long {
@@ -315,5 +397,9 @@ class MusicPlayerController @Inject constructor(
     private fun stopProgressTicker() {
         progressJob?.cancel()
         progressJob = null
+    }
+
+    private companion object {
+        const val PREVIOUS_RESTART_THRESHOLD_MS = 3_000
     }
 }

@@ -1,12 +1,16 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,12 +32,12 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.SpeakerGroup
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,10 +50,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.seteasecloudmusic.core.player.QueueRepeatMode
 
 @Composable
 fun PlayerControls(
@@ -57,13 +69,21 @@ fun PlayerControls(
     durationMs: Int,
     isPlaying: Boolean,
     dominantColor: Color,
+    shuffleEnabled: Boolean,
+    repeatMode: QueueRepeatMode,
+    volume: Float,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
+    onShuffleClick: () -> Unit,
+    onRepeatClick: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
+    onDeviceClick: () -> Unit,
+    onQueueClick: () -> Unit,
+    modifier: Modifier = Modifier,
     onLyricsClick: () -> Unit = {},
-    lyricsActive: Boolean = false,
-    modifier: Modifier = Modifier
+    lyricsActive: Boolean = false
 ) {
     val functionIconTint = Color.White.copy(alpha = 0.65f)
     val activeFunctionIconTint = Color.White
@@ -92,20 +112,20 @@ fun PlayerControls(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Shuffle 随机播放
-            IconButton(
-                onClick = { /* TODO: 随机播放功能 */ },
+            AppleMusicIconButton(
+                onClick = onShuffleClick,
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Shuffle,
-                    contentDescription = "随机播放",
-                    tint = Color.White.copy(alpha = 0.5f),
+                    contentDescription = if (shuffleEnabled) "关闭随机播放" else "开启随机播放",
+                    tint = if (shuffleEnabled) activeFunctionIconTint else Color.White.copy(alpha = 0.5f),
                     modifier = Modifier.size(22.dp)
                 )
             }
 
             // ⏮ 上一曲
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onPrevious,
                 modifier = Modifier.size(48.dp)
             ) {
@@ -118,14 +138,10 @@ fun PlayerControls(
             }
 
             // ▶/⏸ 播放暂停（无白色圆背景，直接用大图标）
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                    ) { onPlayPause() },
-                contentAlignment = Alignment.Center
+            AppleMusicIconButton(
+                onClick = onPlayPause,
+                pressedScale = 0.86f,
+                modifier = Modifier.size(64.dp)
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -136,7 +152,7 @@ fun PlayerControls(
             }
 
             // ⏭ 下一曲
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onNext,
                 modifier = Modifier.size(48.dp)
             ) {
@@ -149,14 +165,26 @@ fun PlayerControls(
             }
 
             // Repeat 循环
-            IconButton(
-                onClick = { /* TODO: 循环模式切换 */ },
+            AppleMusicIconButton(
+                onClick = onRepeatClick,
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Repeat,
-                    contentDescription = "循环播放",
-                    tint = Color.White.copy(alpha = 0.5f),
+                    imageVector = if (repeatMode == QueueRepeatMode.ONE) {
+                        Icons.Filled.RepeatOne
+                    } else {
+                        Icons.Filled.Repeat
+                    },
+                    contentDescription = when (repeatMode) {
+                        QueueRepeatMode.OFF -> "开启列表循环"
+                        QueueRepeatMode.ALL -> "开启单曲循环"
+                        QueueRepeatMode.ONE -> "关闭循环播放"
+                    },
+                    tint = if (repeatMode == QueueRepeatMode.OFF) {
+                        Color.White.copy(alpha = 0.5f)
+                    } else {
+                        activeFunctionIconTint
+                    },
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -165,7 +193,10 @@ fun PlayerControls(
         Spacer(modifier = Modifier.height(28.dp))
 
         // ── 音量条 ──
-        AppleMusicVolumeBar()
+        AppleMusicVolumeBar(
+            volume = volume,
+            onVolumeChange = onVolumeChange
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -176,7 +207,7 @@ fun PlayerControls(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 歌词图标
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onLyricsClick,
                 modifier = Modifier
                     .size(40.dp)
@@ -194,8 +225,8 @@ fun PlayerControls(
             }
 
             // AirPlay 设备图标
-            IconButton(
-                onClick = { /* TODO: 设备功能 */ },
+            AppleMusicIconButton(
+                onClick = onDeviceClick,
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
@@ -207,8 +238,8 @@ fun PlayerControls(
             }
 
             // 播放列表图标
-            IconButton(
-                onClick = { /* TODO: 播放列表功能 */ },
+            AppleMusicIconButton(
+                onClick = onQueueClick,
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
@@ -224,6 +255,55 @@ fun PlayerControls(
     }
 }
 
+/** Apple Music 风格的按压反馈：按下迅速收缩，松手后用低阻尼弹簧回弹。 */
+@Composable
+fun AppleMusicIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    pressedScale: Float = 0.90f,
+    content: @Composable () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) pressedScale else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = if (isPressed) 900f else 560f
+        ),
+        label = "apple_music_button_scale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = when {
+            !enabled -> 0.38f
+            isPressed -> 0.72f
+            else -> 1f
+        },
+        animationSpec = spring(stiffness = 900f),
+        label = "apple_music_button_alpha"
+    )
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                indication = null,
+                interactionSource = interactionSource,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
 // ── Apple Music 风格进度条 ──
 @Composable
 private fun AppleMusicProgressBar(
@@ -234,7 +314,7 @@ private fun AppleMusicProgressBar(
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
-    val displayProgress = if (isDragging) dragProgress else progress
+    val displayProgress = if (isDragging) dragProgress else progress.coerceIn(0f, 1f)
 
     // 拖拽时进度条变粗
     val barHeight by animateDpAsState(
@@ -249,13 +329,24 @@ private fun AppleMusicProgressBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val tapped = (offset.x / size.width).coerceIn(0f, 1f)
-                        onSeekTo((tapped * durationMs).toInt())
+                .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(displayProgress, 0f..1f, 0)
+                    stateDescription = "已播放 ${formatTime(currentPositionMs)}，共 ${formatTime(durationMs)}"
+                    setProgress { target ->
+                        if (durationMs <= 0) return@setProgress false
+                        onSeekTo((target.coerceIn(0f, 1f) * durationMs).toInt())
+                        true
                     }
                 }
-                .pointerInput(Unit) {
+                .pointerInput(durationMs, onSeekTo) {
+                    detectTapGestures { offset ->
+                        if (durationMs > 0) {
+                            val tapped = (offset.x / size.width).coerceIn(0f, 1f)
+                            onSeekTo((tapped * durationMs).toInt())
+                        }
+                    }
+                }
+                .pointerInput(durationMs, onSeekTo) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             isDragging = true
@@ -267,8 +358,11 @@ private fun AppleMusicProgressBar(
                         },
                         onDragEnd = {
                             isDragging = false
-                            onSeekTo((dragProgress * durationMs).toInt())
-                        }
+                            if (durationMs > 0) {
+                                onSeekTo((dragProgress * durationMs).toInt())
+                            }
+                        },
+                        onDragCancel = { isDragging = false }
                     )
                 }
         ) {
@@ -337,39 +431,92 @@ private fun AppleMusicProgressBar(
 
 // ── Apple Music 风格音量条 ──
 @Composable
-private fun AppleMusicVolumeBar() {
+private fun AppleMusicVolumeBar(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit
+) {
+    var isAdjusting by remember { mutableStateOf(false) }
+    val safeVolume = volume.coerceIn(0f, 1f)
+    val barHeight by animateDpAsState(
+        targetValue = if (isAdjusting) 7.dp else 3.dp,
+        animationSpec = spring(stiffness = 600f),
+        label = "volume_bar_height"
+    )
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.VolumeDown,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.35f),
-            modifier = Modifier.size(16.dp)
-        )
+        AppleMusicIconButton(
+            onClick = { onVolumeChange(0f) },
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.VolumeDown,
+                contentDescription = "静音",
+                tint = Color.White.copy(alpha = 0.42f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(8.dp))
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(3.dp)
-                .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(1.5.dp))
+                .height(24.dp)
+                .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(safeVolume, 0f..1f, 20)
+                    stateDescription = "音量 ${(safeVolume * 100).toInt()}%"
+                    setProgress { target ->
+                        onVolumeChange(target.coerceIn(0f, 1f))
+                        true
+                    }
+                }
+                .pointerInput(onVolumeChange) {
+                    detectTapGestures { offset ->
+                        onVolumeChange((offset.x / size.width).coerceIn(0f, 1f))
+                    }
+                }
+                .pointerInput(onVolumeChange) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            isAdjusting = true
+                            onVolumeChange((offset.x / size.width).coerceIn(0f, 1f))
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            onVolumeChange((change.position.x / size.width).coerceIn(0f, 1f))
+                        },
+                        onDragEnd = { isAdjusting = false },
+                        onDragCancel = { isAdjusting = false }
+                    )
+                },
+            contentAlignment = Alignment.CenterStart
         ) {
-            // 默认 50% 音量指示
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .height(3.dp)
-                    .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(1.5.dp))
+                    .fillMaxWidth()
+                    .height(barHeight)
+                    .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(50))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(safeVolume)
+                    .height(barHeight)
+                    .background(Color.White.copy(alpha = 0.62f), RoundedCornerShape(50))
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.35f),
-            modifier = Modifier.size(16.dp)
-        )
+        AppleMusicIconButton(
+            onClick = { onVolumeChange(1f) },
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                contentDescription = "最大音量",
+                tint = Color.White.copy(alpha = 0.42f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 

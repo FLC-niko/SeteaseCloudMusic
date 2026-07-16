@@ -1,7 +1,11 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import android.content.Context
+import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
+import android.media.MediaRouter2
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -30,26 +34,36 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,7 +102,9 @@ import androidx.palette.graphics.Palette
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.PlayerStatus
+import com.example.seteasecloudmusic.core.player.QueueRepeatMode
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricData
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricView
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricDataAdapter
@@ -106,6 +122,9 @@ fun NowPlayingScreen(
     val viewModel: PlayerViewModel = hiltViewModel()
     val playbackState by viewModel.playbackState.collectAsState()
     val lyricsState by viewModel.lyricsState.collectAsState()
+    val isCurrentTrackFavorite by viewModel.isCurrentTrackFavorite.collectAsState()
+    var showMoreSheet by remember { mutableStateOf(false) }
+    var showQueueSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(playbackState.currentTrack?.id) {
         playbackState.currentTrack?.let { viewModel.loadLyrics(it.id) }
@@ -304,6 +323,9 @@ fun NowPlayingScreen(
                     currentPositionMs = playbackState.currentPositionMs,
                     durationMs = playbackState.durationMs,
                     dominantColor = accentColor,
+                    shuffleEnabled = playbackState.shuffleEnabled,
+                    repeatMode = playbackState.repeatMode,
+                    volume = playbackState.volume,
                     swipeProgress = pageProgress,
                     presentationProgress = clampedPresentationProgress,
                     contentRevealProgress = contentRevealProgress,
@@ -312,6 +334,12 @@ fun NowPlayingScreen(
                     onNext = { viewModel.onNext() },
                     onPrevious = { viewModel.onPrevious() },
                     onSeekTo = { positionMs -> viewModel.seekTo(positionMs) },
+                    onShuffleClick = viewModel::onShuffleClick,
+                    onRepeatClick = viewModel::onRepeatClick,
+                    onVolumeChange = viewModel::setVolume,
+                    onDeviceClick = { openAudioOutputPanel(context) },
+                    onQueueClick = { showQueueSheet = true },
+                    onMoreClick = { showMoreSheet = true },
                     onLyricsClick = {
                         coroutineScope.launch { pagerState.animateScrollToPage(1) }
                     },
@@ -344,6 +372,289 @@ fun NowPlayingScreen(
                 )
             }
         }
+    }
+
+    if (showMoreSheet) {
+        TrackActionsSheet(
+            track = track,
+            isFavorite = isCurrentTrackFavorite,
+            onDismiss = { showMoreSheet = false },
+            onFavoriteClick = viewModel::toggleCurrentTrackFavorite,
+            onShareClick = {
+                track?.let { shareTrack(context, it) }
+                showMoreSheet = false
+            },
+            onQueueClick = {
+                showMoreSheet = false
+                showQueueSheet = true
+            }
+        )
+    }
+
+    if (showQueueSheet) {
+        PlaybackQueueSheet(
+            tracks = playbackState.queueTracks,
+            currentIndex = playbackState.currentQueueIndex,
+            onDismiss = { showQueueSheet = false },
+            onTrackClick = { index ->
+                viewModel.onQueueTrackClick(index)
+                showQueueSheet = false
+            }
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun TrackActionsSheet(
+    track: Track?,
+    isFavorite: Boolean,
+    onDismiss: () -> Unit,
+    onFavoriteClick: () -> Unit,
+    onShareClick: () -> Unit,
+    onQueueClick: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1C1C1E),
+        contentColor = Color.White,
+        dragHandle = {
+            Box(
+                Modifier
+                    .padding(top = 10.dp, bottom = 12.dp)
+                    .size(width = 38.dp, height = 5.dp)
+                    .background(Color.White.copy(alpha = 0.28f), RoundedCornerShape(50))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 18.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = track?.coverUrl ?: track?.album?.coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.08f)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = track?.title ?: "未在播放",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = track?.artists?.joinToString(", ") { it.name }.orEmpty(),
+                        color = Color.White.copy(alpha = 0.55f),
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+
+            SheetActionButton(
+                icon = {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (isFavorite) Color(0xFFFF375F) else Color.White
+                    )
+                },
+                text = if (isFavorite) "取消收藏" else "收藏",
+                enabled = track != null,
+                onClick = onFavoriteClick
+            )
+            SheetActionButton(
+                icon = {
+                    Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White)
+                },
+                text = "分享歌曲",
+                enabled = track != null,
+                onClick = onShareClick
+            )
+            SheetActionButton(
+                icon = {
+                    Icon(
+                        Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                },
+                text = "查看播放队列",
+                onClick = onQueueClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetActionButton(
+    icon: @Composable () -> Unit,
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    AppleMusicIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        pressedScale = 0.975f,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { icon() }
+            Spacer(Modifier.width(14.dp))
+            Text(text = text, color = Color.White, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun PlaybackQueueSheet(
+    tracks: List<Track>,
+    currentIndex: Int,
+    onDismiss: () -> Unit,
+    onTrackClick: (Int) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1C1C1E),
+        contentColor = Color.White
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 18.dp)
+        ) {
+            Text(
+                text = "接下来播放",
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
+            if (tracks.isEmpty()) {
+                Text(
+                    text = "播放队列为空",
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 28.dp),
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontSize = 15.sp
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 520.dp)) {
+                    itemsIndexed(
+                        items = tracks,
+                        key = { index, item -> "${item.id}_$index" }
+                    ) { index, item ->
+                        AppleMusicIconButton(
+                            onClick = { onTrackClick(index) },
+                            pressedScale = 0.975f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(66.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = item.coverUrl ?: item.album.coverUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White.copy(alpha = 0.08f)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.title,
+                                        color = if (index == currentIndex) Color(0xFFFF375F) else Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = item.artists.joinToString(", ") { it.name },
+                                        color = Color.White.copy(alpha = 0.48f),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (index == currentIndex) {
+                                    Icon(
+                                        Icons.Filled.GraphicEq,
+                                        contentDescription = "正在播放",
+                                        tint = Color(0xFFFF375F),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun shareTrack(context: Context, track: Track) {
+    val artist = track.artists.joinToString(", ") { it.name }
+    val text = buildString {
+        append("我正在听《${track.title}》")
+        if (artist.isNotBlank()) append(" — $artist")
+        append("（专辑：${track.album.title}）")
+    }
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, track.title)
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(intent, "分享歌曲"))
+}
+
+private fun openAudioOutputPanel(context: Context) {
+    val systemSwitcherShown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        runCatching {
+            MediaRouter2.getInstance(context).showSystemOutputSwitcher()
+        }.getOrDefault(false)
+    } else {
+        false
+    }
+    if (!systemSwitcherShown) {
+        context.startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
     }
 }
 
@@ -434,6 +745,9 @@ private fun AlbumModeContent(
     currentPositionMs: Int,
     durationMs: Int,
     dominantColor: Color,
+    shuffleEnabled: Boolean,
+    repeatMode: QueueRepeatMode,
+    volume: Float,
     swipeProgress: Float,
     presentationProgress: Float,
     contentRevealProgress: Float,
@@ -442,6 +756,12 @@ private fun AlbumModeContent(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
+    onShuffleClick: () -> Unit,
+    onRepeatClick: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
+    onDeviceClick: () -> Unit,
+    onQueueClick: () -> Unit,
+    onMoreClick: () -> Unit,
     onLyricsClick: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -458,7 +778,10 @@ private fun AlbumModeContent(
             Box(
                 modifier = Modifier.graphicsLayer { alpha = contentRevealProgress }
             ) {
-                NowPlayingTopBar(onClose = onClose)
+                NowPlayingTopBar(
+                    onClose = onClose,
+                    onMoreClick = onMoreClick
+                )
             }
 
             Spacer(modifier = Modifier.height(topGap))
@@ -477,6 +800,7 @@ private fun AlbumModeContent(
             TrackTitleBlock(
                 songName = songName,
                 artistName = artistName,
+                onMoreClick = onMoreClick,
                 modifier = Modifier
                     .padding(horizontal = 30.dp)
                     .graphicsLayer { alpha = contentRevealProgress }
@@ -489,10 +813,18 @@ private fun AlbumModeContent(
                 durationMs = durationMs,
                 isPlaying = isPlaying,
                 dominantColor = dominantColor,
+                shuffleEnabled = shuffleEnabled,
+                repeatMode = repeatMode,
+                volume = volume,
                 onPlayPause = onPlayPause,
                 onNext = onNext,
                 onPrevious = onPrevious,
                 onSeekTo = onSeekTo,
+                onShuffleClick = onShuffleClick,
+                onRepeatClick = onRepeatClick,
+                onVolumeChange = onVolumeChange,
+                onDeviceClick = onDeviceClick,
+                onQueueClick = onQueueClick,
                 onLyricsClick = onLyricsClick,
                 lyricsActive = false,
                 modifier = Modifier.graphicsLayer { alpha = contentRevealProgress }
@@ -503,7 +835,8 @@ private fun AlbumModeContent(
 
 @Composable
 private fun NowPlayingTopBar(
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onMoreClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -513,7 +846,7 @@ private fun NowPlayingTopBar(
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
+        AppleMusicIconButton(
             onClick = onClose,
             modifier = Modifier
                 .size(42.dp)
@@ -548,8 +881,8 @@ private fun NowPlayingTopBar(
             )
         }
 
-        IconButton(
-            onClick = {},
+        AppleMusicIconButton(
+            onClick = onMoreClick,
             modifier = Modifier
                 .size(42.dp)
                 .background(Color.White.copy(alpha = 0.08f), CircleShape)
@@ -665,6 +998,7 @@ private fun AlbumArtwork(
 private fun TrackTitleBlock(
     songName: String,
     artistName: String,
+    onMoreClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -695,8 +1029,8 @@ private fun TrackTitleBlock(
 
         Spacer(modifier = Modifier.width(18.dp))
 
-        IconButton(
-            onClick = {},
+        AppleMusicIconButton(
+            onClick = onMoreClick,
             modifier = Modifier
                 .size(38.dp)
                 .background(Color.White.copy(alpha = 0.10f), CircleShape)
@@ -862,7 +1196,7 @@ private fun LyricsHeader(
                 )
             }
 
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onDismissLyrics,
                 modifier = Modifier.size(38.dp)
             ) {
@@ -912,7 +1246,7 @@ private fun LyricsBottomControls(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onPrevious,
                 modifier = Modifier.size(48.dp)
             ) {
@@ -926,7 +1260,7 @@ private fun LyricsBottomControls(
 
             Spacer(modifier = Modifier.width(28.dp))
 
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onPlayPause,
                 modifier = Modifier
                     .size(58.dp)
@@ -942,7 +1276,7 @@ private fun LyricsBottomControls(
 
             Spacer(modifier = Modifier.width(28.dp))
 
-            IconButton(
+            AppleMusicIconButton(
                 onClick = onNext,
                 modifier = Modifier.size(48.dp)
             ) {
