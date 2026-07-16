@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.player.presentation
 
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -35,6 +36,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -55,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,8 +69,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -85,16 +93,19 @@ import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoL
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricView
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricDataAdapter
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricUIConfig
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
 fun NowPlayingScreen(
+    presentationProgress: Float = 1f,
+    sourceBarBounds: Rect = Rect.Zero,
+    sourceArtworkBounds: Rect = Rect.Zero,
     onClose: () -> Unit
 ) {
     val viewModel: PlayerViewModel = hiltViewModel()
     val playbackState by viewModel.playbackState.collectAsState()
     val lyricsState by viewModel.lyricsState.collectAsState()
-    val currentPosition by viewModel.currentPositionMs.collectAsState()
 
     LaunchedEffect(playbackState.currentTrack?.id) {
         playbackState.currentTrack?.let { viewModel.loadLyrics(it.id) }
@@ -115,7 +126,23 @@ fun NowPlayingScreen(
     val artistName = track?.artists?.joinToString(", ") { it.name } ?: "未知歌手"
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
 
-    var showLyrics by remember { mutableStateOf(false) }
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
+    val clampedPresentationProgress = presentationProgress.coerceIn(0f, 1f)
+    val contentRevealProgress = (
+        (clampedPresentationProgress - 0.08f) / 0.56f
+        ).coerceIn(0f, 1f)
+    val pageProgress = (
+        pagerState.currentPage + pagerState.currentPageOffsetFraction
+        ).coerceIn(0f, 1f)
+
+    BackHandler {
+        if (pageProgress > 0.5f) {
+            coroutineScope.launch { pagerState.animateScrollToPage(0) }
+        } else {
+            onClose()
+        }
+    }
 
     val context = LocalContext.current
     var dominantColor by remember { mutableStateOf(Color(0xFF241F23)) }
@@ -163,15 +190,25 @@ fun NowPlayingScreen(
         }
     }
 
-    val animatedTopColor by animateColorAsState(
-        targetValue = if (showLyrics) dominantColor else dominantColor.copy(alpha = 0.92f),
+    val animatedDominantColor by animateColorAsState(
+        targetValue = dominantColor,
         animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-        label = "background_top"
+        label = "palette_dominant"
     )
-    val animatedBottomColor by animateColorAsState(
-        targetValue = if (showLyrics) mutedColor else Color(0xFF09090B),
+    val animatedMutedColor by animateColorAsState(
+        targetValue = mutedColor,
         animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-        label = "background_bottom"
+        label = "palette_muted"
+    )
+    val backgroundTopColor = lerp(
+        animatedDominantColor.copy(alpha = 0.92f),
+        animatedDominantColor,
+        pageProgress
+    )
+    val backgroundBottomColor = lerp(
+        Color(0xFF09090B),
+        animatedMutedColor,
+        pageProgress
     )
 
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
@@ -190,17 +227,8 @@ fun NowPlayingScreen(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "corner"
     )
-
-    val albumAlpha by animateFloatAsState(
-        targetValue = if (showLyrics) 0f else 1f,
-        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-        label = "album_alpha"
-    )
-    val lyricsAlpha by animateFloatAsState(
-        targetValue = if (showLyrics) 1f else 0f,
-        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-        label = "lyrics_alpha"
-    )
+    val presentationCornerPercent = ((1f - clampedPresentationProgress) * 50f)
+        .roundToInt()
 
     Box(
         modifier = Modifier
@@ -211,11 +239,10 @@ fun NowPlayingScreen(
                 scaleY = animatedScale
             }
             .clip(RoundedCornerShape(animatedCorner))
-            .background(Color.Black)
             .draggable(
                 state = draggableState,
                 orientation = Orientation.Vertical,
-                enabled = !showLyrics,
+                enabled = pageProgress <= 0.001f && clampedPresentationProgress >= 0.999f,
                 onDragStopped = {
                     if (dragOffsetY > dismissThreshold) {
                         onClose()
@@ -224,57 +251,98 @@ fun NowPlayingScreen(
                 }
             )
     ) {
-        AppleMusicBackdrop(
-            coverUrl = coverUrl,
-            topColor = animatedTopColor,
-            bottomColor = animatedBottomColor,
-            lyricsMode = showLyrics
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val hasSourceBar = sourceBarBounds.width > 0f &&
+                        sourceBarBounds.height > 0f && size.width > 0f && size.height > 0f
+                    val startScaleX = if (hasSourceBar) {
+                        (sourceBarBounds.width / size.width).coerceIn(0.82f, 0.96f)
+                    } else {
+                        0.9f
+                    }
+                    val startScaleY = if (hasSourceBar) {
+                        (sourceBarBounds.height / size.height).coerceIn(0.04f, 0.12f)
+                    } else {
+                        0.08f
+                    }
+                    val startTranslationY = if (hasSourceBar) {
+                        sourceBarBounds.top
+                    } else {
+                        size.height * 0.82f
+                    }
 
-        if (albumAlpha > 0.01f) {
-            AlbumModeContent(
-                coverUrl = coverUrl,
-                songName = songName,
-                artistName = artistName,
-                isPlaying = isPlaying,
-                currentPositionMs = currentPosition,
-                durationMs = playbackState.durationMs,
-                dominantColor = accentColor,
-                onPlayPause = { viewModel.onPlayPause() },
-                onNext = { viewModel.onNext() },
-                onPrevious = { viewModel.onPrevious() },
-                onSeekTo = { positionMs -> viewModel.seekTo(positionMs) },
-                onLyricsClick = { showLyrics = true },
-                onClose = onClose,
-                modifier = Modifier.graphicsLayer {
-                    alpha = albumAlpha
-                    val scale = 0.985f + (albumAlpha * 0.015f)
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = (1f - albumAlpha) * layerOffsetPx
+                    scaleX = startScaleX + ((1f - startScaleX) * clampedPresentationProgress)
+                    scaleY = startScaleY + ((1f - startScaleY) * clampedPresentationProgress)
+                    translationY = startTranslationY * (1f - clampedPresentationProgress)
+                    alpha = (clampedPresentationProgress / 0.18f).coerceIn(0f, 1f)
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
                 }
+                .clip(RoundedCornerShape(percent = presentationCornerPercent))
+                .background(Color.Black)
+        ) {
+            AppleMusicBackdrop(
+                coverUrl = coverUrl,
+                topColor = backgroundTopColor,
+                bottomColor = backgroundBottomColor,
+                lyricsProgress = pageProgress
             )
         }
 
-        if (lyricsAlpha > 0.01f) {
-            LyricsModeContent(
-                coverUrl = coverUrl,
-                songName = songName,
-                artistName = artistName,
-                lyrics = flamingoData,
-                currentPositionMs = currentPosition,
-                durationMs = playbackState.durationMs,
-                isPlaying = isPlaying,
-                onSeek = { positionMs -> viewModel.seekTo(positionMs) },
-                onPlayPause = { viewModel.onPlayPause() },
-                onNext = { viewModel.onNext() },
-                onPrevious = { viewModel.onPrevious() },
-                onDismissLyrics = { showLyrics = false },
-                modifier = Modifier.graphicsLayer {
-                    alpha = lyricsAlpha
-                    translationY = (1f - lyricsAlpha) * layerOffsetPx
-                }
-            )
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = clampedPresentationProgress >= 0.999f,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            when (page) {
+                0 -> AlbumModeContent(
+                    coverUrl = coverUrl,
+                    songName = songName,
+                    artistName = artistName,
+                    isPlaying = isPlaying,
+                    currentPositionMs = playbackState.currentPositionMs,
+                    durationMs = playbackState.durationMs,
+                    dominantColor = accentColor,
+                    swipeProgress = pageProgress,
+                    presentationProgress = clampedPresentationProgress,
+                    contentRevealProgress = contentRevealProgress,
+                    sourceArtworkBounds = sourceArtworkBounds,
+                    onPlayPause = { viewModel.onPlayPause() },
+                    onNext = { viewModel.onNext() },
+                    onPrevious = { viewModel.onPrevious() },
+                    onSeekTo = { positionMs -> viewModel.seekTo(positionMs) },
+                    onLyricsClick = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                    },
+                    onClose = onClose,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = 1f - (pageProgress * 0.18f)
+                        translationY = pageProgress * layerOffsetPx
+                    }
+                )
+
+                else -> LyricsModeContent(
+                    coverUrl = coverUrl,
+                    songName = songName,
+                    artistName = artistName,
+                    lyrics = flamingoData,
+                    currentPositionMs = playbackState.currentPositionMs,
+                    durationMs = playbackState.durationMs,
+                    isPlaying = isPlaying,
+                    onSeek = { positionMs -> viewModel.seekTo(positionMs) },
+                    onPlayPause = { viewModel.onPlayPause() },
+                    onNext = { viewModel.onNext() },
+                    onPrevious = { viewModel.onPrevious() },
+                    onDismissLyrics = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        alpha = 0.82f + (pageProgress * 0.18f)
+                        translationY = (1f - pageProgress) * layerOffsetPx
+                    }
+                )
+            }
         }
     }
 }
@@ -284,14 +352,11 @@ private fun AppleMusicBackdrop(
     coverUrl: String?,
     topColor: Color,
     bottomColor: Color,
-    lyricsMode: Boolean
+    lyricsProgress: Float
 ) {
     val supportBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val artworkAlpha by animateFloatAsState(
-        targetValue = if (lyricsMode) 0.54f else 0.42f,
-        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-        label = "backdrop_artwork_alpha"
-    )
+    val artworkAlpha = 0.42f + (lyricsProgress * 0.12f)
+    val artworkScale = 1.34f + (lyricsProgress * 0.12f)
 
     Box(
         modifier = Modifier
@@ -314,14 +379,14 @@ private fun AppleMusicBackdrop(
                     .fillMaxSize()
                     .graphicsLayer {
                         alpha = artworkAlpha
-                        scaleX = if (lyricsMode) 1.46f else 1.34f
-                        scaleY = if (lyricsMode) 1.46f else 1.34f
+                        scaleX = artworkScale
+                        scaleY = artworkScale
                     }
                     .then(
                         if (supportBlur) {
                             Modifier.blur(
-                                radius = if (lyricsMode) 78.dp else 68.dp,
-                                edgeTreatment = BlurredEdgeTreatment.Unbounded
+                                radius = 50.dp,
+                                edgeTreatment = BlurredEdgeTreatment.Rectangle
                             )
                         } else {
                             Modifier
@@ -337,9 +402,9 @@ private fun AppleMusicBackdrop(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = if (lyricsMode) 0.20f else 0.28f),
-                            Color.Black.copy(alpha = if (lyricsMode) 0.10f else 0.18f),
-                            Color.Black.copy(alpha = if (lyricsMode) 0.46f else 0.62f)
+                            Color.Black.copy(alpha = 0.28f - lyricsProgress * 0.08f),
+                            Color.Black.copy(alpha = 0.18f - lyricsProgress * 0.08f),
+                            Color.Black.copy(alpha = 0.62f - lyricsProgress * 0.16f)
                         )
                     )
                 )
@@ -369,6 +434,10 @@ private fun AlbumModeContent(
     currentPositionMs: Int,
     durationMs: Int,
     dominantColor: Color,
+    swipeProgress: Float,
+    presentationProgress: Float,
+    contentRevealProgress: Float,
+    sourceArtworkBounds: Rect,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -386,13 +455,20 @@ private fun AlbumModeContent(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            NowPlayingTopBar(onClose = onClose)
+            Box(
+                modifier = Modifier.graphicsLayer { alpha = contentRevealProgress }
+            ) {
+                NowPlayingTopBar(onClose = onClose)
+            }
 
             Spacer(modifier = Modifier.height(topGap))
 
             AlbumArtwork(
                 coverUrl = coverUrl,
                 isPlaying = isPlaying,
+                swipeProgress = swipeProgress,
+                presentationProgress = presentationProgress,
+                sourceArtworkBounds = sourceArtworkBounds,
                 modifier = Modifier.size(coverSize)
             )
 
@@ -401,7 +477,9 @@ private fun AlbumModeContent(
             TrackTitleBlock(
                 songName = songName,
                 artistName = artistName,
-                modifier = Modifier.padding(horizontal = 30.dp)
+                modifier = Modifier
+                    .padding(horizontal = 30.dp)
+                    .graphicsLayer { alpha = contentRevealProgress }
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -416,7 +494,8 @@ private fun AlbumModeContent(
                 onPrevious = onPrevious,
                 onSeekTo = onSeekTo,
                 onLyricsClick = onLyricsClick,
-                lyricsActive = false
+                lyricsActive = false,
+                modifier = Modifier.graphicsLayer { alpha = contentRevealProgress }
             )
         }
     }
@@ -489,6 +568,9 @@ private fun NowPlayingTopBar(
 private fun AlbumArtwork(
     coverUrl: String?,
     isPlaying: Boolean,
+    swipeProgress: Float,
+    presentationProgress: Float,
+    sourceArtworkBounds: Rect,
     modifier: Modifier = Modifier
 ) {
     val artworkScale by animateFloatAsState(
@@ -499,42 +581,82 @@ private fun AlbumArtwork(
         ),
         label = "artwork_breathing"
     )
+    val swipeScale = 1f - (swipeProgress.coerceIn(0f, 1f) * 0.12f)
+    val targetScale = artworkScale * swipeScale
+    val transitionProgress = presentationProgress.coerceIn(0f, 1f)
+    var targetArtworkBounds by remember { mutableStateOf(Rect.Zero) }
+    val hasSharedBounds = sourceArtworkBounds.width > 0f &&
+        sourceArtworkBounds.height > 0f &&
+        targetArtworkBounds.width > 0f &&
+        targetArtworkBounds.height > 0f
+    val sourceScale = if (hasSharedBounds) {
+        (sourceArtworkBounds.width / targetArtworkBounds.width).coerceIn(0.05f, 1f)
+    } else {
+        0.12f
+    }
+    val sourceTranslationX = if (hasSharedBounds) {
+        sourceArtworkBounds.center.x - targetArtworkBounds.center.x
+    } else {
+        0f
+    }
+    val sourceTranslationY = if (hasSharedBounds) {
+        sourceArtworkBounds.center.y - targetArtworkBounds.center.y
+    } else {
+        280f
+    }
+    val sharedScale = sourceScale + ((targetScale - sourceScale) * transitionProgress)
+    val sharedTranslationX = sourceTranslationX * (1f - transitionProgress)
+    val sharedTranslationY = sourceTranslationY * (1f - transitionProgress)
+    val artworkCorner = 8.dp + (10.dp * transitionProgress)
+    val artworkShape = RoundedCornerShape(artworkCorner)
 
     Box(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = artworkScale
-                scaleY = artworkScale
-            }
-            .shadow(
-                elevation = 34.dp,
-                shape = RoundedCornerShape(18.dp),
-                ambientColor = Color.Black.copy(alpha = 0.56f),
-                spotColor = Color.Black.copy(alpha = 0.42f)
-            )
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.08f))
-            .border(
-                width = 0.8.dp,
-                color = Color.White.copy(alpha = 0.14f),
-                shape = RoundedCornerShape(18.dp)
-            ),
+            .onGloballyPositioned { coordinates ->
+                targetArtworkBounds = coordinates.boundsInRoot()
+            },
         contentAlignment = Alignment.Center
     ) {
-        if (coverUrl != null) {
-            AsyncImage(
-                model = coverUrl,
-                contentDescription = "专辑封面",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.MusicNote,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.34f),
-                modifier = Modifier.size(72.dp)
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = sharedScale
+                    scaleY = sharedScale
+                    translationX = sharedTranslationX
+                    translationY = sharedTranslationY
+                    alpha = if (hasSharedBounds || transitionProgress >= 0.999f) 1f else 0f
+                }
+                .shadow(
+                    elevation = 34.dp * transitionProgress,
+                    shape = artworkShape,
+                    ambientColor = Color.Black.copy(alpha = 0.56f * transitionProgress),
+                    spotColor = Color.Black.copy(alpha = 0.42f * transitionProgress)
+                )
+                .clip(artworkShape)
+                .background(Color.White.copy(alpha = 0.08f))
+                .border(
+                    width = 0.8.dp,
+                    color = Color.White.copy(alpha = 0.14f * transitionProgress),
+                    shape = artworkShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (coverUrl != null) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = "专辑封面",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.34f),
+                    modifier = Modifier.size(72.dp)
+                )
+            }
         }
     }
 }
@@ -615,6 +737,7 @@ private fun LyricsModeContent(
             sideFlags = lyrics.sideFlags,
             currentTimeMs = { currentPositionMs },
             onSeek = onSeek,
+            isPlaying = isPlaying,
             translationEnabled = true,
             blurEnabled = true,
             uiConfig = LyricUIConfig(

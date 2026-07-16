@@ -47,12 +47,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -92,10 +93,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.fastForEachIndexed
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -108,6 +107,7 @@ val lyricEasing = CubicBezierEasing(0.75f, 0.0f, 0.25f, 1.0f)
  * @param sideFlags 对唱标记，true 表示该句靠右对齐
  * @param currentTimeMs 当前播放进度（毫秒）
  * @param onSeek 点击歌词行时的跳转回调
+ * @param isPlaying 当前是否正在播放，用于平滑推进逐字歌词时间轴
  * @param translationEnabled 是否显示翻译
  * @param blurEnabled 是否启用非当前行模糊
  * @param isCompact 是否使用紧凑模式（无歌词时高度比例）
@@ -121,6 +121,7 @@ fun FlamingoLyricView(
     sideFlags: List<Boolean> = emptyList(),
     currentTimeMs: () -> Int,
     onSeek: (Int) -> Unit,
+    isPlaying: Boolean = true,
     translationEnabled: Boolean = true,
     blurEnabled: Boolean = false,
     isCompact: Boolean = false,
@@ -157,25 +158,17 @@ fun FlamingoLyricView(
     } else {
         val scrollState = rememberLazyListState()
         val currentLyricIndex = remember { mutableIntStateOf(-1) }
-        val latestCurrentTimeMs = rememberUpdatedState(currentTimeMs)
+        val smoothCurrentTimeMs = rememberSmoothPlaybackTime(currentTimeMs, isPlaying)
 
         // 内部同步当前歌词行
         LaunchedEffect(lyrics) {
             currentLyricIndex.intValue = -1
-        }
-
-        LaunchedEffect(Unit) {
             while (isActive) {
                 if (lyrics.isNotEmpty()) {
-                    val liveTime = latestCurrentTimeMs.value()
-                    val nextIndex = lyrics.indexOfFirst { line ->
-                        line.first().first > liveTime
-                    }
-                    val newIndex = when {
-                        nextIndex > 0 -> nextIndex - 1
-                        nextIndex == 0 -> -1
-                        else -> lyrics.size - 1
-                    }
+                    val newIndex = findCurrentLyricIndex(
+                        lyrics = lyrics,
+                        timeMs = smoothCurrentTimeMs.value
+                    )
                     if (newIndex != currentLyricIndex.intValue) {
                         currentLyricIndex.intValue = newIndex
                     }
@@ -191,15 +184,13 @@ fun FlamingoLyricView(
         }
 
         val enableLyricScroll = remember { mutableStateOf(true) }
-        val height = rememberSaveable(key = "FlamingoLyricView_height") { mutableIntStateOf(0) }
+        val height = remember { mutableIntStateOf(0) }
 
         val targetWeight = 0.0618f
-        val targetOffset = rememberSaveable(height.intValue, key = "FlamingoLyricView_targetOffset") {
-            height.intValue * targetWeight
-        }
+        val targetOffset = height.intValue * targetWeight
 
         val space = 0.dp
-        val measurer = rememberTextMeasurer(cacheSize = 32)
+        val measurer = rememberTextMeasurer(cacheSize = 128)
 
         val visibleItems = remember {
             derivedStateOf { scrollState.layoutInfo.visibleItemsInfo }
@@ -218,7 +209,7 @@ fun FlamingoLyricView(
         val nowFirst = remember {
             derivedStateOf { scrollState.firstVisibleItemIndex }
         }
-        val supportBlur = rememberSaveable(key = "supportBlur") {
+        val supportBlur = remember {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         }
 
@@ -298,7 +289,7 @@ fun FlamingoLyricView(
                         if (!showStateAnimation.value || index == currentLyricIndex.intValue || !blurEnabled || !supportBlur) {
                             0f
                         } else {
-                            (abs(index - currentLyricIndex.intValue) * 3.5f).coerceAtMost(12f)
+                            (abs(index - currentLyricIndex.intValue) * 1.5f).coerceAtMost(5f)
                         }
                     }
                 }
@@ -327,7 +318,7 @@ fun FlamingoLyricView(
                         }
                     },
                     otherSide = otherSide,
-                    liveTimeMs = { latestCurrentTimeMs.value() },
+                    liveTimeMs = { smoothCurrentTimeMs.value },
                     uiConfig = uiConfig,
                     onClick = {
                         LyricVibrator.doubleClick(context)
@@ -421,23 +412,22 @@ fun FlamingoLyricView(
             }
         }
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(lyrics) {
             try {
                 if (currentLyricIndex.intValue != -1) {
                     return@LaunchedEffect
                 }
-                val liveTime = latestCurrentTimeMs.value()
-                val nextIndex = lyrics.indexOfFirst { line ->
-                    line.first().first > liveTime
-                }
+                val liveTime = smoothCurrentTimeMs.value
+                val currentIndex = findCurrentLyricIndex(lyrics, liveTime)
+                val nextIndex = currentIndex + 1
 
-                if (nextIndex != -1 && nextIndex - 1 != currentLyricIndex.intValue) {
+                if (nextIndex in lyrics.indices && currentIndex != currentLyricIndex.intValue) {
                     scrollState.scrollToItem(
                         index = (nextIndex).coerceAtLeast(0),
                         scrollOffset = -targetOffset.toInt()
                     )
-                    currentLyricIndex.intValue = nextIndex - 1
-                } else if (nextIndex == -1 && currentLyricIndex.intValue != lyrics.size - 1) {
+                    currentLyricIndex.intValue = currentIndex
+                } else if (currentIndex == lyrics.lastIndex && currentLyricIndex.intValue != lyrics.lastIndex) {
                     scrollState.scrollToItem(
                         index = (lyrics.size).coerceAtLeast(0),
                         scrollOffset = -targetOffset.toInt()
@@ -448,6 +438,80 @@ fun FlamingoLyricView(
             }
         }
     }
+}
+
+@Composable
+private fun rememberSmoothPlaybackTime(
+    currentTimeMs: () -> Int,
+    isPlaying: Boolean
+): State<Int> {
+    val latestCurrentTimeMs = rememberUpdatedState(currentTimeMs)
+    val smoothTimeMs = remember { mutableIntStateOf(currentTimeMs().coerceAtLeast(0)) }
+
+    LaunchedEffect(isPlaying) {
+        var lastSourceTimeMs = latestCurrentTimeMs.value().coerceAtLeast(0)
+        var anchorPlaybackTimeMs = lastSourceTimeMs
+        var anchorFrameNanos = 0L
+
+        while (isActive) {
+            if (!isPlaying) {
+                val sourceTimeMs = latestCurrentTimeMs.value().coerceAtLeast(0)
+                smoothTimeMs.intValue = sourceTimeMs
+                lastSourceTimeMs = sourceTimeMs
+                anchorPlaybackTimeMs = sourceTimeMs
+                anchorFrameNanos = 0L
+                delay(100L)
+                continue
+            }
+
+            withFrameNanos { frameNanos ->
+                val sourceTimeMs = latestCurrentTimeMs.value().coerceAtLeast(0)
+                if (anchorFrameNanos == 0L) {
+                    anchorPlaybackTimeMs = sourceTimeMs
+                    anchorFrameNanos = frameNanos
+                    lastSourceTimeMs = sourceTimeMs
+                } else if (sourceTimeMs != lastSourceTimeMs) {
+                    val projectedTimeMs = anchorPlaybackTimeMs +
+                        ((frameNanos - anchorFrameNanos) / 1_000_000L).toInt()
+
+                    // 小幅采样误差继续使用帧时钟，跳转或缓冲造成的大偏差则立即校准。
+                    anchorPlaybackTimeMs = if (abs(sourceTimeMs - projectedTimeMs) > 160) {
+                        sourceTimeMs
+                    } else {
+                        projectedTimeMs
+                    }
+                    anchorFrameNanos = frameNanos
+                    lastSourceTimeMs = sourceTimeMs
+                }
+
+                smoothTimeMs.intValue = anchorPlaybackTimeMs +
+                    ((frameNanos - anchorFrameNanos) / 1_000_000L).toInt()
+            }
+        }
+    }
+
+    return smoothTimeMs
+}
+
+private fun findCurrentLyricIndex(
+    lyrics: List<List<Pair<Float, String>>>,
+    timeMs: Int
+): Int {
+    var low = 0
+    var high = lyrics.lastIndex
+    var result = -1
+
+    while (low <= high) {
+        val middle = (low + high).ushr(1)
+        if (lyrics[middle].first().first <= timeMs) {
+            result = middle
+            low = middle + 1
+        } else {
+            high = middle - 1
+        }
+    }
+
+    return result
 }
 
 @Composable
@@ -547,29 +611,11 @@ fun LazyItemScope.LyricItem(
     val viewAlign = if (otherSide) Alignment.End else Alignment.Start
     val focusedColor = mainTextBasicColor
     val unfocusedColor = mainTextBasicColor.copy(alpha = uiConfig.inactiveTextAlpha)
+    val focusedSolidBrush = SolidColor(focusedColor)
     val unfocusedSolidBrush = SolidColor(unfocusedColor)
 
     val isNotOneByOne = remember(mainLyric) {
         mainLyric.all { it.first == mainLyric.firstOrNull()?.first }
-    }
-
-    val latestLiveTimeMs = rememberUpdatedState(liveTimeMs)
-    val liveTime = remember(mainLyric) { mutableIntStateOf(latestLiveTimeMs.value()) }
-
-    val launch = remember(mainLyric) {
-        derivedStateOf {
-            isLyricEmpty() || !isNotOneByOne
-        }
-    }
-    if (launch.value) {
-        LaunchedEffect(Unit) {
-            while (isActive) {
-                withContext(Dispatchers.Main) {
-                    liveTime.intValue = latestLiveTimeMs.value()
-                }
-                delay(10L)
-            }
-        }
     }
 
     Column(
@@ -615,7 +661,7 @@ fun LazyItemScope.LyricItem(
                 val percent = remember(mainLyric) {
                     derivedStateOf {
                         val m = mainLyric.first().first
-                        ((liveTime.intValue - m).coerceAtLeast(0f) / (nextTime() - m)).coerceAtMost(1f)
+                        ((liveTimeMs() - m).coerceAtLeast(0f) / (nextTime() - m)).coerceAtMost(1f)
                     }
                 }
                 val show = remember(mainLyric) {
@@ -789,10 +835,9 @@ fun LazyItemScope.LyricItem(
 
                         // 以下为逐字处理
                         var sum = 0
-                        var lastTime = 0f
+                        var lastTime = mainLyric.first().first
                         val wordsToDraw = arrayListOf<DrawWord>()
-                        var averageTime = 0f
-                        lastTime = mainLyric.first().first
+                        val lyricLength = mainLyric.sumOf { it.second.length }
 
                         mainLyric.fastForEachIndexed { wordIndex, word ->
                             val thisWord = word.second
@@ -800,21 +845,13 @@ fun LazyItemScope.LyricItem(
                                 return@fastForEachIndexed
                             }
 
-                            averageTime = (word.first - lastTime) / thisWord.length
+                            val averageTime = (word.first - lastTime) / thisWord.length
 
                             val thisWordGroupLastTime = if (wordIndex - 1 < 0) {
                                 mainLyric.first().first
                             } else {
                                 mainLyric[(wordIndex - 1)].first
                             }
-                            val groupPercent = if ((word.first - thisWordGroupLastTime) == 0f) {
-                                0f
-                            } else {
-                                ((liveTime.intValue - thisWordGroupLastTime).coerceAtLeast(0f)
-                                    / (word.first - thisWordGroupLastTime)).coerceIn(0f, 1f)
-                            }
-                            val easedPercent = easing.transform(groupPercent.coerceIn(0f, 1f))
-                            val topLeftWeight = 4 * easedPercent
 
                             thisWord.forEach { char ->
                                 val charWord = char.toString()
@@ -828,40 +865,35 @@ fun LazyItemScope.LyricItem(
                                 val thisWordAverageTime = averageTime
 
                                 wordsToDraw += DrawWord(
-                                    time = lastTime + averageTime,
-                                    word = charWord,
                                     layout = layout,
                                     topLeft = measureResult.getBoundingBox(
-                                        sum.coerceAtMost(mainLyric.sumOf { it.second.length } - 1)
+                                        sum.coerceAtMost(lyricLength - 1)
                                             .coerceAtLeast(0)
-                                    ).topLeft.minus(Offset(0F, topLeftWeight)),
+                                    ).topLeft,
+                                    groupStartTime = thisWordGroupLastTime,
+                                    groupEndTime = word.first,
                                     brush = { px, percent ->
                                         if (thisWord == " ") {
                                             return@DrawWord unfocusedSolidBrush
                                         }
-
-                                        val beforeColor = if (percent <= -0.5f) {
-                                            unfocusedColor
-                                        } else {
-                                            focusedColor
+                                        if (percent <= -0.5f) {
+                                            return@DrawWord unfocusedSolidBrush
+                                        }
+                                        if (percent >= 1f) {
+                                            return@DrawWord focusedSolidBrush
                                         }
 
-                                        val afterColor = if (percent >= 1f) {
-                                            focusedColor
-                                        } else {
-                                            unfocusedColor
-                                        }
                                         Brush.horizontalGradient(
-                                            0f to beforeColor,
-                                            (percent - px).coerceIn(0f, 1f) to beforeColor,
-                                            (percent + px).coerceIn(0f, 1f) to afterColor
+                                            0f to focusedColor,
+                                            (percent - px).coerceIn(0f, 1f) to focusedColor,
+                                            (percent + px).coerceIn(0f, 1f) to unfocusedColor
                                         )
                                     },
-                                    percent = {
+                                    percent = { frameTimeMs ->
                                         if (thisWord == " ") {
                                             return@DrawWord 0f
                                         }
-                                        ((liveTime.intValue - thisWordLastTime) / thisWordAverageTime)
+                                        ((frameTimeMs - thisWordLastTime) / thisWordAverageTime)
                                     }
                                 ).also {
                                     sum += charWord.length
@@ -871,11 +903,19 @@ fun LazyItemScope.LyricItem(
                         }
 
                         onDrawBehind {
+                            val frameTimeMs = liveTimeMs()
                             wordsToDraw.fastForEach { l ->
+                                val groupProgress = if (l.groupEndTime == l.groupStartTime) {
+                                    0f
+                                } else {
+                                    ((frameTimeMs - l.groupStartTime).coerceAtLeast(0f) /
+                                        (l.groupEndTime - l.groupStartTime)).coerceIn(0f, 1f)
+                                }
+                                val lift = 4f * easing.transform(groupProgress)
                                 drawText(
                                     textLayoutResult = l.layout,
-                                    topLeft = l.topLeft,
-                                    brush = l.brush(0.3f, l.percent())
+                                    topLeft = l.topLeft.minus(Offset(0f, lift)),
+                                    brush = l.brush(0.3f, l.percent(frameTimeMs))
                                 )
                             }
                         }
@@ -1009,10 +1049,10 @@ internal fun rememberLyricTextStyle(config: LyricUIConfig): TextStyle {
 
 @Stable
 private data class DrawWord(
-    val time: Float,
-    val word: String,
     val layout: TextLayoutResult,
     val topLeft: Offset,
+    val groupStartTime: Float,
+    val groupEndTime: Float,
     val brush: (px: Float, percent: Float) -> Brush,
-    val percent: () -> Float
+    val percent: (frameTimeMs: Int) -> Float
 )

@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
@@ -259,12 +261,17 @@ fun AppNavigation(
     val authUiState by authViewModel.uiState.collectAsState()
 
     var showNowPlaying by remember { mutableStateOf(false) }
+    var isDismissingNowPlaying by remember { mutableStateOf(false) }
+    var miniPlayerBounds by remember { mutableStateOf(Rect.Zero) }
+    var miniPlayerArtworkBounds by remember { mutableStateOf(Rect.Zero) }
     var showAccountSheet by remember { mutableStateOf(false) }
     var mountAccountOverlay by remember { mutableStateOf(false) }
     var selectedArtist by remember { mutableStateOf<SelectedArtist?>(null) }
     var dailyRecommendState by remember { mutableStateOf<DailyRecommendState?>(null) }
     val expandProgress = remember { Animatable(0f) }
     val expandScope = rememberCoroutineScope()
+    val nowPlayingProgress = remember { Animatable(0f) }
+    val nowPlayingScope = rememberCoroutineScope()
 
     LaunchedEffect(dailyRecommendState) {
         if (dailyRecommendState != null) {
@@ -789,7 +796,23 @@ fun AppNavigation(
             playbackState = playbackState,
             onPlayPauseClick = { searchViewModel.onMiniPlayerPlayPause() },
             onNextClick = { searchViewModel.onMiniPlayerNext() },
-            onBarClick = { showNowPlaying = true },
+            onArtworkBoundsChanged = { miniPlayerArtworkBounds = it },
+            onBarClick = {
+                if (!showNowPlaying) {
+                    showNowPlaying = true
+                    isDismissingNowPlaying = false
+                    nowPlayingScope.launch {
+                        nowPlayingProgress.snapTo(0f)
+                        nowPlayingProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = 0.88f,
+                                stiffness = 320f
+                            )
+                        )
+                    }
+                }
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)
@@ -797,6 +820,9 @@ fun AppNavigation(
                 .graphicsLayer {
                     // 下沉到更低的位置（76dp），而不是移出屏幕
                     translationY = sinkProgress * 76.dp.toPx()
+                }
+                .onGloballyPositioned { coordinates ->
+                    miniPlayerBounds = coordinates.boundsInRoot()
                 }
         )
 
@@ -823,9 +849,30 @@ fun AppNavigation(
         )
 
         if (showNowPlaying) {
-            NowPlayingScreen(
-                onClose = { showNowPlaying = false }
-            )
+            val progress = nowPlayingProgress.value
+            Box(modifier = Modifier.fillMaxSize()) {
+                NowPlayingScreen(
+                    presentationProgress = progress,
+                    sourceBarBounds = miniPlayerBounds,
+                    sourceArtworkBounds = miniPlayerArtworkBounds,
+                    onClose = {
+                        if (!isDismissingNowPlaying) {
+                            isDismissingNowPlaying = true
+                            nowPlayingScope.launch {
+                                nowPlayingProgress.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.94f,
+                                        stiffness = 440f
+                                    )
+                                )
+                                showNowPlaying = false
+                                isDismissingNowPlaying = false
+                            }
+                        }
+                    }
+                )
+            }
         }
 
         if (mountAccountOverlay) {
@@ -1064,6 +1111,7 @@ private fun SearchMiniPlayerBar(
     playbackState: PlaybackState,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
+    onArtworkBoundsChanged: (Rect) -> Unit,
     onBarClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1098,7 +1146,11 @@ private fun SearchMiniPlayerBar(
         ) {
             MiniPlayerArtwork(
                 imageUrl = artworkUrl,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier
+                    .size(40.dp)
+                    .onGloballyPositioned { coordinates ->
+                        onArtworkBoundsChanged(coordinates.boundsInRoot())
+                    }
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(

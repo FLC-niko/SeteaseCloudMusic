@@ -10,7 +10,8 @@ data class FlamingoLyricData(
 
 object LyricDataAdapter {
 
-    private const val EMPTY_LINE_GAP_MS = 4000f
+    private const val MIN_COUNTDOWN_GAP_MS = 8000f
+    private const val COUNTDOWN_LEAD_IN_MS = 5000f
 
     fun toFlamingoFormat(parsed: ParsedLyrics): FlamingoLyricData {
         val filteredLines = parsed.lines.filter { !it.isBG }
@@ -20,12 +21,14 @@ object LyricDataAdapter {
         for (i in filteredLines.indices) {
             val line = filteredLines[i]
 
-            // 检测与前行的时间间隔，插入空行（触发倒计时动画）
+            // 只在较长的间奏末段插入空行，避免普通句间停顿反复触发等待圆点。
             if (i > 0) {
                 val prevEnd = filteredLines[i - 1].endTime.toFloat()
                 val gap = line.startTime - prevEnd
-                if (gap > EMPTY_LINE_GAP_MS) {
-                    lyrics.add(emptyFlamingoLine(prevEnd))
+                if (gap >= MIN_COUNTDOWN_GAP_MS) {
+                    val countdownStart = (line.startTime - COUNTDOWN_LEAD_IN_MS)
+                        .coerceAtLeast(prevEnd)
+                    lyrics.add(emptyFlamingoLine(countdownStart))
                     sideFlags.add(false)
                 }
             }
