@@ -86,8 +86,6 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -102,24 +100,35 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.player.QueueRepeatMode
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricData
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.FlamingoLyricView
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricDataAdapter
 import com.example.seteasecloudmusic.feature.player.presentation.lyric.LyricUIConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
 fun NowPlayingScreen(
     presentationProgress: Float = 1f,
     sourceBarBounds: Rect = Rect.Zero,
-    sourceArtworkBounds: Rect = Rect.Zero,
     onClose: () -> Unit
 ) {
     val viewModel: PlayerViewModel = hiltViewModel()
-    val playbackState by viewModel.playbackState.collectAsState()
+    // 播放进度每 100ms 更新一次。这里过滤掉 position/duration，只让歌曲、播放模式
+    // 等低频状态触发专辑页重组；进度条和歌词在各自的局部组件中单独收集进度流。
+    val playbackState by remember(viewModel) {
+        viewModel.playbackState
+            .map { it.copy(currentPositionMs = 0, durationMs = 0) }
+            .distinctUntilChanged()
+    }.collectAsState(initial = PlaybackState())
     val lyricsState by viewModel.lyricsState.collectAsState()
     val isCurrentTrackFavorite by viewModel.isCurrentTrackFavorite.collectAsState()
     var showMoreSheet by remember { mutableStateOf(false) }
@@ -163,6 +172,7 @@ fun NowPlayingScreen(
     }
 
     val context = LocalContext.current
+    val paletteImageLoader = remember(context) { ImageLoader(context) }
     var dominantColor by remember { mutableStateOf(Color(0xFF241F23)) }
     var mutedColor by remember { mutableStateOf(Color(0xFF151517)) }
     var accentColor by remember { mutableStateOf(Color(0xFFBEB4AA)) }
@@ -181,25 +191,27 @@ fun NowPlayingScreen(
                 .size(260, 260)
                 .allowHardware(false)
                 .build()
-            val bitmap = (ImageLoader(context).execute(request).drawable as? BitmapDrawable)?.bitmap
+            val bitmap = (paletteImageLoader.execute(request).drawable as? BitmapDrawable)?.bitmap
             if (bitmap != null) {
-                val palette = Palette.from(bitmap).generate()
-                val fallbackTop = 0xFF241F23.toInt()
-                val fallbackBottom = 0xFF151517.toInt()
-                val top = palette.getDarkVibrantColor(
-                    palette.getDarkMutedColor(fallbackTop)
-                )
-                dominantColor = Color(top)
-                mutedColor = Color(
-                    palette.getMutedColor(
-                        palette.getDarkMutedColor(fallbackBottom)
+                val colors = withContext(Dispatchers.Default) {
+                    val palette = Palette.from(bitmap).generate()
+                    val fallbackTop = 0xFF241F23.toInt()
+                    val fallbackBottom = 0xFF151517.toInt()
+                    Triple(
+                        palette.getDarkVibrantColor(
+                            palette.getDarkMutedColor(fallbackTop)
+                        ),
+                        palette.getMutedColor(
+                            palette.getDarkMutedColor(fallbackBottom)
+                        ),
+                        palette.getVibrantColor(
+                            palette.getLightVibrantColor(0xFFBEB4AA.toInt())
+                        )
                     )
-                )
-                accentColor = Color(
-                    palette.getVibrantColor(
-                        palette.getLightVibrantColor(0xFFBEB4AA.toInt())
-                    )
-                )
+                }
+                dominantColor = Color(colors.first)
+                mutedColor = Color(colors.second)
+                accentColor = Color(colors.third)
             }
         } catch (_: Exception) {
             dominantColor = Color(0xFF241F23)
@@ -280,9 +292,31 @@ fun NowPlayingScreen(
             .fillMaxSize()
             .offset { IntOffset(0, visibleDragOffsetY.roundToInt()) }
             .graphicsLayer {
-                scaleX = animatedScale
-                scaleY = animatedScale
+                val hasSourceBar = sourceBarBounds.width > 0f &&
+                    sourceBarBounds.height > 0f && size.width > 0f && size.height > 0f
+                val startScaleX = if (hasSourceBar) {
+                    (sourceBarBounds.width / size.width).coerceIn(0.82f, 0.96f)
+                } else {
+                    0.9f
+                }
+                val startScaleY = if (hasSourceBar) {
+                    (sourceBarBounds.height / size.height).coerceIn(0.04f, 0.12f)
+                } else {
+                    0.08f
+                }
+                val startTranslationY = if (hasSourceBar) {
+                    sourceBarBounds.top
+                } else {
+                    size.height * 0.82f
+                }
+
+                scaleX = (startScaleX + ((1f - startScaleX) * clampedPresentationProgress)) * animatedScale
+                scaleY = (startScaleY + ((1f - startScaleY) * clampedPresentationProgress)) * animatedScale
+                translationY = startTranslationY * (1f - clampedPresentationProgress)
+                alpha = (clampedPresentationProgress / 0.18f).coerceIn(0f, 1f)
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
             }
+            .clip(RoundedCornerShape(percent = presentationCornerPercent))
             .clip(RoundedCornerShape(animatedCorner))
             .draggable(
                 state = draggableState,
@@ -315,32 +349,6 @@ fun NowPlayingScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val hasSourceBar = sourceBarBounds.width > 0f &&
-                        sourceBarBounds.height > 0f && size.width > 0f && size.height > 0f
-                    val startScaleX = if (hasSourceBar) {
-                        (sourceBarBounds.width / size.width).coerceIn(0.82f, 0.96f)
-                    } else {
-                        0.9f
-                    }
-                    val startScaleY = if (hasSourceBar) {
-                        (sourceBarBounds.height / size.height).coerceIn(0.04f, 0.12f)
-                    } else {
-                        0.08f
-                    }
-                    val startTranslationY = if (hasSourceBar) {
-                        sourceBarBounds.top
-                    } else {
-                        size.height * 0.82f
-                    }
-
-                    scaleX = startScaleX + ((1f - startScaleX) * clampedPresentationProgress)
-                    scaleY = startScaleY + ((1f - startScaleY) * clampedPresentationProgress)
-                    translationY = startTranslationY * (1f - clampedPresentationProgress)
-                    alpha = (clampedPresentationProgress / 0.18f).coerceIn(0f, 1f)
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
-                }
-                .clip(RoundedCornerShape(percent = presentationCornerPercent))
                 .background(Color.Black)
         ) {
             AppleMusicBackdrop(
@@ -362,20 +370,14 @@ fun NowPlayingScreen(
                     songName = songName,
                     artistName = artistName,
                     isPlaying = isPlaying,
-                    currentPositionMs = playbackState.currentPositionMs,
-                    durationMs = playbackState.durationMs,
+                    currentPosition = viewModel.currentPositionMs,
+                    duration = viewModel.durationMs,
                     dominantColor = accentColor,
                     shuffleEnabled = playbackState.shuffleEnabled,
                     repeatMode = playbackState.repeatMode,
                     volume = playbackState.volume,
                     swipeProgress = pageProgress,
-                    presentationProgress = clampedPresentationProgress,
                     contentRevealProgress = contentRevealProgress,
-                    sourceArtworkBounds = sourceArtworkBounds,
-                    allowArtworkBoundsUpdate = !isDraggingToDismiss &&
-                        !isDragDismissalRunning &&
-                        visibleDragOffsetY < 0.5f,
-                    artworkPathLinearFactor = dismissalPathLinearFactor,
                     onPlayPause = { viewModel.onPlayPause() },
                     onNext = { viewModel.onNext() },
                     onPrevious = { viewModel.onPrevious() },
@@ -401,8 +403,8 @@ fun NowPlayingScreen(
                     songName = songName,
                     artistName = artistName,
                     lyrics = flamingoData,
-                    currentPositionMs = playbackState.currentPositionMs,
-                    durationMs = playbackState.durationMs,
+                    currentPosition = viewModel.currentPositionMs,
+                    duration = viewModel.durationMs,
                     isPlaying = isPlaying,
                     onSeek = { positionMs -> viewModel.seekTo(positionMs) },
                     onPlayPause = { viewModel.onPlayPause() },
@@ -788,18 +790,14 @@ private fun AlbumModeContent(
     songName: String,
     artistName: String,
     isPlaying: Boolean,
-    currentPositionMs: Int,
-    durationMs: Int,
+    currentPosition: StateFlow<Int>,
+    duration: StateFlow<Int>,
     dominantColor: Color,
     shuffleEnabled: Boolean,
     repeatMode: QueueRepeatMode,
     volume: Float,
     swipeProgress: Float,
-    presentationProgress: Float,
     contentRevealProgress: Float,
-    sourceArtworkBounds: Rect,
-    allowArtworkBoundsUpdate: Boolean,
-    artworkPathLinearFactor: Float,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -838,10 +836,6 @@ private fun AlbumModeContent(
                 coverUrl = coverUrl,
                 isPlaying = isPlaying,
                 swipeProgress = swipeProgress,
-                presentationProgress = presentationProgress,
-                sourceArtworkBounds = sourceArtworkBounds,
-                allowBoundsUpdate = allowArtworkBoundsUpdate,
-                pathLinearFactor = artworkPathLinearFactor,
                 modifier = Modifier.size(coverSize)
             )
 
@@ -859,8 +853,8 @@ private fun AlbumModeContent(
             Spacer(modifier = Modifier.weight(1f))
 
             PlayerControls(
-                currentPositionMs = currentPositionMs,
-                durationMs = durationMs,
+                currentPosition = currentPosition,
+                duration = duration,
                 isPlaying = isPlaying,
                 dominantColor = dominantColor,
                 shuffleEnabled = shuffleEnabled,
@@ -952,10 +946,6 @@ private fun AlbumArtwork(
     coverUrl: String?,
     isPlaying: Boolean,
     swipeProgress: Float,
-    presentationProgress: Float,
-    sourceArtworkBounds: Rect,
-    allowBoundsUpdate: Boolean,
-    pathLinearFactor: Float,
     modifier: Modifier = Modifier
 ) {
     val artworkScale by animateFloatAsState(
@@ -968,67 +958,30 @@ private fun AlbumArtwork(
     )
     val swipeScale = 1f - (swipeProgress.coerceIn(0f, 1f) * 0.12f)
     val targetScale = artworkScale * swipeScale
-    val transitionProgress = presentationProgress.coerceIn(0f, 1f)
-    var targetArtworkBounds by remember { mutableStateOf(Rect.Zero) }
-    val hasSharedBounds = sourceArtworkBounds.width > 0f &&
-        sourceArtworkBounds.height > 0f &&
-        targetArtworkBounds.width > 0f &&
-        targetArtworkBounds.height > 0f
-    val sourceScale = if (hasSharedBounds) {
-        (sourceArtworkBounds.width / targetArtworkBounds.width).coerceIn(0.05f, 1f)
-    } else {
-        0.12f
-    }
-    val sourceTranslationX = if (hasSharedBounds) {
-        sourceArtworkBounds.center.x - targetArtworkBounds.center.x
-    } else {
-        0f
-    }
-    val sourceTranslationY = if (hasSharedBounds) {
-        sourceArtworkBounds.center.y - targetArtworkBounds.center.y
-    } else {
-        280f
-    }
-    val sharedScale = sourceScale + ((targetScale - sourceScale) * transitionProgress)
-    val travelProgress = 1f - transitionProgress
-    val sharedTranslationX = sourceTranslationX * travelProgress
-    val sharedTranslationY = sourceTranslationY * parabolicVerticalProgress(
-        linearProgress = travelProgress,
-        initialVelocityFactor = pathLinearFactor
-    )
-    val artworkCorner = 8.dp + (10.dp * transitionProgress)
-    val artworkShape = RoundedCornerShape(artworkCorner)
+    val artworkShape = RoundedCornerShape(18.dp)
 
     Box(
-        modifier = modifier
-            .onGloballyPositioned { coordinates ->
-                if (allowBoundsUpdate) {
-                    targetArtworkBounds = coordinates.boundsInRoot()
-                }
-            },
+        modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = sharedScale
-                    scaleY = sharedScale
-                    translationX = sharedTranslationX
-                    translationY = sharedTranslationY
-                    alpha = if (hasSharedBounds || transitionProgress >= 0.999f) 1f else 0f
+                    scaleX = targetScale
+                    scaleY = targetScale
                 }
                 .shadow(
-                    elevation = 34.dp * transitionProgress,
+                    elevation = 34.dp,
                     shape = artworkShape,
-                    ambientColor = Color.Black.copy(alpha = 0.56f * transitionProgress),
-                    spotColor = Color.Black.copy(alpha = 0.42f * transitionProgress)
+                    ambientColor = Color.Black.copy(alpha = 0.56f),
+                    spotColor = Color.Black.copy(alpha = 0.42f)
                 )
                 .clip(artworkShape)
                 .background(Color.White.copy(alpha = 0.08f))
                 .border(
                     width = 0.8.dp,
-                    color = Color.White.copy(alpha = 0.14f * transitionProgress),
+                    color = Color.White.copy(alpha = 0.14f),
                     shape = artworkShape
                 ),
             contentAlignment = Alignment.Center
@@ -1109,8 +1062,8 @@ private fun LyricsModeContent(
     songName: String,
     artistName: String,
     lyrics: FlamingoLyricData,
-    currentPositionMs: Int,
-    durationMs: Int,
+    currentPosition: StateFlow<Int>,
+    duration: StateFlow<Int>,
     isPlaying: Boolean,
     onSeek: (Int) -> Unit,
     onPlayPause: () -> Unit,
@@ -1120,6 +1073,8 @@ private fun LyricsModeContent(
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val currentPositionMs by currentPosition.collectAsState()
+        val durationMs by duration.collectAsState()
         val mainTextSize = if (maxWidth < 380.dp) 27 else 29
         val topPadding = if (maxHeight < 720.dp) 78.dp else 92.dp
         val bottomPadding = if (maxHeight < 720.dp) 116.dp else 132.dp

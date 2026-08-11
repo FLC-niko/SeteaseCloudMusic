@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.SpeakerGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -75,12 +76,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.example.seteasecloudmusic.core.player.QueueRepeatMode
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 @Composable
 fun PlayerControls(
-    currentPositionMs: Int,
-    durationMs: Int,
+    currentPosition: StateFlow<Int>,
+    duration: StateFlow<Int>,
     isPlaying: Boolean,
     dominantColor: Color,
     shuffleEnabled: Boolean,
@@ -99,6 +101,9 @@ fun PlayerControls(
     onLyricsClick: () -> Unit = {},
     lyricsActive: Boolean = false
 ) {
+    // 进度高频更新只影响控制区和进度条，不让专辑页的背景、封面和标题跟着重组。
+    val currentPositionMs by currentPosition.collectAsState()
+    val durationMs by duration.collectAsState()
     val functionIconTint = Color.White.copy(alpha = 0.65f)
     val activeFunctionIconTint = Color.White
     val activeFunctionBackground = dominantColor.copy(alpha = 0.28f)

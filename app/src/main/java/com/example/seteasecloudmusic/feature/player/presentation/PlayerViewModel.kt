@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -44,6 +45,12 @@ class PlayerViewModel @Inject constructor(
 
     val currentPositionMs: StateFlow<Int> = controller.playbackState
         .map { it.currentPositionMs }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0)
+
+    val durationMs: StateFlow<Int> = controller.playbackState
+        .map { it.durationMs }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0)
 
     val activeLineIndex: StateFlow<Int> = combine(_lyricsState, currentPositionMs) { state, pos ->

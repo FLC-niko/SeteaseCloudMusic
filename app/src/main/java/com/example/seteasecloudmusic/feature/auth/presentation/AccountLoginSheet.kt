@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Settings
@@ -69,7 +70,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,30 +123,7 @@ fun AccountLoginSheetContent(
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp, bottom = 76.dp)
         ) {
-            val isAccountDetailsFlow =
-                uiState.panel == AuthPanel.ACCOUNT_DETAILS ||
-                    uiState.panel == AuthPanel.ACCOUNT_DETAIL_SUBPAGE
-
-            if (isAccountDetailsFlow) {
-                val detailsTitle = if (uiState.panel == AuthPanel.ACCOUNT_DETAILS) {
-                    "账户设置"
-                } else {
-                    uiState.accountDetailsDestination?.title ?: "账户详情"
-                }
-                AccountDetailsHeader(
-                    title = detailsTitle,
-                    onBack = {
-                        if (uiState.panel == AuthPanel.ACCOUNT_DETAIL_SUBPAGE) {
-                            viewModel.onBackFromAccountDetailsSubpage()
-                        } else {
-                            viewModel.onBackToMethods()
-                        }
-                    },
-                    onDismiss = onDismiss
-                )
-            } else {
-                Header(onDismiss = onDismiss)
-            }
+            Header(onDismiss = onDismiss)
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -161,15 +141,17 @@ fun AccountLoginSheetContent(
                             isLoggedIn = uiState.isLoggedIn,
                             avatarUrl = uiState.authSession?.avatarUrl,
                             displayName = uiState.authSession?.nickname,
+                            isDarkModeEnabled = uiState.isDarkModeEnabled,
                             onCaptchaClick = { viewModel.onCaptchaPanelOpened() },
                             onQrClick = { viewModel.onQrPanelOpened() },
-                            onSettingsClick = {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("音乐设置功能开发中")
-                                }
-                            },
-                            onProfileClick = {
-                                viewModel.onAccountDetailsOpened()
+                            onEmailClick = { scope.launch { snackbarHostState.showSnackbar("邮箱登录开发中") } },
+                            onWechatClick = { scope.launch { snackbarHostState.showSnackbar("微信登录开发中") } },
+                            onQqClick = { scope.launch { snackbarHostState.showSnackbar("QQ 登录开发中") } },
+                            onWeiboClick = { scope.launch { snackbarHostState.showSnackbar("微博登录开发中") } },
+                            onDarkModeToggled = { viewModel.onDarkModeToggled(it) },
+                            onLogoutClick = { viewModel.onRequestLogout() },
+                            onPlaceholderClick = { label ->
+                                scope.launch { snackbarHostState.showSnackbar("$label 开发中") }
                             }
                         )
                     }
@@ -198,48 +180,6 @@ fun AccountLoginSheetContent(
                             isLoading = uiState.isLoading,
                             onBack = { viewModel.onBackToMethods() },
                             onRefresh = { viewModel.onRefreshQr() }
-                        )
-                    }
-
-                    AuthPanel.ACCOUNT_DETAILS -> {
-                        AccountDetailsPanel(
-                            avatarUrl = uiState.authSession?.avatarUrl,
-                            displayName = uiState.authSession?.nickname,
-                            personalizedRecommendationEnabled = uiState.personalizedRecommendationEnabled,
-                            isProcessingLogout = uiState.isLoading,
-                            backdrop = backdrop,
-                            onAppleAccountClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.APPLE_ACCOUNT)
-                            },
-                            onManagePaymentClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.MANAGE_PAYMENT)
-                            },
-                            onSubscriptionsClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.SUBSCRIPTIONS)
-                            },
-                            onPurchaseHistoryClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.PURCHASE_HISTORY)
-                            },
-                            onAddFundsClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.ADD_FUNDS)
-                            },
-                            onCountryRegionClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.COUNTRY_REGION)
-                            },
-                            onRatingsAndReviewsClick = {
-                                viewModel.onAccountDetailsDestinationOpened(AccountDetailsDestination.RATINGS_AND_REVIEWS)
-                            },
-                            onPersonalizedRecommendationChange = {
-                                viewModel.onPersonalizedRecommendationToggled(it)
-                            },
-                            onLogoutClick = { viewModel.onRequestLogout() }
-                        )
-                    }
-
-                    AuthPanel.ACCOUNT_DETAIL_SUBPAGE -> {
-                        AccountDetailsSubpagePanel(
-                            destination = uiState.accountDetailsDestination,
-                            secondary = secondary
                         )
                     }
                 }
@@ -285,33 +225,8 @@ private fun Header(onDismiss: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.End
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFFE8EC))
-                    .border(1.dp, Color(0xFFFFBAC7), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Sms,
-                    contentDescription = null,
-                    tint = Color(0xFFFA233B),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.size(10.dp))
-            Text(
-                text = "Setease 账户",
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF121212)
-            )
-        }
-
         IconButton(
             onClick = onDismiss,
             modifier = Modifier
@@ -323,250 +238,6 @@ private fun Header(onDismiss: () -> Unit) {
                 contentDescription = "关闭",
                 tint = Color(0xFF1C1C1E)
             )
-        }
-    }
-}
-
-@Composable
-private fun AccountDetailsHeader(
-    title: String,
-    onBack: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .size(44.dp)
-                .background(Color(0xFFF0F0F4), CircleShape)
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
-                tint = Color(0xFF1C1C1E)
-            )
-        }
-
-        Text(
-            text = title,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF121212)
-        )
-
-        IconButton(
-            onClick = onDismiss,
-            modifier = Modifier
-                .size(44.dp)
-                .background(Color(0xFFF0F0F4), CircleShape)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "关闭",
-                tint = Color(0xFF1C1C1E)
-            )
-        }
-    }
-}
-
-@Composable
-private fun AccountDetailsPanel(
-    avatarUrl: String?,
-    displayName: String?,
-    personalizedRecommendationEnabled: Boolean,
-    isProcessingLogout: Boolean,
-    backdrop: Backdrop?,
-    onAppleAccountClick: () -> Unit,
-    onManagePaymentClick: () -> Unit,
-    onSubscriptionsClick: () -> Unit,
-    onPurchaseHistoryClick: () -> Unit,
-    onAddFundsClick: () -> Unit,
-    onCountryRegionClick: () -> Unit,
-    onRatingsAndReviewsClick: () -> Unit,
-    onPersonalizedRecommendationChange: (Boolean) -> Unit,
-    onLogoutClick: () -> Unit
-) {
-    val secondary = Color(0xFF8D8D93)
-    val dividerColor = Color(0xFFE2E2E8)
-    val red = Color(0xFFFA233B)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SettingsSectionCard {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onAppleAccountClick)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                UserAvatar(
-                    avatarUrl = avatarUrl,
-                    displayName = displayName,
-                    size = 44.dp,
-                    showBorder = false
-                )
-                Spacer(modifier = Modifier.size(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Apple 账户",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF121212)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = displayName ?: "Setease 用户",
-                        fontSize = 14.sp,
-                        color = secondary
-                    )
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = Color(0xFFC7C7CC),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        SettingsSectionCard {
-            SettingsNavigationRow(
-                title = "管理付款方式",
-                onClick = onManagePaymentClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "订阅",
-                onClick = onSubscriptionsClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "购买记录",
-                onClick = onPurchaseHistoryClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "为账户充值",
-                onClick = onAddFundsClick
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        SettingsSectionCard {
-            SettingsNavigationRow(
-                title = "国家/地区",
-                trailingText = "中国大陆",
-                onClick = onCountryRegionClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "评分与评论",
-                onClick = onRatingsAndReviewsClick
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        SettingsSectionCard {
-            SettingsToggleRow(
-                title = "个性化推荐",
-                checked = personalizedRecommendationEnabled,
-                onCheckedChange = onPersonalizedRecommendationChange,
-                backdrop = backdrop
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Text(
-            text = "开启后，系统将使用你的 App 使用数据、下载内容和购买行为优化推荐内容。",
-            color = secondary,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
-                    enabled = !isProcessingLogout,
-                    onClick = onLogoutClick
-                )
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isProcessingLogout) {
-                    CircularProgressIndicator(
-                        color = red,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp)
-                    )
-                } else {
-                    Text(
-                        text = "退出登录",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = red
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AccountDetailsSubpagePanel(
-    destination: AccountDetailsDestination?,
-    secondary: Color
-) {
-    val title = destination?.title ?: "账户详情"
-    val description = destination?.placeholderDescription() ?: "该功能正在开发中。"
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 20.dp)
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF121212)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = description,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    color = secondary
-                )
-            }
         }
     }
 }
@@ -744,18 +415,6 @@ private fun LiquidGlassSwitch(
     }
 }
 
-private fun AccountDetailsDestination.placeholderDescription(): String {
-    return when (this) {
-        AccountDetailsDestination.APPLE_ACCOUNT -> "这里会展示账户信息、登录设备与安全设置。"
-        AccountDetailsDestination.MANAGE_PAYMENT -> "这里将支持管理银行卡、支付方式和账单地址。"
-        AccountDetailsDestination.SUBSCRIPTIONS -> "这里将展示你的订阅状态、续费周期和方案变更入口。"
-        AccountDetailsDestination.PURCHASE_HISTORY -> "这里会提供购买项目、订单详情和发票记录。"
-        AccountDetailsDestination.ADD_FUNDS -> "这里将支持账户充值与余额明细管理。"
-        AccountDetailsDestination.COUNTRY_REGION -> "这里将支持切换国家或地区与货币配置。"
-        AccountDetailsDestination.RATINGS_AND_REVIEWS -> "这里会展示你的评分、评论与编辑入口。"
-    }
-}
-
 @Composable
 private fun MethodSelectionPanel(
     red: Color,
@@ -763,60 +422,302 @@ private fun MethodSelectionPanel(
     isLoggedIn: Boolean,
     avatarUrl: String?,
     displayName: String?,
+    isDarkModeEnabled: Boolean,
     onCaptchaClick: () -> Unit,
     onQrClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onProfileClick: () -> Unit
+    onEmailClick: () -> Unit,
+    onWechatClick: () -> Unit,
+    onQqClick: () -> Unit,
+    onWeiboClick: () -> Unit,
+    onDarkModeToggled: (Boolean) -> Unit,
+    onLogoutClick: () -> Unit,
+    onPlaceholderClick: (String) -> Unit
+) {
+    if (isLoggedIn) {
+        ProfileHomePanel(
+            red = red,
+            secondary = secondary,
+            avatarUrl = avatarUrl,
+            displayName = displayName,
+            isDarkModeEnabled = isDarkModeEnabled,
+            onDarkModeToggled = onDarkModeToggled,
+            onLogoutClick = onLogoutClick,
+            onPlaceholderClick = onPlaceholderClick
+        )
+    } else {
+        LoginHomePanel(
+            red = red,
+            secondary = secondary,
+            onCaptchaClick = onCaptchaClick,
+            onQrClick = onQrClick,
+            onEmailClick = onEmailClick,
+            onWechatClick = onWechatClick,
+            onQqClick = onQqClick,
+            onWeiboClick = onWeiboClick
+        )
+    }
+}
+
+@Composable
+private fun LoginHomePanel(
+    red: Color,
+    secondary: Color,
+    onCaptchaClick: () -> Unit,
+    onQrClick: () -> Unit,
+    onEmailClick: () -> Unit,
+    onWechatClick: () -> Unit,
+    onQqClick: () -> Unit,
+    onWeiboClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        UserAvatar(
+            avatarUrl = null,
+            displayName = null,
+            size = 88.dp,
+            isGuest = true
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        Text(
+            text = "登录 Setease",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF121212)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "同步你的收藏、播放记录和个性化推荐",
+            fontSize = 15.sp,
+            color = secondary
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        LoginMethodButton(
+            text = "手机号登录",
+            iconVector = Icons.Filled.Sms,
+            containerColor = red,
+            contentColor = Color.White,
+            onClick = onCaptchaClick
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        LoginMethodButton(
+            text = "二维码登录",
+            iconVector = Icons.Filled.QrCode2,
+            containerColor = Color.White,
+            contentColor = Color(0xFF121212),
+            onClick = onQrClick
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Text(
+            text = "其他登录方式",
+            fontSize = 13.sp,
+            color = secondary
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            SocialLoginButton(
+                text = "邮箱",
+                iconVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                onClick = onEmailClick
+            )
+            SocialLoginButton(
+                text = "微信",
+                iconVector = Icons.Filled.Person,
+                onClick = onWechatClick
+            )
+            SocialLoginButton(
+                text = "QQ",
+                iconVector = Icons.Filled.Person,
+                onClick = onQqClick
+            )
+            SocialLoginButton(
+                text = "微博",
+                iconVector = Icons.Filled.Person,
+                onClick = onWeiboClick
+            )
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Text(
+            text = "登录即代表你同意《用户协议》和《隐私政策》",
+            fontSize = 12.sp,
+            color = secondary,
+            lineHeight = 18.sp
+        )
+    }
+}
+
+@Composable
+private fun LoginMethodButton(
+    text: String,
+    iconVector: ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = iconVector,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(24.dp)
+            )
+            Text(
+                text = text,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor
+            )
+        }
+    }
+}
+
+@Composable
+private fun SocialLoginButton(
+    text: String,
+    iconVector: ImageVector,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .background(Color.White, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = iconVector,
+                contentDescription = null,
+                tint = Color(0xFF121212),
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = Color(0xFF8D8D93)
+        )
+    }
+}
+
+@Composable
+private fun ProfileHomePanel(
+    red: Color,
+    secondary: Color,
+    avatarUrl: String?,
+    displayName: String?,
+    isDarkModeEnabled: Boolean,
+    onDarkModeToggled: (Boolean) -> Unit,
+    onLogoutClick: () -> Unit,
+    onPlaceholderClick: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (isLoggedIn) {
-            ProfileCard(
-                avatarUrl = avatarUrl,
-                displayName = displayName,
-                onClick = onProfileClick
+        UserInfoCard(
+            avatarUrl = avatarUrl,
+            displayName = displayName
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        StatsRow(secondary = secondary)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SettingsSectionCard {
+            ProfileMenuItem(
+                title = "我的消息",
+                iconVector = Icons.Filled.Sms,
+                onClick = { onPlaceholderClick("我的消息") }
             )
-
-            Spacer(modifier = Modifier.height(14.dp))
-        } else {
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                LoginMethodRow(
-                    text = "手机验证码登录",
-                    red = red,
-                    onClick = onCaptchaClick
-                )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    color = Color(0xFFE8E8ED),
-                    thickness = 1.dp
-                )
-
-                LoginMethodRow(
-                    text = "二维码登录",
-                    red = red,
-                    onClick = onQrClick
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = "账户用于同步你的收藏、播放记录和偏好设置。",
-                color = secondary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
+            SettingsDivider(Color(0xFFE2E2E8))
+            ProfileMenuItem(
+                title = "本地音乐",
+                iconVector = Icons.Filled.Settings,
+                onClick = { onPlaceholderClick("本地音乐") }
             )
-
-            Spacer(modifier = Modifier.height(14.dp))
+            SettingsDivider(Color(0xFFE2E2E8))
+            ProfileMenuItem(
+                title = "下载管理",
+                iconVector = Icons.Filled.Settings,
+                onClick = { onPlaceholderClick("下载管理") }
+            )
+            SettingsDivider(Color(0xFFE2E2E8))
+            ProfileMenuItem(
+                title = "我的收藏",
+                iconVector = Icons.Filled.Settings,
+                onClick = { onPlaceholderClick("我的收藏") }
+            )
         }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        SettingsSectionCard {
+            ProfileMenuItem(
+                title = "云盘",
+                iconVector = Icons.Filled.Settings,
+                onClick = { onPlaceholderClick("云盘") }
+            )
+            SettingsDivider(Color(0xFFE2E2E8))
+            ProfileMenuItem(
+                title = "已购",
+                iconVector = Icons.Filled.Settings,
+                onClick = { onPlaceholderClick("已购") }
+            )
+            SettingsDivider(Color(0xFFE2E2E8))
+            ProfileMenuItem(
+                title = "设置",
+                iconVector = Icons.Filled.Settings,
+                onClick = { onPlaceholderClick("设置") }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        SettingsSectionCard {
+            SettingsToggleRow(
+                title = "夜间模式",
+                checked = isDarkModeEnabled,
+                onCheckedChange = onDarkModeToggled,
+                backdrop = null
+            )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         Card(
             shape = RoundedCornerShape(24.dp),
@@ -824,31 +725,17 @@ private fun MethodSelectionPanel(
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onSettingsClick)
+                .clickable(onClick = onLogoutClick)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .background(Color(0xFFFFE8EC), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = null,
-                        tint = red,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.size(12.dp))
                 Text(
-                    text = "音乐设置",
-                    fontSize = 18.sp,
+                    text = "退出登录",
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = red
                 )
@@ -858,75 +745,136 @@ private fun MethodSelectionPanel(
 }
 
 @Composable
-private fun ProfileCard(
+private fun UserInfoCard(
     avatarUrl: String?,
-    displayName: String?,
-    onClick: () -> Unit
+    displayName: String?
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             UserAvatar(
                 avatarUrl = avatarUrl,
                 displayName = displayName,
-                size = 56.dp,
+                size = 72.dp,
                 showBorder = false
             )
-            Spacer(modifier = Modifier.size(12.dp))
+            Spacer(modifier = Modifier.size(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = displayName ?: "Setease 用户",
-                    fontSize = 18.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF121212)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "账户信息、付款方式和设置",
-                    fontSize = 14.sp,
-                    color = Color(0xFF8D8D93)
-                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFFFFF3E0), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "VIP",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF8F00)
+                    )
+                }
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = Color(0xFFC7C7CC),
-                modifier = Modifier.size(22.dp)
-            )
         }
     }
 }
 
 @Composable
-private fun LoginMethodRow(
-    text: String,
-    red: Color,
+private fun StatsRow(
+    secondary: Color
+) {
+    val stats = listOf(
+        "我的喜欢" to "0",
+        "最近播放" to "0",
+        "我的歌单" to "0",
+        "下载" to "0"
+    )
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 18.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            stats.forEach { (label, value) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = value,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF121212)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = label,
+                        fontSize = 12.sp,
+                        color = secondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileMenuItem(
+    title: String,
+    iconVector: ImageVector,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .background(Color(0xFFF2F2F7), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = iconVector,
+                contentDescription = null,
+                tint = Color(0xFFFA233B),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(modifier = Modifier.size(12.dp))
         Text(
-            text = text,
-            color = red,
-            fontSize = 17.sp,
+            text = title,
+            fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF121212),
             modifier = Modifier.weight(1f)
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = Color(0xFFC7C7CC),
+            modifier = Modifier.size(22.dp)
         )
     }
 }
@@ -958,23 +906,35 @@ private fun CaptchaPanel(
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            TextField(
-                value = phone,
-                onValueChange = onPhoneChange,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                placeholder = { Text("请输入手机号") },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            )
+                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "+86",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF121212),
+                    modifier = Modifier.padding(end = 12.dp)
+                )
+                TextField(
+                    value = phone,
+                    onValueChange = onPhoneChange,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    placeholder = { Text("请输入手机号") },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -982,55 +942,56 @@ private fun CaptchaPanel(
                 thickness = 1.dp
             )
 
-            TextField(
-                value = captcha,
-                onValueChange = onCaptchaChange,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                placeholder = { Text("请输入验证码") },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            )
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(
-                    onClick = onSendCaptcha,
-                    shape = RoundedCornerShape(16.dp),
-                    enabled = !isLoading,
+                TextField(
+                    value = captcha,
+                    onValueChange = onCaptchaChange,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    placeholder = { Text("请输入验证码") },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
                     modifier = Modifier.weight(1f)
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("发送验证码")
-                    }
-                }
+                )
 
                 Button(
-                    onClick = onLogin,
-                    shape = RoundedCornerShape(16.dp),
+                    onClick = onSendCaptcha,
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = red),
                     enabled = !isLoading,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.padding(end = 12.dp)
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
                     } else {
-                        Text("登录")
+                        Text("发送", fontSize = 13.sp)
                     }
+                }
+            }
+
+            Button(
+                onClick = onLogin,
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = red),
+                enabled = !isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                } else {
+                    Text("登录", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -1114,9 +1075,20 @@ private fun QrPanel(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
+                    text = "打开网易云音乐 App，扫描下方二维码登录",
+                    color = Color(0xFF121212),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
                     text = qrHint,
                     color = secondary,
-                    fontSize = 14.sp
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))

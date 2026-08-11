@@ -36,27 +36,14 @@ data class AuthUiState(
     val errorMessage: String? = null,
     val isLoggedIn: Boolean = false,
     val authSession: AuthSession? = null,
-    val accountDetailsDestination: AccountDetailsDestination? = null,
-    val personalizedRecommendationEnabled: Boolean = true,
+    val isDarkModeEnabled: Boolean = false,
     val showLogoutConfirmDialog: Boolean = false
 )
 
 enum class AuthPanel {
     METHODS,
     CAPTCHA,
-    QR,
-    ACCOUNT_DETAILS,
-    ACCOUNT_DETAIL_SUBPAGE
-}
-
-enum class AccountDetailsDestination(val title: String) {
-    APPLE_ACCOUNT("Apple 账户"),
-    MANAGE_PAYMENT("管理付款方式"),
-    SUBSCRIPTIONS("订阅"),
-    PURCHASE_HISTORY("购买记录"),
-    ADD_FUNDS("为账户充值"),
-    COUNTRY_REGION("国家/地区"),
-    RATINGS_AND_REVIEWS("评分与评论")
+    QR
 }
 
 @HiltViewModel
@@ -87,13 +74,9 @@ class AuthViewModel @Inject constructor(
             observeAuthStateUseCase().collect { session ->
                 _uiState.update {
                     val isLoggedIn = session?.isLoggedIn == true
-                    val shouldResetDetailsPanel = !isLoggedIn &&
-                        (it.panel == AuthPanel.ACCOUNT_DETAILS || it.panel == AuthPanel.ACCOUNT_DETAIL_SUBPAGE)
                     it.copy(
                         isLoggedIn = isLoggedIn,
                         authSession = session,
-                        panel = if (shouldResetDetailsPanel) AuthPanel.METHODS else it.panel,
-                        accountDetailsDestination = if (isLoggedIn) it.accountDetailsDestination else null,
                         showLogoutConfirmDialog = if (isLoggedIn) it.showLogoutConfirmDialog else false
                     )
                 }
@@ -137,41 +120,8 @@ class AuthViewModel @Inject constructor(
         maybeRefreshProfileIfNeeded(_uiState.value.authSession)
     }
 
-    fun onAccountDetailsOpened() {
-        if (!_uiState.value.isLoggedIn) return
-        stopQrPolling()
-        _uiState.update {
-            it.copy(
-                panel = AuthPanel.ACCOUNT_DETAILS,
-                accountDetailsDestination = null,
-                errorMessage = null,
-                showLogoutConfirmDialog = false
-            )
-        }
-        maybeRefreshProfileIfNeeded(_uiState.value.authSession)
-    }
-
-    fun onAccountDetailsDestinationOpened(destination: AccountDetailsDestination) {
-        _uiState.update {
-            it.copy(
-                panel = AuthPanel.ACCOUNT_DETAIL_SUBPAGE,
-                accountDetailsDestination = destination,
-                showLogoutConfirmDialog = false
-            )
-        }
-    }
-
-    fun onBackFromAccountDetailsSubpage() {
-        _uiState.update {
-            it.copy(
-                panel = AuthPanel.ACCOUNT_DETAILS,
-                accountDetailsDestination = null
-            )
-        }
-    }
-
-    fun onPersonalizedRecommendationToggled(enabled: Boolean) {
-        _uiState.update { it.copy(personalizedRecommendationEnabled = enabled) }
+    fun onDarkModeToggled(enabled: Boolean) {
+        _uiState.update { it.copy(isDarkModeEnabled = enabled) }
     }
 
     fun onRequestLogout() {
@@ -195,7 +145,6 @@ class AuthViewModel @Inject constructor(
                 it.copy(
                     isLoading = false,
                     panel = AuthPanel.METHODS,
-                    accountDetailsDestination = null,
                     qrLoginStart = null,
                     qrHint = "等待扫码登录"
                 )
@@ -225,7 +174,6 @@ class AuthViewModel @Inject constructor(
                 qrLoginStart = null,
                 qrHint = "等待扫码登录",
                 errorMessage = null,
-                accountDetailsDestination = null,
                 showLogoutConfirmDialog = false
             )
         }

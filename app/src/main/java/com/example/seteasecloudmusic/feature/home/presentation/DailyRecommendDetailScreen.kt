@@ -28,26 +28,23 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.model.Track
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
 
 private val DetailPageBg = Color.White
 private val DetailPrimary = Color(0xFF111111)
@@ -77,11 +74,6 @@ fun DailyRecommendDetailScreen(
 ) {
     BackHandler(onBack = onClose)
 
-    val heroBackdrop = rememberLayerBackdrop {
-        drawRect(Color.Transparent)
-        drawContent()
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -92,9 +84,7 @@ fun DailyRecommendDetailScreen(
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             item {
-                Box(modifier = Modifier.layerBackdrop(heroBackdrop)) {
-                    DetailHeroSection(tracks = tracks)
-                }
+                DetailHeroSection(tracks = tracks)
             }
 
             item {
@@ -107,7 +97,11 @@ fun DailyRecommendDetailScreen(
                 )
             }
 
-            items(items = tracks, key = { it.id }) { track ->
+            items(
+                items = tracks,
+                key = { it.id },
+                contentType = { "daily-recommend-track" }
+            ) { track ->
                 DetailTrackRow(
                     track = track,
                     onClick = { onTrackClick(track) }
@@ -124,20 +118,8 @@ fun DailyRecommendDetailScreen(
                 .align(Alignment.TopEnd)
                 .padding(top = 48.dp, end = 20.dp)
                 .size(48.dp)
-                .drawBackdrop(
-                    backdrop = heroBackdrop,
-                    shape = { RoundedRectangle(24.dp) },
-                    effects = {
-                        vibrancy()
-                        blur(2f.dp.toPx())
-                        lens(
-                            refractionHeight = 16f.dp.toPx(),
-                            refractionAmount = 32f.dp.toPx(),
-                            chromaticAberration = true
-                        )
-                    },
-                    onDrawSurface = { drawRect(Color.White.copy(alpha = 0.50f)) }
-                )
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.White.copy(alpha = 0.82f))
                 .clickable(onClick = onClose),
             contentAlignment = Alignment.Center
         ) {
@@ -155,7 +137,9 @@ fun DailyRecommendDetailScreen(
 private fun DetailHeroSection(
     tracks: List<Track>
 ) {
-    val wallCovers = tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
+    val wallCovers = remember(tracks) {
+        tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
+    }
 
     Box(
         modifier = Modifier
@@ -215,7 +199,9 @@ private fun DetailPosterCoverGrid(
     modifier: Modifier = Modifier
 ) {
     val slotCount = 20
-    val displayItems = List(slotCount) { index -> covers.getOrNull(index) }
+    val displayItems = remember(covers) {
+        List(slotCount) { index -> covers.getOrNull(index) }
+    }
 
     BoxWithConstraints(modifier = modifier) {
         val gap = 1.dp
@@ -250,14 +236,15 @@ private fun DetailPosterGridCell(
     imageUrl: String?,
     size: androidx.compose.ui.unit.Dp
 ) {
+    val imageRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = size)
     Box(
         modifier = Modifier
             .size(size)
             .background(Color(0xFFDCDDE2))
     ) {
-        if (!imageUrl.isNullOrBlank()) {
+        if (imageRequest != null) {
             AsyncImage(
-                model = imageUrl,
+                model = imageRequest,
                 contentDescription = "推荐封面",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -271,6 +258,10 @@ private fun DetailTrackRow(
     track: Track,
     onClick: () -> Unit
 ) {
+    val imageRequest = rememberCoverRequest(
+        imageUrl = track.coverUrl,
+        targetSize = 56.dp
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -285,9 +276,9 @@ private fun DetailTrackRow(
                 .background(Color(0xFFE4E4E8)),
             contentAlignment = Alignment.Center
         ) {
-            if (!track.coverUrl.isNullOrBlank()) {
+            if (imageRequest != null) {
                 AsyncImage(
-                    model = track.coverUrl,
+                    model = imageRequest,
                     contentDescription = "歌曲封面",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -331,5 +322,24 @@ private fun DetailTrackRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+private fun rememberCoverRequest(
+    imageUrl: String?,
+    targetSize: androidx.compose.ui.unit.Dp
+): ImageRequest? {
+    if (imageUrl.isNullOrBlank()) return null
+
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val targetSizePx = with(density) { targetSize.roundToPx() }.coerceAtLeast(1)
+    return remember(imageUrl, targetSizePx) {
+        ImageRequest.Builder(context)
+            .data(imageUrl)
+            .size(targetSizePx, targetSizePx)
+            .crossfade(false)
+            .build()
     }
 }

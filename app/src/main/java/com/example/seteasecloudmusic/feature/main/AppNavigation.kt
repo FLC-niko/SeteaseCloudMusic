@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.feature.main
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -64,7 +65,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.auth.presentation.AccountLoginSheetContent
 import com.example.seteasecloudmusic.feature.main.components.UserAvatar
@@ -257,13 +257,11 @@ fun AppNavigation(
     val authViewModel: AuthViewModel = hiltViewModel()
 
     val searchUiState by searchViewModel.uiState.collectAsState()
-    val playbackState by searchViewModel.playbackState.collectAsState()
     val authUiState by authViewModel.uiState.collectAsState()
 
     var showNowPlaying by remember { mutableStateOf(false) }
     var isDismissingNowPlaying by remember { mutableStateOf(false) }
     var miniPlayerBounds by remember { mutableStateOf(Rect.Zero) }
-    var miniPlayerArtworkBounds by remember { mutableStateOf(Rect.Zero) }
     var showAccountSheet by remember { mutableStateOf(false) }
     var mountAccountOverlay by remember { mutableStateOf(false) }
     var selectedArtist by remember { mutableStateOf<SelectedArtist?>(null) }
@@ -345,6 +343,9 @@ fun AppNavigation(
 
     // ── 每日推荐展开进度（0f ~ 1f）──
     val sinkProgress = expandProgress.value
+    // 详情页打开后，底部导航已经移出视觉层。继续保持实时毛玻璃采样只会增加
+    // 滚动时的离屏绘制成本，因此在展开完成后关闭这组特效。
+    val useBackdropEffects = sinkProgress < 0.98f
 
     // ── 键盘（IME）感知：实现 Apple Music 风格的平滑上抬效果 ──
     val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
@@ -369,7 +370,7 @@ fun AppNavigation(
                 .fillMaxSize()
                 // 这里是毛玻璃的“取景层”。
                 // 被包进来的内容会先渲染到底层纹理，再提供给上面的导航栏做模糊采样。
-                .layerBackdrop(backdrop)
+                .then(if (useBackdropEffects) Modifier.layerBackdrop(backdrop) else Modifier)
         ) {
             // 根据 selectedIndex 显示不同页面
             when (selectedIndex) {
@@ -381,7 +382,11 @@ fun AppNavigation(
                     }
                 )
                 1 -> AppPageBackground() // 电台
-                2 -> AppPageBackground() // 我的
+                2 -> MyPagePlaceholder(
+                    authViewModel = authViewModel,
+                    topContentPadding = searchContentTopPadding,
+                    bottomContentPadding = 180.dp + animatedImeOffset
+                ) // 我的
                 3 -> SearchRoute(
                     viewModel = searchViewModel,
                     topContentPadding = searchContentTopPadding,
@@ -398,6 +403,7 @@ fun AppNavigation(
             }
         }
 
+        if (useBackdropEffects) {
         AnimatedContent(
             targetState = pageTitle,
             transitionSpec = {
@@ -759,6 +765,8 @@ fun AppNavigation(
             }
         }
 
+        }
+
         dailyRecommendState?.let { state ->
             val progress = expandProgress.value
             if (progress > 0f) {
@@ -793,21 +801,24 @@ fun AppNavigation(
         SearchMiniPlayerBar(
             backdrop = backdrop,
             cornerRadius = cornerRadius,
-            playbackState = playbackState,
+            viewModel = searchViewModel,
+            useDynamicBackdrop = useBackdropEffects,
             onPlayPauseClick = { searchViewModel.onMiniPlayerPlayPause() },
             onNextClick = { searchViewModel.onMiniPlayerNext() },
-            onArtworkBoundsChanged = { miniPlayerArtworkBounds = it },
             onBarClick = {
                 if (!showNowPlaying) {
                     showNowPlaying = true
                     isDismissingNowPlaying = false
                     nowPlayingScope.launch {
                         nowPlayingProgress.snapTo(0f)
+                        // 先让首帧以 mini player 的形态提交，再开始展开动画，
+                        // 避免专辑页首次组合较重时直接跳到终态。
+                        withFrameNanos { }
                         nowPlayingProgress.animateTo(
                             targetValue = 1f,
-                            animationSpec = spring(
-                                dampingRatio = 0.88f,
-                                stiffness = 320f
+                            animationSpec = tween(
+                                durationMillis = 420,
+                                easing = FastOutSlowInEasing
                             )
                         )
                     }
@@ -826,27 +837,29 @@ fun AppNavigation(
                 }
         )
 
-        GlassSlider(
-            backdrop = backdrop,
-            contentBackdrop = navBarContentBackdrop,
-            mainItemCount = mainNavItems.size,
-            selectedIndex = selectedIndex,
-            dragOffsetX = dragOffsetX,
-            navBarHeight = navBarHeight,
-            mainBarProgress = mainBarProgressAnimation.value,
-            horizontalPadding = horizontalPadding,
-            mainSearchGap = mainSearchGap,
-            searchButtonWidth = searchButtonWidth,
-            cornerRadius = cornerRadius,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(bottom = 24.dp + animatedImeOffset) // 底部导航栏间距 + 键盘偏移
-                .graphicsLayer {
-                    alpha = 1f - sinkProgress
-                    translationY = sinkProgress * 200.dp.toPx()
-                }
-        )
+        if (useBackdropEffects) {
+            GlassSlider(
+                backdrop = backdrop,
+                contentBackdrop = navBarContentBackdrop,
+                mainItemCount = mainNavItems.size,
+                selectedIndex = selectedIndex,
+                dragOffsetX = dragOffsetX,
+                navBarHeight = navBarHeight,
+                mainBarProgress = mainBarProgressAnimation.value,
+                horizontalPadding = horizontalPadding,
+                mainSearchGap = mainSearchGap,
+                searchButtonWidth = searchButtonWidth,
+                cornerRadius = cornerRadius,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = 24.dp + animatedImeOffset) // 底部导航栏间距 + 键盘偏移
+                    .graphicsLayer {
+                        alpha = 1f - sinkProgress
+                        translationY = sinkProgress * 200.dp.toPx()
+                    }
+            )
+        }
 
         if (showNowPlaying) {
             val progress = nowPlayingProgress.value
@@ -854,16 +867,15 @@ fun AppNavigation(
                 NowPlayingScreen(
                     presentationProgress = progress,
                     sourceBarBounds = miniPlayerBounds,
-                    sourceArtworkBounds = miniPlayerArtworkBounds,
                     onClose = {
                         if (!isDismissingNowPlaying) {
                             isDismissingNowPlaying = true
                             nowPlayingScope.launch {
                                 nowPlayingProgress.animateTo(
                                     targetValue = 0f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.94f,
-                                        stiffness = 440f
+                                    animationSpec = tween(
+                                        durationMillis = 320,
+                                        easing = FastOutSlowInEasing
                                     )
                                 )
                                 showNowPlaying = false
@@ -1108,13 +1120,16 @@ private fun UserAvatarButton(
 private fun SearchMiniPlayerBar(
     backdrop: Backdrop,
     cornerRadius: Dp,
-    playbackState: PlaybackState,
+    viewModel: SearchViewModel,
+    useDynamicBackdrop: Boolean,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
-    onArtworkBoundsChanged: (Rect) -> Unit,
     onBarClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 播放进度是高频状态，只在播放条这个局部重组范围内收集，避免拖动列表时
+    // 让整个 AppNavigation 每 100ms 重新执行一次。
+    val playbackState by viewModel.playbackState.collectAsState()
     val hasTrack = playbackState.currentTrack != null
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
     val artworkUrl = playbackState.currentTrack?.coverUrl ?: playbackState.currentTrack?.album?.coverUrl
@@ -1126,15 +1141,23 @@ private fun SearchMiniPlayerBar(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { RoundedRectangle(cornerRadius) },
-                effects = {
-                    vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(16f.dp.toPx(), 32f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
+            .then(
+                if (useDynamicBackdrop) {
+                    Modifier.drawBackdrop(
+                        backdrop = backdrop,
+                        shape = { RoundedRectangle(cornerRadius) },
+                        effects = {
+                            vibrancy()
+                            blur(2f.dp.toPx())
+                            lens(16f.dp.toPx(), 32f.dp.toPx())
+                        },
+                        onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
+                    )
+                } else {
+                    Modifier
+                        .clip(RoundedCornerShape(cornerRadius))
+                        .background(Color.White.copy(alpha = 0.90f))
+                }
             )
             .clickable { onBarClick() }
     ) {
@@ -1146,11 +1169,7 @@ private fun SearchMiniPlayerBar(
         ) {
             MiniPlayerArtwork(
                 imageUrl = artworkUrl,
-                modifier = Modifier
-                    .size(40.dp)
-                    .onGloballyPositioned { coordinates ->
-                        onArtworkBoundsChanged(coordinates.boundsInRoot())
-                    }
+                modifier = Modifier.size(40.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
@@ -1230,4 +1249,48 @@ private fun AppPageBackground(modifier: Modifier = Modifier) {
             .fillMaxSize()
             .background(Color.White)
     )
+}
+
+/**
+ * “我的”标签页占位：提示用户点击右上角头像进入个人中心。
+ */
+@Composable
+private fun MyPagePlaceholder(
+    authViewModel: AuthViewModel,
+    topContentPadding: Dp,
+    bottomContentPadding: Dp,
+    modifier: Modifier = Modifier
+) {
+    val authUiState by authViewModel.uiState.collectAsState()
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .padding(top = topContentPadding, bottom = bottomContentPadding)
+    ) {
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            UserAvatar(
+                avatarUrl = authUiState.authSession?.avatarUrl,
+                displayName = authUiState.authSession?.nickname,
+                size = 88.dp,
+                isGuest = !authUiState.isLoggedIn
+            )
+            Text(
+                text = if (authUiState.isLoggedIn) "个人中心" else "未登录",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+            Text(
+                text = "点击右上角头像查看账户与设置",
+                fontSize = 14.sp,
+                color = Color(0xFF8F8F95)
+            )
+        }
+    }
 }
