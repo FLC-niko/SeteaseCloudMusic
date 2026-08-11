@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlaylist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverToplist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverTrackPreview
@@ -221,12 +222,15 @@ private fun DiscoverChipCard(
                 .aspectRatio(1f)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                AsyncImage(
-                    model = playlist.coverUrl,
-                    contentDescription = playlist.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                val coverRequest = rememberCoverRequest(imageUrl = playlist.coverUrl, targetSize = 136.dp)
+                if (coverRequest != null) {
+                    AsyncImage(
+                        model = coverRequest,
+                        contentDescription = playlist.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -301,12 +305,15 @@ private fun DiscoverToplistCard(
                     .height(280.dp)
                     .background(DiscoverSurface)
             ) {
-                AsyncImage(
-                    model = toplist.coverUrl,
-                    contentDescription = toplist.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                val coverRequest = rememberCoverRequest(imageUrl = toplist.coverUrl, targetSize = 320.dp)
+                if (coverRequest != null) {
+                    AsyncImage(
+                        model = coverRequest,
+                        contentDescription = toplist.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -430,12 +437,15 @@ private fun DiscoverSongRow(
             colors = CardDefaults.cardColors(containerColor = DiscoverSurface),
             modifier = Modifier.size(56.dp)
         ) {
-            AsyncImage(
-                model = track.coverUrl,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            val coverRequest = rememberCoverRequest(imageUrl = track.coverUrl, targetSize = 56.dp)
+            if (coverRequest != null) {
+                AsyncImage(
+                    model = coverRequest,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -507,12 +517,15 @@ private fun DiscoverPlaylistRow(
             colors = CardDefaults.cardColors(containerColor = DiscoverSurface),
             modifier = Modifier.size(72.dp)
         ) {
-            AsyncImage(
-                model = playlist.coverUrl,
-                contentDescription = playlist.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            val coverRequest = rememberCoverRequest(imageUrl = playlist.coverUrl, targetSize = 72.dp)
+            if (coverRequest != null) {
+                AsyncImage(
+                    model = coverRequest,
+                    contentDescription = playlist.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(

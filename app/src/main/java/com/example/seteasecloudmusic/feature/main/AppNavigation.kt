@@ -86,6 +86,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.RoundedRectangle
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
@@ -1212,9 +1213,10 @@ private fun MiniPlayerArtwork(
             .background(Color(0xFFE3E3E6)),
         contentAlignment = Alignment.Center
     ) {
-        if (!imageUrl.isNullOrBlank()) {
+        val coverRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = 40.dp)
+        if (coverRequest != null) {
             AsyncImage(
-                model = imageUrl,
+                model = coverRequest,
                 contentDescription = "当前歌曲封面",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

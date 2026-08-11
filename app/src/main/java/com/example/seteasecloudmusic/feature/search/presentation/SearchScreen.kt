@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.core.model.Track
 
@@ -538,22 +539,25 @@ private fun Artwork(
             .background(Color(0xFFE3E3E6)),
         contentAlignment = Alignment.Center
     ) {
-        if (!imageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(shape),
-                contentScale = ContentScale.Crop
-            )
-        } else {
+        if (imageUrl.isNullOrBlank()) {
             Icon(
                 imageVector = Icons.Filled.Search,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(18.dp)
             )
+        } else {
+            val coverRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = size)
+            if (coverRequest != null) {
+                AsyncImage(
+                    model = coverRequest,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(shape),
+                    contentScale = ContentScale.Crop
+                )
+            }
         }
     }
 }

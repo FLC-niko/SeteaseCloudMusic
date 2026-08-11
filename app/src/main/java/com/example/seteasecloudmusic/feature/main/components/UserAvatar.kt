@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 
 @Composable
 fun UserAvatar(
@@ -77,14 +78,17 @@ fun UserAvatar(
         contentAlignment = Alignment.Center
     ) {
         if (hasAvatarImage) {
-            AsyncImage(
-                model = avatarUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(CircleShape),
-                contentScale = ContentScale.Crop
-            )
+            val avatarRequest = rememberCoverRequest(imageUrl = avatarUrl, targetSize = size, crossfade = true)
+            if (avatarRequest != null) {
+                AsyncImage(
+                    model = avatarRequest,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
         } else if (hasMonogram) {
             Text(
                 text = monogram,

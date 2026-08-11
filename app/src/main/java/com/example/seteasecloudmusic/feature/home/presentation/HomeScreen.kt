@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 
 private val HomeBackground = Color.White
 private val HomePrimary = Color(0xFF111111)
@@ -275,14 +276,15 @@ private fun PosterGridCell(
     imageUrl: String?,
     size: Dp
 ) {
+    val imageRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = size, crossfade = true)
     Box(
         modifier = Modifier
             .size(size)
             .background(Color(0xFFDCDDE2))
     ) {
-        if (!imageUrl.isNullOrBlank()) {
+        if (imageRequest != null) {
             AsyncImage(
-                model = imageUrl,
+                model = imageRequest,
                 contentDescription = "推荐封面",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -310,9 +312,10 @@ private fun DailyTrackRow(
                 .background(Color(0xFFE4E4E8)),
             contentAlignment = Alignment.Center
         ) {
-            if (!track.coverUrl.isNullOrBlank()) {
+            val coverRequest = rememberCoverRequest(imageUrl = track.coverUrl, targetSize = 56.dp)
+            if (coverRequest != null) {
                 AsyncImage(
-                    model = track.coverUrl,
+                    model = coverRequest,
                     contentDescription = "歌曲封面",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

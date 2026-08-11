@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistAlbum
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
 
@@ -226,12 +227,15 @@ private fun ArtistHeroSection(
             .height(430.dp)
             .background(Color.White)
     ) {
-        AsyncImage(
-            model = artistCoverUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
+        val heroRequest = rememberCoverRequest(imageUrl = artistCoverUrl, targetSize = 430.dp, crossfade = true)
+        if (heroRequest != null) {
+            AsyncImage(
+                model = heroRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -575,13 +579,16 @@ private fun ArtworkCard(
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFFE7E7EC))
     ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            alpha = alpha,
-            modifier = Modifier.fillMaxSize()
-        )
+        val coverRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = size)
+        if (coverRequest != null) {
+            AsyncImage(
+                model = coverRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alpha = alpha,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 
@@ -593,12 +600,15 @@ private fun CircleArtworkCard(imageUrl: String?) {
             .clip(CircleShape)
             .background(Color(0xFFE7E7EC))
     ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
+        val coverRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = 104.dp)
+        if (coverRequest != null) {
+            AsyncImage(
+                model = coverRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 

@@ -35,16 +35,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.util.rememberCoverRequest
 
 private val DetailPageBg = Color.White
 private val DetailPrimary = Color(0xFF111111)
@@ -236,7 +234,7 @@ private fun DetailPosterGridCell(
     imageUrl: String?,
     size: androidx.compose.ui.unit.Dp
 ) {
-    val imageRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = size)
+    val imageRequest = rememberCoverRequest(imageUrl = imageUrl, targetSize = size, crossfade = true)
     Box(
         modifier = Modifier
             .size(size)
@@ -322,24 +320,5 @@ private fun DetailTrackRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-    }
-}
-
-@Composable
-private fun rememberCoverRequest(
-    imageUrl: String?,
-    targetSize: androidx.compose.ui.unit.Dp
-): ImageRequest? {
-    if (imageUrl.isNullOrBlank()) return null
-
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val targetSizePx = with(density) { targetSize.roundToPx() }.coerceAtLeast(1)
-    return remember(imageUrl, targetSizePx) {
-        ImageRequest.Builder(context)
-            .data(imageUrl)
-            .size(targetSizePx, targetSizePx)
-            .crossfade(false)
-            .build()
     }
 }
