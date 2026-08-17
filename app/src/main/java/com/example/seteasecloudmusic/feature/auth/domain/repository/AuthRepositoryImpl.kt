@@ -323,7 +323,7 @@ class AuthRepositoryImpl @Inject constructor(
         context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(COOKIE_KEY, cookie)
-            .commit()
+            .apply()
     }
 
     private data class ProfileSnapshot(

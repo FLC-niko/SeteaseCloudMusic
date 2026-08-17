@@ -12,12 +12,12 @@ import androidx.media3.session.SessionToken
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.PrepareTrackForPlaybackUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,24 +52,30 @@ data class PlaybackState(
 class MusicPlayerController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase,
-
 ) {
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
-    // 控制器自己的协程域：用于异步连接服务、拉 URL、更新状态
+    // 控制器自己的协程域：用于异步连接服务、拉 URL、更新状态（生命周期与单例绑定）
     private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
 
     // Media3 控制端（连接到 MusicService 的 MediaSession）
+    @Volatile
     private var controller: MediaController? = null
+    private var connectionDeferred = CompletableDeferred<MediaController>()
 
     // 进度轮询任务：同步 position/duration 到 UI，歌词逐字高亮需要更密的节奏。
     private var progressJob: Job? = null
     private var playJob: Job? = null
-    private var latestPlayRequestId: Long = 0L
-    private val playedShuffleIndices = mutableSetOf<Int>()
+    private val latestPlayRequestId = AtomicLong(0L)
+    private val playedShuffleIndices = Collections.synchronizedSet(mutableSetOf<Int>())
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    init {
+        // 单例创建时自动建立后台连接
+        connect()
+    }
 
     // 监听 Media3 播放器状态变化，统一映射到你的 PlaybackState
     private val playerListener = object : Player.Listener {
@@ -117,8 +125,20 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
-    /** 在 ViewModel 初始化时调用：建立到 MusicService 的连接 */
+    /** 建立到 MusicService 的连接（支持并发安全与结果重用） */
+    @Synchronized
     fun connect() {
+        if (controller != null) {
+            if (!connectionDeferred.isCompleted) {
+                connectionDeferred.complete(controller!!)
+            }
+            return
+        }
+
+        if (connectionDeferred.isCompleted && connectionDeferred.isCancelled) {
+            connectionDeferred = CompletableDeferred()
+        }
+
         val token = SessionToken(context, ComponentName(context, MusicService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
 
@@ -128,9 +148,15 @@ class MusicPlayerController @Inject constructor(
                     .onSuccess { c ->
                         controller = c
                         c.addListener(playerListener)
+                        if (!connectionDeferred.isCompleted) {
+                            connectionDeferred.complete(c)
+                        }
                         _playbackState.update { it.copy(volume = c.volume.coerceIn(0f, 1f)) }
                     }
                     .onFailure { e ->
+                        if (!connectionDeferred.isCompleted) {
+                            connectionDeferred.completeExceptionally(e)
+                        }
                         _playbackState.update {
                             it.copy(status = PlayerStatus.ERROR, errorMessage = e.message)
                         }
@@ -138,6 +164,12 @@ class MusicPlayerController @Inject constructor(
             },
             context.mainExecutor
         )
+    }
+
+    private suspend fun ensureController(): MediaController? {
+        controller?.let { return it }
+        connect()
+        return runCatching { connectionDeferred.await() }.getOrNull()
     }
 
     fun replaceQueueAndPlay(tracks: List<Track>, startIndex: Int = 0) {
@@ -253,7 +285,7 @@ class MusicPlayerController @Inject constructor(
         controller?.removeListener(playerListener)
         controller?.release()
         controller = null
-        scope.cancel()
+        connectionDeferred = CompletableDeferred()
     }
 
     private fun playQueueIndex(index: Int) {
@@ -312,12 +344,18 @@ class MusicPlayerController @Inject constructor(
                         )
                         .build()
 
-                    controller?.apply {
+                    val targetController = ensureController()
+                    if (targetController == null) {
+                        _playbackState.update {
+                            it.copy(status = PlayerStatus.ERROR, errorMessage = "Controller not connected")
+                        }
+                        return@onSuccess
+                    }
+
+                    targetController.apply {
                         setMediaItem(item)
                         prepare()
                         play()
-                    } ?: _playbackState.update {
-                        it.copy(status = PlayerStatus.ERROR, errorMessage = "Controller not connected")
                     }
                 }
                 .onFailure { e ->
@@ -371,12 +409,9 @@ class MusicPlayerController @Inject constructor(
             ?: state.currentQueueIndex
     }
 
-    private fun nextPlayRequestId(): Long {
-        latestPlayRequestId += 1L
-        return latestPlayRequestId
-    }
+    private fun nextPlayRequestId(): Long = latestPlayRequestId.incrementAndGet()
 
-    private fun isStaleRequest(requestId: Long): Boolean = requestId != latestPlayRequestId
+    private fun isStaleRequest(requestId: Long): Boolean = requestId != latestPlayRequestId.get()
 
     private fun startProgressTicker() {
         stopProgressTicker()

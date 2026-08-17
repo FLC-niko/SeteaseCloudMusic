@@ -55,7 +55,7 @@ class SearchRepositoryImpl @Inject constructor(
             // 播放链接属于运行时数据，不直接写死在 Track 中，而是按需查询。
             val response = musicService.getSongUrl(trackId, level)
             if (response.code == 200) {
-                val url = response.data.firstOrNull()?.url
+                val url = response.data.orEmpty().firstOrNull()?.url
                 if (url != null) {
                     Result.success(url)
                 } else {

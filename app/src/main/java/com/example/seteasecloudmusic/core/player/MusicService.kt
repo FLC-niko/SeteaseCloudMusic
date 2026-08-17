@@ -65,6 +65,14 @@ class MusicService : MediaSessionService() {
         return mediaSession
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        val p = player
+        if (p == null || !p.playWhenReady || p.mediaItemCount == 0) {
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
         // 先释放 session，再释放播放器
         mediaSession?.release()

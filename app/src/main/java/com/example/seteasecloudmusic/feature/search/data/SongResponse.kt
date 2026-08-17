@@ -6,7 +6,7 @@ import com.google.gson.JsonElement
  * /song/url/v1 接口顶层响应。
  */
 data class SongResponse(
-	val data: List<SongUrlItemResponse> = emptyList(),
+	val data: List<SongUrlItemResponse>? = null,
 	val code: Int = 0
 )
 

@@ -51,7 +51,7 @@ class ArtistRepositoryImpl @Inject constructor(
                     return@withContext Result.failure(Exception("API error code: ${response.code}"))
                 }
 
-                val sections = response.introduction
+                val sections = response.introduction.orEmpty()
                     .mapNotNull { section ->
                         val title = section.title?.trim().orEmpty()
                         val content = section.content?.trim().orEmpty()
@@ -93,7 +93,7 @@ class ArtistRepositoryImpl @Inject constructor(
                 return@withContext Result.failure(Exception("API error code: ${response.code}"))
             }
 
-            val tracks = response.songs
+            val tracks = response.songs.orEmpty()
                 .map(::mapSongToTrack)
                 .distinctBy { it.id }
             val nextOffset = offset + tracks.size
@@ -126,7 +126,7 @@ class ArtistRepositoryImpl @Inject constructor(
                 return@withContext Result.failure(Exception("API error code: ${response.code}"))
             }
 
-            val albums = response.hotAlbums
+            val albums = response.hotAlbums.orEmpty()
                 .map(::mapAlbum)
                 .distinctBy { it.id }
             val nextOffset = offset + albums.size
@@ -175,7 +175,7 @@ class ArtistRepositoryImpl @Inject constructor(
         if (song.h != null) qualityTags.add(AudioQuality.HIGH)
         if (song.l != null || song.m != null) qualityTags.add(AudioQuality.STANDARD)
 
-        val artists = song.artists.map { artist ->
+        val artists = song.artists.orEmpty().map { artist ->
             Artist(
                 id = artist.id ?: 0L,
                 name = artist.name?.takeIf { it.isNotBlank() } ?: "Unknown Artist",

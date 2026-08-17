@@ -262,7 +262,7 @@ fun FlamingoLyricView(
             blankSpacer()
             itemsIndexed(
                 items = lyrics,
-                key = { _, lines -> lines }
+                key = { index, lines -> "${index}_${lines.firstOrNull()?.first ?: 0f}" }
             ) { index, lines ->
                 val isCurrent = remember(lines) {
                     derivedStateOf { index == currentLyricIndex.intValue }
@@ -272,8 +272,8 @@ fun FlamingoLyricView(
                 }
                 val showStateAnimation = remember(index) {
                     derivedStateOf {
-                        (currentLyricIndex.intValue in scrollState.layoutInfo.visibleItemsInfo.map { it.index - 1 }
-                            && currentLyricIndex.intValue >= 0) && enableLyricScroll.value
+                        enableLyricScroll.value && currentLyricIndex.intValue >= 0 &&
+                            scrollState.layoutInfo.visibleItemsInfo.any { it.index - 1 == currentLyricIndex.intValue }
                     }
                 }
                 val isLyricEmpty = remember(lines) {

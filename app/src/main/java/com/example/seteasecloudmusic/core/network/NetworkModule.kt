@@ -44,7 +44,7 @@ class NetworkModule {
      */
     @Provides
     @Singleton
-    fun provideBaseUrl(): String = "http://57.158.26.135:3000/";
+    fun provideBaseUrl(): String = BuildConfig.BASE_URL
 
     /**
      * 提供统一超时配置的 HTTP 客户端。
@@ -99,22 +99,6 @@ class NetworkModule {
             chain.proceed(request)
         }
 
-        /**
-         * 统一错误处理拦截器：
-         * 当服务端返回非 2xx 状态码时，直接抛出异常，
-         * 让上层可以用统一方式处理请求失败。
-         */
-        val errorInterceptor = Interceptor { chain ->
-            val response = chain.proceed(chain.request())
-            if (!response.isSuccessful) {
-                val message =
-                    "HTTP ${response.code} ${response.message.ifBlank { "Unknown error" }}"
-                response.close()
-                throw IOException(message)
-            }
-            response
-        }
-
         return OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -127,8 +111,6 @@ class NetworkModule {
             .addInterceptor(AuthInterceptor(context))
             // 调试阶段输出请求信息，便于定位网络问题。
             .addInterceptor(loggingInterceptor)
-            // 最后统一兜底处理服务端错误响应。
-            .addInterceptor(errorInterceptor)
             .build()
     }
 

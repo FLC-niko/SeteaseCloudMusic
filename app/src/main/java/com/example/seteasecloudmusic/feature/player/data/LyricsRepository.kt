@@ -5,6 +5,9 @@ import com.example.seteasecloudmusic.feature.player.data.parser.TtmlParser
 import com.example.seteasecloudmusic.feature.player.data.parser.YrcParser
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,11 +30,18 @@ class LyricsRepository @Inject constructor(
     suspend fun getLyrics(songId: Long): Result<ParsedLyrics> {
         // 1. 依次尝试 TTML 镜像源（每个 2 秒超时）
         for (baseUrl in ttmlMirrors) {
-            val ttmlResult = runCatching {
-                withTimeout(2000) { fetchTTML(songId, baseUrl) }
-            }.getOrNull()
-            if (ttmlResult != null) {
-                return Result.success(ttmlResult)
+            try {
+                val ttmlResult = withTimeout(2000) {
+                    fetchTTML(songId, baseUrl)
+                }
+                if (ttmlResult != null) {
+                    return Result.success(ttmlResult)
+                }
+            } catch (e: CancellationException) {
+                // 如果是协程正常取消（如切歌取消加载），继续抛出支持结构化并发
+                throw e
+            } catch (_: Exception) {
+                // 镜像源网络错误或解析失败，尝试下一个镜像
             }
         }
 
@@ -84,13 +94,16 @@ class LyricsRepository @Inject constructor(
         }
     }
 
-    private suspend fun fetchTTML(songId: Long, baseUrl: String): ParsedLyrics? {
+    private suspend fun fetchTTML(songId: Long, baseUrl: String): ParsedLyrics? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl$songId.ttml")
             .build()
-        val response = ttmlClient.newCall(request).execute()
-        if (!response.isSuccessful) return null
-        val body = response.body?.string() ?: return null
-        return TtmlParser.parse(body)
+        runCatching {
+            ttmlClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string() ?: return@use null
+                TtmlParser.parse(body)
+            }
+        }.getOrNull()
     }
 }

@@ -8,7 +8,7 @@ import com.google.gson.annotations.SerializedName
 data class ArtistSongsResponse(
     val code: Int = 0,
     val more: Boolean = false,
-    val songs: List<ArtistSongItemResponse> = emptyList()
+    val songs: List<ArtistSongItemResponse>? = null
 )
 
 data class ArtistSongItemResponse(
@@ -17,7 +17,7 @@ data class ArtistSongItemResponse(
     val fee: Int? = null,
     val dt: Long? = null,
     @SerializedName("ar")
-    val artists: List<ArtistSongArtistResponse> = emptyList(),
+    val artists: List<ArtistSongArtistResponse>? = null,
     @SerializedName("al")
     val album: ArtistSongAlbumResponse? = null,
     val h: ArtistSongQualityResponse? = null,
@@ -58,7 +58,7 @@ data class ArtistAlbumsResponse(
     val code: Int = 0,
     val more: Boolean = false,
     @SerializedName("hotAlbums")
-    val hotAlbums: List<ArtistAlbumItemResponse> = emptyList()
+    val hotAlbums: List<ArtistAlbumItemResponse>? = null
 )
 
 data class ArtistAlbumItemResponse(
@@ -76,7 +76,7 @@ data class ArtistAlbumItemResponse(
 data class ArtistDescriptionResponse(
     val code: Int = 0,
     val briefDesc: String? = null,
-    val introduction: List<ArtistDescriptionSectionResponse> = emptyList()
+    val introduction: List<ArtistDescriptionSectionResponse>? = null
 )
 
 data class ArtistDescriptionSectionResponse(

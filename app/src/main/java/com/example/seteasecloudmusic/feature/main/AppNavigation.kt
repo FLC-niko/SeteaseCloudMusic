@@ -1,5 +1,7 @@
 package com.example.seteasecloudmusic.feature.main
 
+import com.example.seteasecloudmusic.core.player.PlaybackState
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
@@ -799,10 +801,10 @@ fun AppNavigation(
             }
         }
 
-        SearchMiniPlayerBar(
+        GlobalMiniPlayerBar(
             backdrop = backdrop,
             cornerRadius = cornerRadius,
-            viewModel = searchViewModel,
+            playbackStateFlow = searchViewModel.playbackState,
             useDynamicBackdrop = useBackdropEffects,
             onPlayPauseClick = { searchViewModel.onMiniPlayerPlayPause() },
             onNextClick = { searchViewModel.onMiniPlayerNext() },
@@ -1115,13 +1117,13 @@ private fun UserAvatarButton(
 }
 
 /**
- * 搜索模式底部迷你播放条。
+ * 全局底部迷你播放条（与具体 ViewModel 解耦，仅订阅播放状态流）。
  */
 @Composable
-private fun SearchMiniPlayerBar(
+private fun GlobalMiniPlayerBar(
     backdrop: Backdrop,
     cornerRadius: Dp,
-    viewModel: SearchViewModel,
+    playbackStateFlow: StateFlow<PlaybackState>,
     useDynamicBackdrop: Boolean,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -1130,7 +1132,7 @@ private fun SearchMiniPlayerBar(
 ) {
     // 播放进度是高频状态，只在播放条这个局部重组范围内收集，避免拖动列表时
     // 让整个 AppNavigation 每 100ms 重新执行一次。
-    val playbackState by viewModel.playbackState.collectAsState()
+    val playbackState by playbackStateFlow.collectAsState()
     val hasTrack = playbackState.currentTrack != null
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
     val artworkUrl = playbackState.currentTrack?.coverUrl ?: playbackState.currentTrack?.album?.coverUrl

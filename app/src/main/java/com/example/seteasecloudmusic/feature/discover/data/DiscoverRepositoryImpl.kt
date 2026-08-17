@@ -23,7 +23,7 @@ class DiscoverRepositoryImpl @Inject constructor(
                     return@withContext Result.failure(Exception("API error code: ${response.code}"))
                 }
 
-                val playlists = response.result.map {
+                val playlists = response.result.orEmpty().map {
                     DiscoverPlaylist(
                         id = it.id,
                         name = it.name,
@@ -47,7 +47,7 @@ class DiscoverRepositoryImpl @Inject constructor(
                     return@withContext Result.failure(Exception("API error code: ${response.code}"))
                 }
 
-                val tracks = response.result
+                val tracks = response.result.orEmpty()
                     .mapNotNull { item -> item.song?.let { mapSongToTrack(it, item.picUrl) } }
                     .distinctBy { it.id }
                 Result.success(tracks)
@@ -64,13 +64,13 @@ class DiscoverRepositoryImpl @Inject constructor(
                     return@withContext Result.failure(Exception("API error code: ${response.code}"))
                 }
 
-                val toplists = response.list.map { item ->
+                val toplists = response.list.orEmpty().map { item ->
                     DiscoverToplist(
                         id = item.id,
                         name = item.name.orEmpty(),
                         coverUrl = item.coverImgUrl,
                         updateFrequency = item.updateFrequency,
-                        previews = item.tracks.map { preview ->
+                        previews = item.tracks.orEmpty().map { preview ->
                             DiscoverTrackPreview(
                                 title = preview.first.orEmpty(),
                                 artistName = preview.second.orEmpty()
@@ -92,10 +92,10 @@ class DiscoverRepositoryImpl @Inject constructor(
                     return@withContext Result.failure(Exception("API error code: ${response.code}"))
                 }
 
-                val playlists = response.playlists.map {
+                val playlists = response.playlists.orEmpty().map {
                     DiscoverPlaylist(
                         id = it.id,
-                        name = it.name,
+                        name = it.name.orEmpty(),
                         coverUrl = it.coverImgUrl,
                         playCount = it.playCount,
                         trackCount = it.trackCount,
@@ -114,7 +114,7 @@ class DiscoverRepositoryImpl @Inject constructor(
             qualityTags.add(AudioQuality.LOSSLESS)
         }
 
-        val artists = song.artists.map { artist ->
+        val artists = song.artists.orEmpty().map { artist ->
             Artist(
                 id = artist.id,
                 name = artist.name?.takeIf { it.isNotBlank() } ?: "未知歌手",

@@ -96,8 +96,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.palette.graphics.Palette
-import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.PlaybackState
@@ -172,7 +172,7 @@ fun NowPlayingScreen(
     }
 
     val context = LocalContext.current
-    val paletteImageLoader = remember(context) { ImageLoader(context) }
+    val paletteImageLoader = remember(context) { context.imageLoader }
     var dominantColor by remember { mutableStateOf(Color(0xFF241F23)) }
     var mutedColor by remember { mutableStateOf(Color(0xFF151517)) }
     var accentColor by remember { mutableStateOf(Color(0xFFBEB4AA)) }
@@ -188,7 +188,7 @@ fun NowPlayingScreen(
         try {
             val request = ImageRequest.Builder(context)
                 .data(coverUrl)
-                .size(260, 260)
+                .size(120, 120)
                 .allowHardware(false)
                 .build()
             val bitmap = (paletteImageLoader.execute(request).drawable as? BitmapDrawable)?.bitmap
@@ -1073,21 +1073,12 @@ private fun LyricsModeContent(
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val currentPositionMs by currentPosition.collectAsState()
-        val durationMs by duration.collectAsState()
         val mainTextSize = if (maxWidth < 380.dp) 27 else 29
         val topPadding = if (maxHeight < 720.dp) 78.dp else 92.dp
         val bottomPadding = if (maxHeight < 720.dp) 116.dp else 132.dp
 
-        FlamingoLyricView(
-            lyrics = lyrics.lyrics,
-            sideFlags = lyrics.sideFlags,
-            currentTimeMs = { currentPositionMs },
-            onSeek = onSeek,
-            isPlaying = isPlaying,
-            translationEnabled = true,
-            blurEnabled = true,
-            uiConfig = LyricUIConfig(
+        val cachedUiConfig = remember(mainTextSize) {
+            LyricUIConfig(
                 noLrcText = "暂无歌词",
                 blankHeight = 58,
                 mainTextSize = mainTextSize,
@@ -1102,7 +1093,18 @@ private fun LyricsModeContent(
                 inactiveTextAlpha = 0.24f,
                 activeGlowColor = 0xA6FFFFFF,
                 activeGlowRadius = 22f
-            ),
+            )
+        }
+
+        FlamingoLyricView(
+            lyrics = lyrics.lyrics,
+            sideFlags = lyrics.sideFlags,
+            currentTimeMs = { currentPosition.value },
+            onSeek = onSeek,
+            isPlaying = isPlaying,
+            translationEnabled = true,
+            blurEnabled = true,
+            uiConfig = cachedUiConfig,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
@@ -1123,8 +1125,8 @@ private fun LyricsModeContent(
         )
 
         LyricsBottomControls(
-            currentPositionMs = currentPositionMs,
-            durationMs = durationMs,
+            currentPosition = currentPosition,
+            duration = duration,
             isPlaying = isPlaying,
             onSeek = onSeek,
             onPlayPause = onPlayPause,
@@ -1226,8 +1228,8 @@ private fun LyricsHeader(
 
 @Composable
 private fun LyricsBottomControls(
-    currentPositionMs: Int,
-    durationMs: Int,
+    currentPosition: StateFlow<Int>,
+    duration: StateFlow<Int>,
     isPlaying: Boolean,
     onSeek: (Int) -> Unit,
     onPlayPause: () -> Unit,
@@ -1235,6 +1237,9 @@ private fun LyricsBottomControls(
     onPrevious: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs by currentPosition.collectAsState()
+    val durationMs by duration.collectAsState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()

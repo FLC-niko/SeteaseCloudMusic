@@ -4,7 +4,7 @@ import com.google.gson.annotations.SerializedName
 
 data class PersonalizedResponse(
     val code: Int = 0,
-    val result: List<PersonalizedItemResponse> = emptyList()
+    val result: List<PersonalizedItemResponse>? = null
 )
 
 data class PersonalizedItemResponse(
@@ -18,7 +18,7 @@ data class PersonalizedItemResponse(
 
 data class PersonalizedNewsongResponse(
     val code: Int = 0,
-    val result: List<PersonalizedNewsongItemResponse> = emptyList()
+    val result: List<PersonalizedNewsongItemResponse>? = null
 )
 
 data class PersonalizedNewsongItemResponse(
@@ -32,7 +32,7 @@ data class NewsongItemResponse(
     val id: Long = 0L,
     val name: String? = null,
     @SerializedName("artists")
-    val artists: List<NewsongArtistResponse> = emptyList(),
+    val artists: List<NewsongArtistResponse>? = null,
     @SerializedName("album")
     val album: NewsongAlbumResponse? = null,
     val fee: Int? = null,
@@ -57,7 +57,7 @@ data class NewsongPrivilegeResponse(
 
 data class ToplistDetailResponse(
     val code: Int = 0,
-    val list: List<ToplistItemResponse> = emptyList()
+    val list: List<ToplistItemResponse>? = null
 )
 
 data class ToplistItemResponse(
@@ -65,7 +65,7 @@ data class ToplistItemResponse(
     val name: String? = null,
     val coverImgUrl: String? = null,
     val updateFrequency: String? = null,
-    val tracks: List<ToplistTrackPreviewResponse> = emptyList()
+    val tracks: List<ToplistTrackPreviewResponse>? = null
 )
 
 data class ToplistTrackPreviewResponse(
@@ -75,7 +75,7 @@ data class ToplistTrackPreviewResponse(
 
 data class HotPlaylistResponse(
     val code: Int = 0,
-    val playlists: List<HotPlaylistItemResponse> = emptyList()
+    val playlists: List<HotPlaylistItemResponse>? = null
 )
 
 data class HotPlaylistItemResponse(
