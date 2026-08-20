@@ -133,6 +133,10 @@ class AuthViewModel @Inject constructor(
         startQrLogin()
     }
 
+    fun onAccountSheetOpened() {
+        maybeRefreshProfileIfNeeded(_uiState.value.authSession)
+    }
+
     fun onAccountDetailsOpened() {
         if (!_uiState.value.isLoggedIn) return
         stopQrPolling()
@@ -144,6 +148,7 @@ class AuthViewModel @Inject constructor(
                 showLogoutConfirmDialog = false
             )
         }
+        maybeRefreshProfileIfNeeded(_uiState.value.authSession)
     }
 
     fun onAccountDetailsDestinationOpened(destination: AccountDetailsDestination) {

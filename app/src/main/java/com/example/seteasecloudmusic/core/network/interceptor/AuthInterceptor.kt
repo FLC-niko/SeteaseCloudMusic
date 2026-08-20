@@ -113,14 +113,13 @@ class AuthInterceptor(private val context: Context) : Interceptor {
      * 下次请求时需要带上这个 Cookie，所以要存起来。
      */
     private fun saveCookiesFromResponse(response: Response) {
-        // 优先使用响应头里的 Set-Cookie
+        // 保存响应头里的 Set-Cookie；后续响应体 cookie 会合并进来。
         val headerCookie = extractCookieFromHeaders(response)
         if (!headerCookie.isNullOrBlank()) {
             saveCookie(headerCookie)
-            return
         }
 
-        // 某些登录接口（例如二维码登录）会把 cookie 放在响应体里
+        // 某些登录接口（例如二维码登录）会把更完整的 cookie 放在响应体里。
         val bodyCookie = extractCookieFromBody(response)
         if (!bodyCookie.isNullOrBlank()) {
             saveCookie(bodyCookie)
@@ -189,14 +188,37 @@ class AuthInterceptor(private val context: Context) : Interceptor {
     private fun saveCookie(cookie: String) {
         val prefs = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
         val editor = prefs.edit()
+        val mergedCookie = mergeCookies(getSavedCookie(), cookie)
 
         // 存入 Cookie
-        editor.putString(COOKIE_KEY, cookie)
+        editor.putString(COOKIE_KEY, mergedCookie)
 
         // 异步保存到磁盘
         // 注意：用 apply() 而不是 commit()
         // apply() 在后台执行，不会卡住 UI
         editor.apply()
+    }
+
+    private fun mergeCookies(existingCookie: String?, newCookie: String): String {
+        val cookiePairs = linkedMapOf<String, String>()
+
+        fun append(cookie: String?) {
+            cookie
+                ?.split(";")
+                ?.map { it.trim() }
+                ?.filter { it.contains("=") }
+                ?.forEach { pair ->
+                    val key = pair.substringBefore("=").trim()
+                    if (key.isNotBlank()) {
+                        cookiePairs[key] = pair
+                    }
+                }
+        }
+
+        append(existingCookie)
+        append(newCookie)
+
+        return cookiePairs.values.joinToString("; ")
     }
 
     // ==================== 公开的辅助方法 ====================

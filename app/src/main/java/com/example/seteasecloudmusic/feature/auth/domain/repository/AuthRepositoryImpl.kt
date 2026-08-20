@@ -2,7 +2,9 @@ package com.example.seteasecloudmusic.feature.auth.domain.repository
 
 import android.content.Context
 import com.example.seteasecloudmusic.feature.auth.data.AuthService
+import com.example.seteasecloudmusic.feature.auth.data.model.AccountResponse
 import com.example.seteasecloudmusic.feature.auth.data.model.LoginResponse
+import com.example.seteasecloudmusic.feature.auth.data.model.ProfileResponse
 import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.model.LoginMethod
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
@@ -32,6 +34,7 @@ class AuthRepositoryImpl @Inject constructor(
         return runCatching {
             val response = authService.loginWithPassword(phone, password)
             val session = parseLoginResponse(response, LoginMethod.PHONE)
+            saveNetworkCookie(session.cookie)
             val enrichedSession = completeSessionProfileIfMissing(session)
             saveSession(enrichedSession)
             enrichedSession
@@ -46,6 +49,7 @@ class AuthRepositoryImpl @Inject constructor(
         return runCatching {
             val response = authService.loginWithCaptcha(phone, captcha)
             val session = parseLoginResponse(response, LoginMethod.CAPTCHA)
+            saveNetworkCookie(session.cookie)
             val enrichedSession = completeSessionProfileIfMissing(session)
             saveSession(enrichedSession)
             enrichedSession
@@ -102,6 +106,7 @@ class AuthRepositoryImpl @Inject constructor(
                         loginMethod = LoginMethod.QR,
                         isLoggedIn = true
                     )
+                    saveNetworkCookie(baseSession.cookie)
                     val session = completeSessionProfileIfMissing(baseSession)
                     saveSession(session)
                     QrPollResult(state = QrStatus.SUCCESS, session = session, message = "登录成功")
@@ -142,6 +147,7 @@ class AuthRepositoryImpl @Inject constructor(
         val current = loadSessionFromPrefs()
         return if (current?.isLoggedIn == true) {
             runCatching {
+                saveNetworkCookie(current.cookie)
                 val enrichedSession = completeSessionProfileIfMissing(current)
                 if (enrichedSession != current) {
                     saveSession(enrichedSession)
@@ -194,7 +200,7 @@ class AuthRepositoryImpl @Inject constructor(
             return session
         }
 
-        val snapshot = fetchProfileSnapshot() ?: return session
+        val snapshot = fetchUserAccountSnapshot(session.cookie) ?: return session
         return session.copy(
             userId = session.userId ?: snapshot.userId,
             nickname = session.nickname ?: snapshot.nickname,
@@ -202,9 +208,12 @@ class AuthRepositoryImpl @Inject constructor(
         )
     }
 
-    private suspend fun fetchProfileSnapshot(): ProfileSnapshot? {
+    private suspend fun fetchUserAccountSnapshot(cookie: String?): ProfileSnapshot? {
         return try {
-            val response = authService.getLoginStatus(System.currentTimeMillis())
+            val response = authService.getUserAccount(
+                timestamp = System.currentTimeMillis(),
+                cookie = cookie
+            )
             if (!response.isSuccessful) {
                 return null
             }
@@ -214,27 +223,44 @@ class AuthRepositoryImpl @Inject constructor(
                 return null
             }
 
-            val nestedCode = body.data?.code ?: 200
-            if (nestedCode != 200) {
-                return null
+            buildProfileSnapshot(
+                profile = body.profile,
+                account = body.account
+            ).also { snapshot ->
+                if (snapshot?.nickname.isNullOrBlank() || snapshot?.avatarUrl.isNullOrBlank()) {
+                    android.util.Log.d(
+                        "AuthRepositoryImpl",
+                        "User account profile missing: hasCookie=${!cookie.isNullOrBlank()}, " +
+                            "userId=${snapshot?.userId}, " +
+                            "anonymous=${body.account?.isAnonymousAccount()}, " +
+                            "profileNull=${body.profile == null}"
+                    )
+                }
             }
-
-            val profile = body.data?.profile ?: body.profile
-            val account = body.data?.account ?: body.account
-            val snapshot = ProfileSnapshot(
-                userId = profile?.userId ?: account?.id,
-                nickname = profile?.nickname?.takeIf { it.isNotBlank() },
-                avatarUrl = profile?.avatarUrl?.takeIf { it.isNotBlank() }
-            )
-
-            if (snapshot.userId == null && snapshot.nickname == null && snapshot.avatarUrl == null) {
-                null
-            } else {
-                snapshot
-            }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("AuthRepositoryImpl", "Failed to fetch user account profile", e)
             null
         }
+    }
+
+    private fun buildProfileSnapshot(
+        profile: ProfileResponse?,
+        account: AccountResponse?
+    ): ProfileSnapshot? {
+        val accountId = account
+            ?.takeUnless { it.isAnonymousAccount() }
+            ?.id
+        val snapshot = ProfileSnapshot(
+            userId = profile?.userId ?: accountId,
+            nickname = profile?.nickname?.takeIf { it.isNotBlank() },
+            avatarUrl = profile?.avatarUrl?.takeIf { it.isNotBlank() }
+        )
+
+        return snapshot.takeUnless { it.isEmpty() }
+    }
+
+    private fun AccountResponse.isAnonymousAccount(): Boolean {
+        return anonimousUser == true || anonymousUser == true
     }
 
     private fun hasMissingProfile(session: AuthSession): Boolean {
@@ -289,11 +315,26 @@ class AuthRepositoryImpl @Inject constructor(
             .apply()
     }
 
+    private fun saveNetworkCookie(cookie: String?) {
+        if (cookie.isNullOrBlank()) {
+            return
+        }
+
+        context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(COOKIE_KEY, cookie)
+            .commit()
+    }
+
     private data class ProfileSnapshot(
         val userId: Long?,
         val nickname: String?,
         val avatarUrl: String?
-    )
+    ) {
+        fun isEmpty(): Boolean {
+            return userId == null && nickname == null && avatarUrl == null
+        }
+    }
 
     companion object {
         private const val PREF_NAME = "auth_prefs"

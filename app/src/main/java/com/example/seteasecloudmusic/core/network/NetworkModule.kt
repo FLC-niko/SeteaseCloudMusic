@@ -6,6 +6,7 @@ import com.example.seteasecloudmusic.BuildConfig
 import com.example.seteasecloudmusic.feature.artist.data.ArtistService
 import com.example.seteasecloudmusic.core.network.interceptor.AuthInterceptor
 import com.example.seteasecloudmusic.feature.auth.data.AuthService
+import com.example.seteasecloudmusic.feature.discover.data.DiscoverService
 import com.example.seteasecloudmusic.feature.home.data.DailyRecommendService
 import com.example.seteasecloudmusic.feature.search.data.NeteaseMusicService
 import dagger.Module
@@ -174,6 +175,14 @@ class NetworkModule {
     @Singleton
     fun provideDailyRecommendService(retrofit: Retrofit): DailyRecommendService =
         retrofit.create(DailyRecommendService::class.java)
+
+    /**
+     * 暴露发现页 API 服务实例。
+     */
+    @Provides
+    @Singleton
+    fun provideDiscoverService(retrofit: Retrofit): DiscoverService =
+        retrofit.create(DiscoverService::class.java)
 
     //改成依赖注入的方式后，提供 NeteaseMusicService 的方法可以直接注入 Retrofit 实例，无需手动调用 provideHttpClient 和 provideRetrofit。
 
