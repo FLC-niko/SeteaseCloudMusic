@@ -73,7 +73,7 @@ fun WebPlayerScreen(
             settings.domStorageEnabled = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-            // 👇👇👇 加上这两行！强制 WebView 读取前端的 Viewport 视口配置
+            // 强制 WebView 读取前端的 Viewport 视口配置
             settings.useWideViewPort = false
             settings.loadWithOverviewMode = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -104,7 +104,8 @@ fun WebPlayerScreen(
                 "SCMBridge"
             )
 
-            loadUrl("http://192.168.1.184:5173")
+            // 开发调试：新电脑当前局域网 IP (亦可结合 adb reverse 使用 http://localhost:5173)
+            loadUrl("http://192.168.1.113:5173")
         }
         }
     )
