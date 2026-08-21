@@ -44,8 +44,7 @@ data class PlaybackState(
 @Singleton
 class MusicPlayerController @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase,
-
+    private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase
 ) {
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -58,6 +57,7 @@ class MusicPlayerController @Inject constructor(
     // 进度轮询任务：每 500ms 同步一次 position/duration 到 UI
     private var progressJob: Job? = null
     private var playJob: Job? = null
+    private var prefetchJob: Job? = null
     private var latestPlayRequestId: Long = 0L
 
     private val _playbackState = MutableStateFlow(PlaybackState())
@@ -169,10 +169,11 @@ class MusicPlayerController @Inject constructor(
     fun playPrevious() {
         val state = _playbackState.value
         val previousIndex = state.currentQueueIndex - 1
-        if (previousIndex !in state.queueTracks.indices) {
-            return
+        if (previousIndex in state.queueTracks.indices) {
+            playQueueIndex(previousIndex)
+        } else {
+            seekTo(0)
         }
-        playQueueIndex(previousIndex)
     }
 
     fun replayCurrent() {
@@ -197,6 +198,8 @@ class MusicPlayerController @Inject constructor(
         stopProgressTicker()
         playJob?.cancel()
         playJob = null
+        prefetchJob?.cancel()
+        prefetchJob = null
         controller?.removeListener(playerListener)
         controller?.release()
         controller = null
@@ -215,6 +218,7 @@ class MusicPlayerController @Inject constructor(
         val track = queue[index]
         playJob?.cancel()
         val requestId = nextPlayRequestId()
+
         playJob = scope.launch {
             _playbackState.update {
                 it.copy(
@@ -225,6 +229,7 @@ class MusicPlayerController @Inject constructor(
                 )
             }
 
+            // 1. 获取当前曲目直链（命中缓存 0ms 即刻返回）
             val prepared = withContext(ioDispatcher) { prepareTrackForPlaybackUseCase(track) }
             if (isStaleRequest(requestId)) {
                 return@launch
@@ -263,6 +268,9 @@ class MusicPlayerController @Inject constructor(
                     } ?: _playbackState.update {
                         it.copy(status = PlayerStatus.ERROR, errorMessage = "Controller not connected")
                     }
+
+                    // 2. 核心秒切优化：在后台静默预加载上一首和下一首的播放直链
+                    prefetchNeighbors(index)
                 }
                 .onFailure { e ->
                     if (isStaleRequest(requestId)) {
@@ -275,18 +283,46 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
+    /**
+     * 智能预加载相邻曲目播放直链到内存缓存（实现秒切 0ms 核心）
+     */
+    private fun prefetchNeighbors(currentIndex: Int) {
+        prefetchJob?.cancel()
+        prefetchJob = scope.launch(ioDispatcher) {
+            val queue = _playbackState.value.queueTracks
+            if (queue.isEmpty()) return@launch
+
+            // 优先预加载下一首
+            val nextIndex = currentIndex + 1
+            if (nextIndex in queue.indices) {
+                runCatching { prepareTrackForPlaybackUseCase(queue[nextIndex]) }
+            } else if (queue.isNotEmpty()) {
+                // 循环到第一首
+                runCatching { prepareTrackForPlaybackUseCase(queue[0]) }
+            }
+
+            // 预加载上一首
+            val prevIndex = currentIndex - 1
+            if (prevIndex in queue.indices) {
+                runCatching { prepareTrackForPlaybackUseCase(queue[prevIndex]) }
+            }
+        }
+    }
+
     private fun playNextInternal(): Boolean {
         val state = _playbackState.value
         val nextIndex = state.currentQueueIndex + 1
-        if (nextIndex !in state.queueTracks.indices) {
-            _playbackState.update {
-                it.copy(status = PlayerStatus.ENDED, errorMessage = null)
-            }
-            return false
+        if (nextIndex in state.queueTracks.indices) {
+            playQueueIndex(nextIndex)
+            return true
+        } else if (state.queueTracks.isNotEmpty()) {
+            playQueueIndex(0)
+            return true
         }
-
-        playQueueIndex(nextIndex)
-        return true
+        _playbackState.update {
+            it.copy(status = PlayerStatus.ENDED, errorMessage = null)
+        }
+        return false
     }
 
     private fun nextPlayRequestId(): Long {

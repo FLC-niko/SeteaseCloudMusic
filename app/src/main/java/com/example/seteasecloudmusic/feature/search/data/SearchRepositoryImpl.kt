@@ -6,10 +6,11 @@ import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
-import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
+import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /**
@@ -19,12 +20,13 @@ import javax.inject.Inject
  * 1. 调用具体数据源，例如 Retrofit API、本地数据库、缓存等。
  * 2. 把网络返回的数据模型转换成 domain 层真正使用的模型。
  * 3. 屏蔽数据来源细节，让上层只依赖抽象接口。
- *
- * 当前 `MusicRepositoryImpl` 负责音乐搜索和歌曲播放链接获取。
  */
 class SearchRepositoryImpl @Inject constructor(
     private val musicService: NeteaseMusicService
 ) : SearchRepository {
+
+    // 内存高速缓存：已解析的歌曲播放直链，避免重复发起耗时网络请求（0ms 极速切歌）
+    private val trackUrlCache = ConcurrentHashMap<Long, String>()
 
     override suspend fun searchTracks(
         query: String,
@@ -32,7 +34,6 @@ class SearchRepositoryImpl @Inject constructor(
         offset: Int
     ): Result<List<Track>> = withContext(Dispatchers.IO) {
         try {
-            // 通过远端搜索接口拉取歌曲列表，再映射成领域模型 Track。
             val response = musicService.searchSongs(query, limit, offset)
             if (response.code == 200) {
                 val tracks = response.result?.songs?.map { song ->
@@ -52,11 +53,19 @@ class SearchRepositoryImpl @Inject constructor(
         level: String
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            // 优先尝试所选级别与 hires 高解析度无损，若歌曲或账号受限再自动降级至无损/极高完整音源
-            val levelsToTry = if (level.isNotBlank()) {
-                listOf(level, "hires", "lossless", "exhigh", "standard")
+            // 1. 命中内存缓存直接秒级返回 (0ms)
+            trackUrlCache[trackId]?.let { cachedUrl ->
+                if (cachedUrl.isNotBlank()) {
+                    return@withContext Result.success(cachedUrl)
+                }
+            }
+
+            // 2. 优化请求策略：优先请求无损/极高标准，单次网络往返直出最佳音源
+            val primaryLevel = if (level.isNotBlank()) level else "lossless"
+            val levelsToTry = if (primaryLevel == "hires") {
+                listOf("hires", "lossless", "standard")
             } else {
-                listOf("hires", "lossless", "exhigh", "standard")
+                listOf(primaryLevel, "standard")
             }.distinct()
 
             var bestUrl: String? = null
@@ -85,6 +94,7 @@ class SearchRepositoryImpl @Inject constructor(
 
             val finalUrl = bestUrl ?: trialUrl
             if (finalUrl != null) {
+                trackUrlCache[trackId] = finalUrl
                 Result.success(finalUrl)
             } else {
                 Result.failure(Exception("URL parameter is null"))
@@ -141,7 +151,7 @@ class SearchRepositoryImpl @Inject constructor(
                 coverUrl = song.album?.coverUrl
             ),
             coverUrl = song.album?.coverUrl,
-            qualityTags = emptyList(), // 搜索建议接口不包含音质信息
+            qualityTags = emptyList(),
             playableUrl = null,
             isPlayable = true
         )
@@ -177,7 +187,6 @@ class SearchRepositoryImpl @Inject constructor(
      * 把接口层的 `SearchSongItemResponse` 转换成 domain 层统一使用的 `Track`。
      */
     private fun mapToDomainTrack(song: SearchSongItemResponse): Track {
-        // 根据接口返回的音质字段，整理出界面更容易消费的标签列表。
         val qualityTags = mutableListOf<AudioQuality>()
         if (song.sq != null) qualityTags.add(AudioQuality.LOSSLESS)
         if (song.hr != null) qualityTags.add(AudioQuality.HIRES)
@@ -192,21 +201,17 @@ class SearchRepositoryImpl @Inject constructor(
                 Artist(
                     id = artist.id ?: 0L,
                     name = artist.name ?: "未知歌手",
-                    coverUrl = null // 搜索接口一般不返回歌手图，所以这里给空
+                    coverUrl = null
                 )
             },
             album = Album(
                 id = song.al?.id ?: 0L,
                 title = song.al?.name ?: "未知专辑",
-                // 搜索接口通常直接返回专辑封面链接，UI 可以直接使用。
                 coverUrl = song.al?.picUrl
             ),
-            // Track 再保留一份 coverUrl，减少上层读取 album.coverUrl 的样板代码。
             coverUrl = song.al?.picUrl,
             qualityTags = qualityTags,
-            // 播放地址需要单独请求，因此这里只先保留空值。
             playableUrl = null,
-            // fee == 4 表示需要单独购买的数字专辑，VIP歌曲(fee == 1)及普通歌曲正常允许播放
             isPlayable = song.fee != 4
         )
     }
