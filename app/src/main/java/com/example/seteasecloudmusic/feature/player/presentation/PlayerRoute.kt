@@ -10,15 +10,9 @@ fun PlayerRoute(
     onClose: () -> Unit
 ) {
     val playbackState by viewModel.playbackState.collectAsState()
-    val lyricsState by viewModel.lyricsState.collectAsState()
-    val currentPosition by viewModel.currentPositionMs.collectAsState()
-    val activeLineIndex by viewModel.activeLineIndex.collectAsState()
 
     NowPlayingScreen(
         playbackState = playbackState,
-        lyricsState = lyricsState,
-        currentPosition = currentPosition,
-        activeLineIndex = activeLineIndex,
         onClose = onClose,
         onPlayPause = viewModel::onPlayPause,
         onNext = viewModel::onNext,
