@@ -52,17 +52,42 @@ class SearchRepositoryImpl @Inject constructor(
         level: String
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            // 播放链接属于运行时数据，不直接写死在 Track 中，而是按需查询。
-            val response = musicService.getSongUrl(trackId, level)
-            if (response.code == 200) {
-                val url = response.data.firstOrNull()?.url
-                if (url != null) {
-                    Result.success(url)
-                } else {
-                    Result.failure(Exception("URL parameter is null"))
-                }
+            // 优先尝试所选级别与 hires 高解析度无损，若歌曲或账号受限再自动降级至无损/极高完整音源
+            val levelsToTry = if (level.isNotBlank()) {
+                listOf(level, "hires", "lossless", "exhigh", "standard")
             } else {
-                Result.failure(Exception("API Error with code: ${response.code}"))
+                listOf("hires", "lossless", "exhigh", "standard")
+            }.distinct()
+
+            var bestUrl: String? = null
+            var trialUrl: String? = null
+
+            for (lvl in levelsToTry) {
+                val response = musicService.getSongUrl(trackId, lvl)
+                if (response.code == 200) {
+                    val item = response.data.firstOrNull()
+                    val url = item?.url
+                    if (!url.isNullOrBlank()) {
+                        // 判断是否为试听限制（freeTrialInfo 存在或者不可播原因）
+                        val isTrial = item.freeTrialInfo != null ||
+                            (item.freeTimeTrialPrivilege?.type != null && item.freeTimeTrialPrivilege.type != 0) ||
+                            item.freeTrialPrivilege?.cannotListenReason == 1
+
+                        if (!isTrial) {
+                            bestUrl = url
+                            break
+                        } else if (trialUrl == null) {
+                            trialUrl = url
+                        }
+                    }
+                }
+            }
+
+            val finalUrl = bestUrl ?: trialUrl
+            if (finalUrl != null) {
+                Result.success(finalUrl)
+            } else {
+                Result.failure(Exception("URL parameter is null"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -181,8 +206,8 @@ class SearchRepositoryImpl @Inject constructor(
             qualityTags = qualityTags,
             // 播放地址需要单独请求，因此这里只先保留空值。
             playableUrl = null,
-            // 这里先用 fee 做一层基础可播判断，后续可再接更细的版权/权限逻辑。
-            isPlayable = song.fee != 1 && song.fee != 4
+            // fee == 4 表示需要单独购买的数字专辑，VIP歌曲(fee == 1)及普通歌曲正常允许播放
+            isPlayable = song.fee != 4
         )
     }
 }

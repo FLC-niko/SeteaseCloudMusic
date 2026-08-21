@@ -282,7 +282,11 @@ class AuthRepositoryImpl @Inject constructor(
 
     private fun loadSessionFromPrefs(): AuthSession? {
         val cookie = prefs.getString(KEY_COOKIE, null)
+            ?: context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE).getString(COOKIE_KEY, null)
         if (cookie.isNullOrBlank()) return null
+
+        // 确保冷启动时网络拦截器的 Cookie 存储即刻同步有效
+        saveNetworkCookie(cookie)
 
         val userId = prefs.getLong(KEY_USER_ID, -1L).takeIf { it != -1L }
         val nickname = prefs.getString(KEY_NICKNAME, null)

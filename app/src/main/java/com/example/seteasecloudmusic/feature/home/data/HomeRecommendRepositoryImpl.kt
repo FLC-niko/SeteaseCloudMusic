@@ -93,7 +93,9 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     private fun hasLoginCookie(): Boolean {
         val cookie = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
             .getString(COOKIE_KEY, null)
-        return !cookie.isNullOrBlank()
+        if (!cookie.isNullOrBlank()) return true
+        return !context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .getString("cookie", null).isNullOrBlank()
     }
 
     companion object {
