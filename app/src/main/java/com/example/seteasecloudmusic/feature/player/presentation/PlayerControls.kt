@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
@@ -35,25 +38,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.seteasecloudmusic.core.player.PlaybackMode
 
 @Composable
 fun PlayerControls(
     currentPositionMs: Int,
     durationMs: Int,
     isPlaying: Boolean,
+    playbackMode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     dominantColor: Color = Color.Transparent,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
+    onTogglePlaybackMode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val progress = if (durationMs > 0) {
@@ -95,22 +99,35 @@ fun PlayerControls(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 3. 核心主控制按键（上一首、播放/暂停、下一首）
+        // 3. 核心主控制按键（模式切换、上一首、播放/暂停、下一首、模式提示按钮）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 播放模式切换按钮（顺序循环 / 随机播放）
+            IconButton(
+                onClick = onTogglePlaybackMode,
+                modifier = Modifier.size(46.dp)
+            ) {
+                Icon(
+                    imageVector = if (playbackMode == PlaybackMode.SHUFFLE) Icons.Filled.Shuffle else Icons.Filled.Repeat,
+                    contentDescription = if (playbackMode == PlaybackMode.SHUFFLE) "当前：随机播放" else "当前：顺序播放",
+                    tint = if (playbackMode == PlaybackMode.SHUFFLE) Color(0xFFFA233B) else Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
             // 上一首
             IconButton(
                 onClick = onPrevious,
-                modifier = Modifier.size(52.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.SkipPrevious,
                     contentDescription = "上一首",
                     tint = Color.White,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(34.dp)
                 )
             }
 
@@ -144,13 +161,29 @@ fun PlayerControls(
             // 下一首
             IconButton(
                 onClick = onNext,
-                modifier = Modifier.size(52.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.SkipNext,
                     contentDescription = "下一首",
                     tint = Color.White,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+
+            // 模式状态辅助胶囊按钮（点击也可直接切换）
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onTogglePlaybackMode),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (playbackMode == PlaybackMode.SHUFFLE) "随机" else "顺序",
+                    color = if (playbackMode == PlaybackMode.SHUFFLE) Color(0xFFFA233B) else Color.White.copy(alpha = 0.75f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }

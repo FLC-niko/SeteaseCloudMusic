@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.core.cache
 
 import android.content.Context
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.PlaybackMode
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -12,7 +13,8 @@ data class SavedPlaybackState(
     val queueTracks: List<Track> = emptyList(),
     val currentQueueIndex: Int = -1,
     val currentPositionMs: Int = 0,
-    val durationMs: Int = 0
+    val durationMs: Int = 0,
+    val playbackMode: PlaybackMode = PlaybackMode.SEQUENTIAL
 )
 
 @Singleton

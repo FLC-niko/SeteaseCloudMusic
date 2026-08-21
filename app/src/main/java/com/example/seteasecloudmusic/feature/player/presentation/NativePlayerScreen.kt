@@ -256,10 +256,12 @@ fun NativePlayerScreen(
                 currentPositionMs = currentPosition,
                 durationMs = playbackState.durationMs,
                 isPlaying = isPlaying,
+                playbackMode = playbackState.playbackMode,
                 onPlayPause = { playerViewModel.onPlayPause() },
                 onNext = { playerViewModel.onNext() },
                 onPrevious = { playerViewModel.onPrevious() },
-                onSeekTo = { posMs -> playerViewModel.seekTo(posMs) }
+                onSeekTo = { posMs -> playerViewModel.seekTo(posMs) },
+                onTogglePlaybackMode = { playerViewModel.togglePlaybackMode() }
             )
         }
     }

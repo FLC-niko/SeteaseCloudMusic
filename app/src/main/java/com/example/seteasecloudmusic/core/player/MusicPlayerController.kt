@@ -33,6 +33,11 @@ import javax.inject.Singleton
 
 enum class PlayerStatus { IDLE, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
 
+enum class PlaybackMode {
+    SEQUENTIAL,  // 顺序播放 / 列表循环
+    SHUFFLE      // 随机播放
+}
+
 data class PlaybackState(
     val status: PlayerStatus = PlayerStatus.IDLE,
     val currentTrack: Track? = null,
@@ -40,7 +45,8 @@ data class PlaybackState(
     val durationMs: Int = 0,
     val errorMessage: String? = null,
     val queueTracks: List<Track> = emptyList(),
-    val currentQueueIndex: Int = -1
+    val currentQueueIndex: Int = -1,
+    val playbackMode: PlaybackMode = PlaybackMode.SEQUENTIAL
 )
 
 @Singleton
@@ -64,6 +70,9 @@ class MusicPlayerController @Inject constructor(
     private var latestPlayRequestId: Long = 0L
     private var lastPersistTimeMs: Long = 0L
 
+    // 历史播放足迹栈：记录实际听过的曲目顺序，切上一首时按真实顺序依次倒序返回
+    private val playbackHistory = ArrayDeque<Int>()
+
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
@@ -79,7 +88,8 @@ class MusicPlayerController @Inject constructor(
                     currentPositionMs = saved.currentPositionMs,
                     durationMs = saved.durationMs,
                     queueTracks = saved.queueTracks,
-                    currentQueueIndex = saved.currentQueueIndex
+                    currentQueueIndex = saved.currentQueueIndex,
+                    playbackMode = saved.playbackMode
                 )
             }
         }
@@ -180,6 +190,8 @@ class MusicPlayerController @Inject constructor(
             return
         }
 
+        playbackHistory.clear()
+
         _playbackState.update {
             it.copy(
                 queueTracks = snapshot,
@@ -202,12 +214,52 @@ class MusicPlayerController @Inject constructor(
 
     fun playPrevious() {
         val state = _playbackState.value
-        val previousIndex = state.currentQueueIndex - 1
-        if (previousIndex in state.queueTracks.indices) {
-            playQueueIndex(previousIndex, initialSeekMs = 0)
-        } else {
+        val queue = state.queueTracks
+        if (queue.isEmpty()) return
+
+        // 1. 如果当前歌曲已播放超过 3 秒，点击上一首优先从头播放当前歌曲（符合主流音乐 App 习惯）
+        if (state.currentPositionMs > 3000) {
             seekTo(0)
+            return
         }
+
+        // 2. 优先从历史足迹栈中弹出最近听过的曲目返回（实现随机模式下上一首按听歌顺序逐首回退）
+        if (playbackHistory.isNotEmpty()) {
+            val prevIndex = playbackHistory.removeLast()
+            if (prevIndex in queue.indices && prevIndex != state.currentQueueIndex) {
+                playQueueIndex(prevIndex, initialSeekMs = 0)
+                return
+            }
+        }
+
+        // 3. 若无历史记录，顺序模式下取前一首，随机模式下回到当前歌曲开头
+        val prevIndex = when (state.playbackMode) {
+            PlaybackMode.SHUFFLE -> {
+                seekTo(0)
+                return
+            }
+            PlaybackMode.SEQUENTIAL -> {
+                val idx = state.currentQueueIndex - 1
+                if (idx < 0) queue.size - 1 else idx
+            }
+        }
+        playQueueIndex(prevIndex, initialSeekMs = 0)
+    }
+
+    fun togglePlaybackMode() {
+        val nextMode = when (_playbackState.value.playbackMode) {
+            PlaybackMode.SEQUENTIAL -> PlaybackMode.SHUFFLE
+            PlaybackMode.SHUFFLE -> PlaybackMode.SEQUENTIAL
+        }
+        _playbackState.update { it.copy(playbackMode = nextMode) }
+        prefetchNeighbors(_playbackState.value.currentQueueIndex)
+        persistCurrentState()
+    }
+
+    fun setPlaybackMode(mode: PlaybackMode) {
+        _playbackState.update { it.copy(playbackMode = mode) }
+        prefetchNeighbors(_playbackState.value.currentQueueIndex)
+        persistCurrentState()
     }
 
     fun replayCurrent() {
@@ -355,22 +407,33 @@ class MusicPlayerController @Inject constructor(
     private fun prefetchNeighbors(currentIndex: Int) {
         prefetchJob?.cancel()
         prefetchJob = scope.launch(ioDispatcher) {
-            val queue = _playbackState.value.queueTracks
+            val state = _playbackState.value
+            val queue = state.queueTracks
             if (queue.isEmpty()) return@launch
 
-            // 优先预加载下一首
-            val nextIndex = currentIndex + 1
-            if (nextIndex in queue.indices) {
-                runCatching { prepareTrackForPlaybackUseCase(queue[nextIndex]) }
-            } else if (queue.isNotEmpty()) {
-                // 循环到第一首
-                runCatching { prepareTrackForPlaybackUseCase(queue[0]) }
-            }
+            when (state.playbackMode) {
+                PlaybackMode.SEQUENTIAL -> {
+                    // 优先预加载下一首
+                    val nextIndex = (currentIndex + 1) % queue.size
+                    runCatching { prepareTrackForPlaybackUseCase(queue[nextIndex]) }
 
-            // 预加载上一首
-            val prevIndex = currentIndex - 1
-            if (prevIndex in queue.indices) {
-                runCatching { prepareTrackForPlaybackUseCase(queue[prevIndex]) }
+                    // 预加载上一首
+                    val prevIndex = if (currentIndex - 1 < 0) queue.size - 1 else currentIndex - 1
+                    runCatching { prepareTrackForPlaybackUseCase(queue[prevIndex]) }
+                }
+                PlaybackMode.SHUFFLE -> {
+                    if (queue.size > 1) {
+                        val candidates = queue.indices.filter { it != currentIndex }
+                        val nextRandom = candidates.random()
+                        runCatching { prepareTrackForPlaybackUseCase(queue[nextRandom]) }
+                    }
+                    if (playbackHistory.isNotEmpty()) {
+                        val lastHistoryIndex = playbackHistory.last()
+                        if (lastHistoryIndex in queue.indices) {
+                            runCatching { prepareTrackForPlaybackUseCase(queue[lastHistoryIndex]) }
+                        }
+                    }
+                }
             }
         }
     }
@@ -383,7 +446,8 @@ class MusicPlayerController @Inject constructor(
                     queueTracks = state.queueTracks,
                     currentQueueIndex = state.currentQueueIndex,
                     currentPositionMs = state.currentPositionMs,
-                    durationMs = state.durationMs
+                    durationMs = state.durationMs,
+                    playbackMode = state.playbackMode
                 )
             )
         }
@@ -391,18 +455,45 @@ class MusicPlayerController @Inject constructor(
 
     private fun playNextInternal(): Boolean {
         val state = _playbackState.value
-        val nextIndex = state.currentQueueIndex + 1
-        if (nextIndex in state.queueTracks.indices) {
-            playQueueIndex(nextIndex, initialSeekMs = 0)
-            return true
-        } else if (state.queueTracks.isNotEmpty()) {
-            playQueueIndex(0, initialSeekMs = 0)
-            return true
+        val queue = state.queueTracks
+        if (queue.isEmpty()) {
+            _playbackState.update {
+                it.copy(status = PlayerStatus.ENDED, errorMessage = null)
+            }
+            return false
         }
-        _playbackState.update {
-            it.copy(status = PlayerStatus.ENDED, errorMessage = null)
+
+        // 记录当前曲目到历史足迹栈，供上一首逐一回溯
+        if (state.currentQueueIndex in queue.indices) {
+            playbackHistory.addLast(state.currentQueueIndex)
+            if (playbackHistory.size > 50) {
+                playbackHistory.removeFirst()
+            }
         }
-        return false
+
+        val nextIndex = when (state.playbackMode) {
+            PlaybackMode.SHUFFLE -> {
+                if (queue.size > 1) {
+                    val candidates = queue.indices.filter { it != state.currentQueueIndex }
+                    // 优先选择不在最近历史中的候选曲目，避免短时间内重复
+                    val recentHistory = playbackHistory.takeLast(queue.size.coerceAtMost(8)).toSet()
+                    val unplayedCandidates = candidates.filter { it !in recentHistory }
+                    if (unplayedCandidates.isNotEmpty()) {
+                        unplayedCandidates.random()
+                    } else {
+                        candidates.random()
+                    }
+                } else {
+                    0
+                }
+            }
+            PlaybackMode.SEQUENTIAL -> {
+                (state.currentQueueIndex + 1) % queue.size
+            }
+        }
+
+        playQueueIndex(nextIndex, initialSeekMs = 0)
+        return true
     }
 
     private fun nextPlayRequestId(): Long {

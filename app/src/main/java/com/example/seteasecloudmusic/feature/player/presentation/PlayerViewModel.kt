@@ -92,4 +92,12 @@ class PlayerViewModel @Inject constructor(
     fun seekTo(positionMs: Int) {
         controller.seekTo(positionMs)
     }
+
+    fun togglePlaybackMode() {
+        controller.togglePlaybackMode()
+    }
+
+    fun setPlaybackMode(mode: com.example.seteasecloudmusic.core.player.PlaybackMode) {
+        controller.setPlaybackMode(mode)
+    }
 }
