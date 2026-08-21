@@ -20,6 +20,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -40,8 +42,9 @@ fun WebPlayerScreen(
             put("type", type)
             put("payload", payload)
         }
-        val safeJson = message.toString().replace("'", "\\'")
-        val js = "window.dispatchEvent(new CustomEvent('scm-native-message',{detail: JSON.parse('$safeJson')}));"
+        // 使用 URLEncoder 传递 UTF-8 字符串，解决 Base64 在 JS atob 解码时破坏多字节中文字符的问题
+        val encoded = java.net.URLEncoder.encode(message.toString(), "UTF-8").replace("+", "%20")
+        val js = "window.dispatchEvent(new CustomEvent('scm-native-message',{detail: JSON.parse(decodeURIComponent('$encoded'))}));"
         webView.post {
             webView.evaluateJavascript(js, null)
         }
@@ -70,7 +73,7 @@ fun WebPlayerScreen(
             settings.domStorageEnabled = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-            // 👇👇👇 加上这两行！强制 WebView 读取前端的 Viewport 视口配置
+            // 强制 WebView 读取前端的 Viewport 视口配置
             settings.useWideViewPort = false
             settings.loadWithOverviewMode = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -94,32 +97,15 @@ fun WebPlayerScreen(
                             bridgeState.webReady = true
                             // ready 后先把当前播放态推过去
                             dispatchPlaybackNow()
-
-                            // 再推当前曲目信息（有则推）
-                            val track = musicPlayerController.playbackState.value.currentTrack
-                            if (track != null) {
-                                CoroutineScope(Dispatchers.Main).launch {
-                                    val lrcOrTtml = ttmlProvider?.invoke(track.id.toString()) ?: ""
-                                    dispatchToWeb(
-                                        "SET_TRACK",
-                                        JSONObject().apply {
-                                            put("id", track.id.toString())
-                                            put("title", track.title)
-                                            put("artist", track.artists.joinToString(" / ") { it.name })
-                                            put("coverUrl", track.coverUrl ?: "")
-                                            // 你当前前端是 parseLrc，所以字段名先用 lrc
-                                            put("lrc", lrcOrTtml)
-                                        }
-                                    )
-                                }
-                            }
+                            // track 推送交由底下的 flow 循环自动解除挂起去发送
                         }
                     }
                 },
                 "SCMBridge"
             )
 
-            loadUrl("http://192.168.1.184:5173")
+            // 开发调试：新电脑当前局域网 IP (亦可结合 adb reverse 使用 http://localhost:5173)
+            loadUrl("http://192.168.1.113:5173")
         }
         }
     )
@@ -143,28 +129,32 @@ fun WebPlayerScreen(
             }
         }
 
-        // 监听 currentTrack 变化，变化时推 SET_TRACK
+        // 监听 currentTrack 变化，变化时推 SET_TRACK (解决因为播放进度更新导致的 collectLatest 被反复取消的问题)
         trackJob = scope.launch {
-            var lastTrackId: String? = null
-            musicPlayerController.playbackState.collectLatest { st ->
-                if (!bridgeState.webReady) return@collectLatest
-                val track = st.currentTrack ?: return@collectLatest
-                val trackId = track.id.toString()
-                if (trackId == lastTrackId) return@collectLatest
-                lastTrackId = trackId
+            musicPlayerController.playbackState
+                .map { it.currentTrack }
+                .distinctUntilChanged() // 只有当 track 本身变化时才触发
+                .collectLatest { track ->
+                    if (track == null) return@collectLatest
 
-                val lrcOrTtml = ttmlProvider?.invoke(track.id.toString()) ?: ""
-                dispatchToWeb(
-                    "SET_TRACK",
-                    JSONObject().apply {
-                        put("id", trackId)
-                        put("title", track.title)
-                        put("artist", track.artists.joinToString(" / ") { it.name })
-                        put("coverUrl", track.coverUrl ?: "")
-                        put("lrc", lrcOrTtml)
+                    // 一直挂起等待，直到 WebView 页面发来 WEB_READY
+                    while(!bridgeState.webReady) {
+                        kotlinx.coroutines.delay(100)
                     }
-                )
-            }
+
+                    val trackId = track.id.toString()
+                    val lrcOrTtml = ttmlProvider?.invoke(trackId) ?: ""
+                    dispatchToWeb(
+                        "SET_TRACK",
+                        JSONObject().apply {
+                            put("id", trackId)
+                            put("title", track.title)
+                            put("artist", track.artists.joinToString(" / ") { it.name })
+                            put("coverUrl", track.coverUrl ?: "")
+                            put("lrc", lrcOrTtml)
+                        }
+                    )
+                }
         }
 
         onDispose {

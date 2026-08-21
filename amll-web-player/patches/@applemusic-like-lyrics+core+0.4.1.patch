@@ -1,0 +1,142 @@
+diff --git a/node_modules/@applemusic-like-lyrics/core/dist/amll-core.cjs b/node_modules/@applemusic-like-lyrics/core/dist/amll-core.cjs
+index e8fba12..b2bca31 100644
+--- a/node_modules/@applemusic-like-lyrics/core/dist/amll-core.cjs
++++ b/node_modules/@applemusic-like-lyrics/core/dist/amll-core.cjs
+@@ -2892,8 +2892,19 @@ var LyricPlayerBase = class extends EventTarget {
+ 		if (interlude) {
+ 			if (interlude[2] !== -1) curPos -= totalInterludeHeight;
+ 		}
+-		const LINE_HEIGHT_FALLBACK = this.size[1] / 5;
+-		const scrollOffset = this.currentLyricLineObjects.slice(0, targetAlignIndex).reduce((acc, el) => acc + (el.getLine().isBG && this.isPlaying ? 0 : this.lyricLinesSize.get(el)?.[1] ?? LINE_HEIGHT_FALLBACK), 0);
++		const LINE_HEIGHT_FALLBACK = Math.max(40, (this.baseFontSize || 32) * 1.35);
++		const getLineStep = (el) => {
++			const h = this.lyricLinesSize.get(el)?.[1];
++			if (typeof h === "number" && h > 0) {
++				const baseH = this.baseFontSize || 30;
++				if (h > baseH * 1.4) {
++					return h * 0.72;
++				}
++				return h * 0.92;
++			}
++			return LINE_HEIGHT_FALLBACK;
++		};
++		const scrollOffset = this.currentLyricLineObjects.slice(0, targetAlignIndex).reduce((acc, el) => acc + (el.getLine().isBG && this.isPlaying ? 0 : getLineStep(el)), 0);
+ 		this.scrollBoundary[0] = -scrollOffset;
+ 		curPos -= scrollOffset;
+ 		curPos += this.size[1] * this.alignPosition;
+@@ -2902,7 +2913,7 @@ var LyricPlayerBase = class extends EventTarget {
+ 		const isBottomFocused = targetAlignIndex === this.currentLyricLineObjects.length;
+ 		this.bottomLine.setFocused(isBottomFocused);
+ 		let targetLineHeight = 0;
+-		if (curLine) targetLineHeight = this.lyricLinesSize.get(curLine)?.[1] ?? LINE_HEIGHT_FALLBACK;
++		if (curLine) targetLineHeight = getLineStep(curLine);
+ 		else if (isBottomFocused) targetLineHeight = this.bottomLine.lineSize[1];
+ 		if (targetLineHeight > 0) switch (this.alignAnchor) {
+ 			case "bottom":
+@@ -2945,8 +2956,8 @@ var LyricPlayerBase = class extends EventTarget {
+ 			else targetScale = SCALE_ASPECT;
+ 			const renderMode = isActive ? 1 : 0;
+ 			lineObj.setTransform(curPos, targetScale, targetOpacity, blurLevel, force, delay, renderMode);
+-			if (line.isBG && (isActive || !this.isPlaying)) curPos += this.lyricLinesSize.get(lineObj)?.[1] ?? LINE_HEIGHT_FALLBACK;
+-			else if (!line.isBG) curPos += this.lyricLinesSize.get(lineObj)?.[1] ?? LINE_HEIGHT_FALLBACK;
++			if (line.isBG && (isActive || !this.isPlaying)) curPos += getLineStep(lineObj);
++			else if (!line.isBG) curPos += getLineStep(lineObj);
+ 			if (curPos >= 0 && !this.isSeeking) {
+ 				if (!line.isBG) delay += baseDelay;
+ 				if (i >= this.scrollToIndex) baseDelay /= 1.05;
+@@ -3751,8 +3762,22 @@ var LyricLineEl$1 = class extends LyricLineBase {
+ 	}
+ 	/** 设置翻译与音译行文本 */
+ 	setSubLinesText(trans, roman) {
+-		trans.innerText = this.lyricLine.translatedLyric;
+-		roman.innerText = this.lyricLine.romanLyric;
++		const t = (this.lyricLine.translatedLyric || "").trim();
++		const r = (this.lyricLine.romanLyric || "").trim();
++		if (t) {
++			trans.innerText = t;
++			trans.style.display = "";
++		} else {
++			trans.innerText = "";
++			trans.style.display = "none";
++		}
++		if (r) {
++			roman.innerText = r;
++			roman.style.display = "";
++		} else {
++			roman.innerText = "";
++			roman.style.display = "none";
++		}
+ 	}
+ 	getRubyCharCount(word) {
+ 		return (word.ruby ?? []).reduce((total, ruby) => total + ruby.word.length, 0);
+diff --git a/node_modules/@applemusic-like-lyrics/core/dist/amll-core.mjs b/node_modules/@applemusic-like-lyrics/core/dist/amll-core.mjs
+index bdc267a..284f394 100644
+--- a/node_modules/@applemusic-like-lyrics/core/dist/amll-core.mjs
++++ b/node_modules/@applemusic-like-lyrics/core/dist/amll-core.mjs
+@@ -2867,8 +2867,19 @@ var LyricPlayerBase = class extends EventTarget {
+ 		if (interlude) {
+ 			if (interlude[2] !== -1) curPos -= totalInterludeHeight;
+ 		}
+-		const LINE_HEIGHT_FALLBACK = this.size[1] / 5;
+-		const scrollOffset = this.currentLyricLineObjects.slice(0, targetAlignIndex).reduce((acc, el) => acc + (el.getLine().isBG && this.isPlaying ? 0 : this.lyricLinesSize.get(el)?.[1] ?? LINE_HEIGHT_FALLBACK), 0);
++		const LINE_HEIGHT_FALLBACK = Math.max(40, (this.baseFontSize || 32) * 1.35);
++		const getLineStep = (el) => {
++			const h = this.lyricLinesSize.get(el)?.[1];
++			if (typeof h === "number" && h > 0) {
++				const baseH = this.baseFontSize || 30;
++				if (h > baseH * 1.4) {
++					return h * 0.72;
++				}
++				return h * 0.92;
++			}
++			return LINE_HEIGHT_FALLBACK;
++		};
++		const scrollOffset = this.currentLyricLineObjects.slice(0, targetAlignIndex).reduce((acc, el) => acc + (el.getLine().isBG && this.isPlaying ? 0 : getLineStep(el)), 0);
+ 		this.scrollBoundary[0] = -scrollOffset;
+ 		curPos -= scrollOffset;
+ 		curPos += this.size[1] * this.alignPosition;
+@@ -2877,7 +2888,7 @@ var LyricPlayerBase = class extends EventTarget {
+ 		const isBottomFocused = targetAlignIndex === this.currentLyricLineObjects.length;
+ 		this.bottomLine.setFocused(isBottomFocused);
+ 		let targetLineHeight = 0;
+-		if (curLine) targetLineHeight = this.lyricLinesSize.get(curLine)?.[1] ?? LINE_HEIGHT_FALLBACK;
++		if (curLine) targetLineHeight = getLineStep(curLine);
+ 		else if (isBottomFocused) targetLineHeight = this.bottomLine.lineSize[1];
+ 		if (targetLineHeight > 0) switch (this.alignAnchor) {
+ 			case "bottom":
+@@ -2920,8 +2931,8 @@ var LyricPlayerBase = class extends EventTarget {
+ 			else targetScale = SCALE_ASPECT;
+ 			const renderMode = isActive ? 1 : 0;
+ 			lineObj.setTransform(curPos, targetScale, targetOpacity, blurLevel, force, delay, renderMode);
+-			if (line.isBG && (isActive || !this.isPlaying)) curPos += this.lyricLinesSize.get(lineObj)?.[1] ?? LINE_HEIGHT_FALLBACK;
+-			else if (!line.isBG) curPos += this.lyricLinesSize.get(lineObj)?.[1] ?? LINE_HEIGHT_FALLBACK;
++			if (line.isBG && (isActive || !this.isPlaying)) curPos += getLineStep(lineObj);
++			else if (!line.isBG) curPos += getLineStep(lineObj);
+ 			if (curPos >= 0 && !this.isSeeking) {
+ 				if (!line.isBG) delay += baseDelay;
+ 				if (i >= this.scrollToIndex) baseDelay /= 1.05;
+@@ -3726,8 +3737,22 @@ var LyricLineEl$1 = class extends LyricLineBase {
+ 	}
+ 	/** 设置翻译与音译行文本 */
+ 	setSubLinesText(trans, roman) {
+-		trans.innerText = this.lyricLine.translatedLyric;
+-		roman.innerText = this.lyricLine.romanLyric;
++		const t = (this.lyricLine.translatedLyric || "").trim();
++		const r = (this.lyricLine.romanLyric || "").trim();
++		if (t) {
++			trans.innerText = t;
++			trans.style.display = "";
++		} else {
++			trans.innerText = "";
++			trans.style.display = "none";
++		}
++		if (r) {
++			roman.innerText = r;
++			roman.style.display = "";
++		} else {
++			roman.innerText = "";
++			roman.style.display = "none";
++		}
+ 	}
+ 	getRubyCharCount(word) {
+ 		return (word.ruby ?? []).reduce((total, ruby) => total + ruby.word.length, 0);

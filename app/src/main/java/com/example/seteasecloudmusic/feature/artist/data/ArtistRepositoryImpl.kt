@@ -197,8 +197,8 @@ class ArtistRepositoryImpl @Inject constructor(
             qualityTags = qualityTags,
             coverUrl = song.album?.coverUrl,
             durationMs = song.dt,
-            playableUrl = null,
-            isPlayable = song.fee != 1 && song.fee != 4
+            // fee == 4 表示单独付费数字专辑，VIP歌曲(fee == 1)正常允许播放
+            isPlayable = song.fee != 4
         )
     }
 

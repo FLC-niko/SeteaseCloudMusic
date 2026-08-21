@@ -93,11 +93,18 @@ class AuthInterceptor(private val context: Context) : Interceptor {
             return request
         }
 
-        // 构建 Cookie 请求头
-        // request.newBuilder() 创建一个请求的"修改器"
-        // .header("Cookie", savedCookie) 添加 Cookie 头
-        // .build() 完成修改，生成新请求对象
+        // 同时在 URL 参数和 Header 中附带 Cookie，确保网易云 Node API 100% 识别 VIP 会员身份
+        val originalUrl = request.url
+        val updatedUrl = if (originalUrl.queryParameter("cookie") == null) {
+            originalUrl.newBuilder()
+                .addQueryParameter("cookie", savedCookie)
+                .build()
+        } else {
+            originalUrl
+        }
+
         return request.newBuilder()
+            .url(updatedUrl)
             .header("Cookie", savedCookie)
             .build()
     }
@@ -113,9 +120,11 @@ class AuthInterceptor(private val context: Context) : Interceptor {
      * 下次请求时需要带上这个 Cookie，所以要存起来。
      */
     private fun saveCookiesFromResponse(response: Response) {
-        // 保存响应头里的 Set-Cookie；后续响应体 cookie 会合并进来。
+        val path = response.request.url.encodedPath
+
+        // 仅在登录/认证接口或响应头明确包含 MUSIC_U 时更新 Cookie，避免普通请求冲刷掉核心登录态
         val headerCookie = extractCookieFromHeaders(response)
-        if (!headerCookie.isNullOrBlank()) {
+        if (!headerCookie.isNullOrBlank() && (path.contains("login") || headerCookie.contains("MUSIC_U"))) {
             saveCookie(headerCookie)
         }
 
@@ -170,12 +179,16 @@ class AuthInterceptor(private val context: Context) : Interceptor {
      * Cookie 需要持久化保存，用户关闭 App 后下次还能用。
      */
     private fun getSavedCookie(): String? {
-        // 获取 SharedPreferences 对象
-        // MODE_PRIVATE 表示只有这个 App 能访问
+        // 优先从 auth_cookies 读取
         val prefs = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
+        val cookie = prefs.getString(COOKIE_KEY, null)
+        if (!cookie.isNullOrBlank()) {
+            return cookie
+        }
 
-        // 读取 Cookie，如果没有则返回 null
-        return prefs.getString(COOKIE_KEY, null)
+        // 兜底：从 auth_prefs 读取用户登录时保存的完整 cookie
+        val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+        return authPrefs.getString("cookie", null)
     }
 
     /**
@@ -186,17 +199,19 @@ class AuthInterceptor(private val context: Context) : Interceptor {
      * apply() 会异步保存（不会阻塞线程），推荐使用。
      */
     private fun saveCookie(cookie: String) {
-        val prefs = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
         val mergedCookie = mergeCookies(getSavedCookie(), cookie)
 
-        // 存入 Cookie
-        editor.putString(COOKIE_KEY, mergedCookie)
+        // 存入 auth_cookies
+        context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(COOKIE_KEY, mergedCookie)
+            .apply()
 
-        // 异步保存到磁盘
-        // 注意：用 apply() 而不是 commit()
-        // apply() 在后台执行，不会卡住 UI
-        editor.apply()
+        // 同步存入 auth_prefs 保持多模块一致
+        context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString("cookie", mergedCookie)
+            .apply()
     }
 
     private fun mergeCookies(existingCookie: String?, newCookie: String): String {
@@ -209,7 +224,9 @@ class AuthInterceptor(private val context: Context) : Interceptor {
                 ?.filter { it.contains("=") }
                 ?.forEach { pair ->
                     val key = pair.substringBefore("=").trim()
-                    if (key.isNotBlank()) {
+                    val value = pair.substringAfter("=").trim()
+                    // 只有当键值对非空时才记录，避免空值覆盖有效的 MUSIC_U 登录 Cookie
+                    if (key.isNotBlank() && value.isNotBlank()) {
                         cookiePairs[key] = pair
                     }
                 }

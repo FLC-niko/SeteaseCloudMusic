@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.search.data
 
 import retrofit2.http.GET
 import retrofit2.http.Query
+import com.example.seteasecloudmusic.feature.player.data.LyricResponse
 
 /**
  * `data.api` 模块说明：
@@ -41,6 +42,12 @@ interface NeteaseMusicService {
         @Query("keywords") keywords: String,
         @Query("type") type: String? = null
     ): SearchSuggestResponse
+
+    /**
+     * 获取歌词
+     */
+    @GET("/lyric/new")
+    suspend fun getNewLyric(@Query("id") songId: Long): LyricResponse
 }
 
 /**

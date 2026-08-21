@@ -3,11 +3,12 @@ package com.example.seteasecloudmusic.feature.player.presentation
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
@@ -29,6 +30,7 @@ fun LyricsColumn(
     lyrics: ParsedLyrics,
     activeLineIndex: Int,
     currentTimeMs: Int,
+    onLineClick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -38,7 +40,7 @@ fun LyricsColumn(
         if (activeLineIndex >= 0 && activeLineIndex < lyrics.lines.size) {
             listState.animateScrollToItem(
                 index = activeLineIndex,
-                scrollOffset = -200
+                scrollOffset = -180
             )
         }
     }
@@ -49,11 +51,11 @@ fun LyricsColumn(
         contentPadding = PaddingValues(vertical = 120.dp)
     ) {
         itemsIndexed(lyrics.lines) { index, line ->
-            // 跳过背景和声行
             if (!line.isBG) {
                 LyricLineItem(
                     line = line,
-                    isActive = index == activeLineIndex
+                    isActive = index == activeLineIndex,
+                    onClick = { onLineClick?.invoke(line.startTime) }
                 )
             }
         }
@@ -63,7 +65,8 @@ fun LyricsColumn(
 @Composable
 private fun LyricLineItem(
     line: LyricLine,
-    isActive: Boolean
+    isActive: Boolean,
+    onClick: () -> Unit
 ) {
     val alpha by animateFloatAsState(
         targetValue = if (isActive) 1f else 0.35f,
@@ -72,17 +75,18 @@ private fun LyricLineItem(
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isActive) 1.03f else 1f,
+        targetValue = if (isActive) 1.04f else 1f,
         animationSpec = spring(stiffness = 300f, dampingRatio = 0.7f),
         label = "lyricScale"
     )
 
     val lyricText = line.words.joinToString("") { it.word }
 
-    androidx.compose.foundation.layout.Column(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp, horizontal = 32.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 28.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -92,16 +96,17 @@ private fun LyricLineItem(
         Text(
             text = lyricText,
             color = Color.White.copy(alpha = alpha),
-            fontSize = if (isActive) 20.sp else 15.sp,
-            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+            fontSize = if (isActive) 22.sp else 16.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+            lineHeight = if (isActive) 30.sp else 22.sp
         )
 
-        // 翻译歌词（如果有）
+        // 翻译歌词
         if (line.translatedLyric.isNotBlank()) {
             Text(
                 text = line.translatedLyric,
-                color = Color.White.copy(alpha = alpha * 0.5f),
-                fontSize = 12.sp,
+                color = Color.White.copy(alpha = alpha * 0.6f),
+                fontSize = 13.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }

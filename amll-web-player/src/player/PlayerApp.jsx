@@ -2,10 +2,15 @@ import React, { useEffect, useState } from "react";
 import { useSetAtom, useAtomValue } from "jotai";
 import * as AMLL from "@applemusic-like-lyrics/react-full";
 import "@applemusic-like-lyrics/react-full/style.css";
-import { parseLrc } from "@applemusic-like-lyrics/lyric";
+import { parseLrc, parseYrc } from "@applemusic-like-lyrics/lyric";
+import { parseTTML } from "@applemusic-like-lyrics/ttml";
 import { postToNative, createBridge } from "./bridge";
+import { Theme } from "@radix-ui/themes";
+import "@radix-ui/themes/styles.css";
 
-const demoLrc = `[00:00.00]Setease Cloud Music\n[00:04.00]空间扭曲魔法 2.0 部署完毕！\n[00:08.00]按钮尺寸恢复，封面呈现！`;
+const demoLrc = `[00:00.00]Setease Cloud Music
+[00:04.00]空间扭曲魔法 2.0 部署完毕！
+[00:08.00]按钮尺寸恢复，封面呈现！`;
 
 // 绝美底层毛玻璃背景
 const AppleMusicBackground = () => {
@@ -13,11 +18,11 @@ const AppleMusicBackground = () => {
   return (
     <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden", zIndex: 0 }}>
       <div style={{
-        position: 'absolute', top: '-20%', left: '-20%', width: '140%', height: '140%',
-        backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover', backgroundPosition: 'center',
-        filter: 'blur(60px) saturate(180%)', transition: 'background-image 0.5s ease'
+        position: "absolute", top: "-20%", left: "-20%", width: "140%", height: "140%",
+        backgroundImage: `url(${coverUrl})`, backgroundSize: "cover", backgroundPosition: "center",
+        filter: "blur(60px) saturate(180%)", transition: "background-image 0.5s ease"
       }} />
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.35)' }} />
+      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0, 0, 0, 0.35)" }} />
     </div>
   );
 };
@@ -34,25 +39,56 @@ export default function PlayerApp() {
   const setOnRequestNextSong = useSetAtom(AMLL.onRequestNextSongAtom);
   const setOnRequestPrevSong = useSetAtom(AMLL.onRequestPrevSongAtom);
   const setOnSeekPosition = useSetAtom(AMLL.onSeekPositionAtom);
+  const setOnLyricLineClick = useSetAtom(AMLL.onLyricLineClickAtom);
 
   const setStaticMode = useSetAtom(AMLL.lyricBackgroundStaticModeAtom);
   const setIsLyricPageOpened = useSetAtom(AMLL.isLyricPageOpenedAtom);
   const setShowBottomControl = useSetAtom(AMLL.showBottomControlAtom);
   const setPlayerControlsType = useSetAtom(AMLL.playerControlsTypeAtom);
+  const setLyricSizePreset = useSetAtom(AMLL.lyricSizePresetAtom);
+  const setLyricFontWeight = useSetAtom(AMLL.lyricFontWeightAtom);
 
   const [mounted, setMounted] = useState(false);
+
+  const currentTimeRef = React.useRef(0);
+  const syncTimeOffsetRef = React.useRef(0);
+  const isPlayingRef = React.useRef(false);
+
+  useEffect(() => {
+    let frameId;
+    const ticker = () => {
+      if (isPlayingRef.current) {
+        const now = performance.now();
+        const delta = now - syncTimeOffsetRef.current;
+        setCurrentTimeMs(currentTimeRef.current + delta);
+      }
+      frameId = requestAnimationFrame(ticker);
+    };
+    frameId = requestAnimationFrame(ticker);
+    return () => cancelAnimationFrame(frameId);
+  }, [setCurrentTimeMs]);
 
   useEffect(() => {
     setMounted(true);
     setStaticMode(true);
-    setIsLyricPageOpened(false); // 默认收起歌词，展示大封面
-    setShowBottomControl(true);
-    setPlayerControlsType('controls');
+    setIsLyricPageOpened(true); // 默认打开歌词页面
+    setShowBottomControl(false);
+    setPlayerControlsType("none");
+
+    // 设置超大字号与极粗字重 (900 Black)，完美契合 Apple Music 移动端超大粗体歌词
+    setLyricSizePreset(AMLL.LyricSizePreset.Huge);
+    setLyricFontWeight(900);
 
     setOnPlayOrResume(() => () => postToNative({ type: "TOGGLE_PLAY" }));
     setOnRequestNextSong(() => () => postToNative({ type: "NEXT_TRACK" }));
     setOnRequestPrevSong(() => () => postToNative({ type: "PREV_TRACK" }));
     setOnSeekPosition(() => (timeMs) => postToNative({ type: "SEEK_TO", payload: { timeMs } }));
+    setOnLyricLineClick(() => (evt) => {
+      const timeMs = evt?.line?.getLine()?.startTime;
+      if (typeof timeMs === "number") {
+        postToNative({ type: "SEEK_TO", payload: { timeMs } });
+      }
+    });
 
     setLyricLines(parseLrc(demoLrc));
     setMusicName("Setease Player");
@@ -63,17 +99,43 @@ export default function PlayerApp() {
       if (!msg?.type) return;
       switch (msg.type) {
         case "SET_PLAYBACK":
-          setCurrentTimeMs((msg.payload?.currentTimeMs ?? 0) | 0);
-          setPlaying(!!msg.payload?.playing);
+          currentTimeRef.current = (msg.payload?.currentTimeMs ?? 0) | 0;
+          syncTimeOffsetRef.current = performance.now();
+          isPlayingRef.current = !!msg.payload?.playing;
+
+          setPlaying(isPlayingRef.current);
+          setCurrentTimeMs(currentTimeRef.current);
           break;
         case "SET_TRACK":
+          currentTimeRef.current = 0;
+          syncTimeOffsetRef.current = performance.now();
+          setCurrentTimeMs(0);
+
           if (typeof msg.payload?.lrc === "string") {
-            setLyricLines(parseLrc(msg.payload.lrc || demoLrc));
+            const raw = msg.payload.lrc.trim();
+            if (raw) {
+              if (raw.startsWith("<tt") || raw.includes("<tt ") || raw.includes("<div")) {
+                try {
+                  setLyricLines(parseTTML(raw));
+                } catch {
+                  setLyricLines(parseLrc(raw));
+                }
+              } else if (raw.includes("(") && raw.includes(")") && raw.includes("[")) {
+                try {
+                  setLyricLines(parseYrc(raw));
+                } catch {
+                  setLyricLines(parseLrc(raw));
+                }
+              } else {
+                setLyricLines(parseLrc(raw));
+              }
+            } else {
+              setLyricLines(parseLrc(demoLrc));
+            }
           }
           if (msg.payload?.title) setMusicName(msg.payload.title);
           if (msg.payload?.artist) setMusicArtists([msg.payload.artist]);
           if (msg.payload?.coverUrl) setMusicCover(msg.payload.coverUrl);
-          setCurrentTimeMs(0);
           break;
       }
     });
@@ -83,132 +145,111 @@ export default function PlayerApp() {
   }, []);
 
   return (
-    <>
+    <Theme appearance="dark" style={{ width: "100%", height: "100%" }}>
       <style>{`
-              html, body, #root {
-                width: 100vw;
-                height: 100vh;
-                margin: 0;
-                padding: 0;
-                overflow: hidden;
-                background: #000;
-                touch-action: none;
-              }
+        html, body, #root {
+          width: 100vw;
+          height: 100vh;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          background: #000;
+          touch-action: none;
+        }
 
-              /* 屏蔽导致黑屏的原生背景 */
-              ._8f42YG_background { display: none !important; opacity: 0 !important; }
+        /* 隐藏 react-full 内置的重型 Pixi 背景以提升 WebView 渲染性能 */
+        ._8f42YG_background {
+          display: none !important;
+          opacity: 0 !important;
+        }
 
-              /* ========================================================= */
-              /* 👑 空间扭曲魔法 3.0 (完美吸底 + 像素级比例调优) */
-              /* ========================================================= */
+        /* 全局穿透强制设置超大歌词字号与极致加粗 (900 Heavy) */
+        :root {
+          --amll-lp-font-size: clamp(30px, 4.2vh, 42px) !important;
+        }
 
-              .-DaA0W_horizontalLayout {
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: flex-start !important;
-                width: 100vw !important;
-                height: 100vh !important;
-                padding: 6vh 6vw 4vh 6vw !important; /* 底部保留 4vh 安全距离 */
-                box-sizing: border-box !important;
-                gap: 2vh !important;
-              }
+        .amll-lyric-player {
+          --amll-lp-font-size: clamp(30px, 4.2vh, 42px) !important;
+          font-size: clamp(30px, 4.2vh, 42px) !important;
+          font-weight: 900 !important;
+          -webkit-text-stroke: 0.5px currentColor;
+          letter-spacing: -0.015em !important;
+        }
 
-              /* 1. 隐藏多余的横屏版拖拽条 */
-              .-DaA0W_thumb { display: none !important; }
+        .amll-lyric-player * {
+          box-sizing: border-box !important;
+        }
 
-              /* 2. 封面基础设置 */
-              .-DaA0W_cover {
-                width: 85vw !important;
-                max-width: 380px !important;
-                height: auto !important;
-                aspect-ratio: 1 !important;
-                flex-shrink: 0 !important;
-                position: relative !important;
-                left: 0 !important;
-                transform: none !important;
-                transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1) !important;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.4) !important;
-                border-radius: 12px !important;
-                overflow: hidden !important;
-              }
+        /* 舒展适中的行距与内边距控制 */
+        [class*="lyricLine"],
+        .FmKaba_lyricLine,
+        .KxF9Iq_lyricLine {
+          font-size: clamp(30px, 4.2vh, 42px) !important;
+          font-weight: 900 !important;
+          -webkit-text-stroke: 0.5px currentColor;
+          line-height: 1.22em !important;
+          padding: 5px 18px !important;
+          margin: 0 !important;
+          height: auto !important;
+          min-height: 0 !important;
+        }
 
-              /* 3. 🚨 修复播放按键比例，并准备吸底布局 */
-              .-DaA0W_controls {
-                width: 100% !important;
-                max-width: 500px !important;
-                flex-shrink: 0 !important;
-                position: relative !important;
-                left: 0 !important;
-                transform: none !important;
-              }
+        [class*="lyricMainLine"],
+        .FmKaba_lyricMainLine,
+        .KxF9Iq_lyricMainLine {
+          font-size: inherit !important;
+          font-weight: inherit !important;
+          line-height: 1.22em !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
 
-              /* 撤销猛药，恢复 1.1 倍的舒适触控尺寸 (原本是 0.5) */
-              [class*="songMediaButton"] > svg,
-              [class*="songMediaPlayButton"] > svg {
-                scale: 1.1 !important;
-                transition: none !important;
-              }
+        /* 彻底清除 AMLL 原生样式中 span 的 1em 外扩边距（杜绝容器被撑高） */
+        [class*="lyricMainLine"] span,
+        [class*="lyricMainLine"] > span,
+        .FmKaba_lyricMainLine span,
+        .FmKaba_wordBody,
+        .FmKaba_emphasizeWrapper,
+        .FmKaba_emphasize,
+        .KxF9Iq_lyricMainLine span {
+          margin: 0 !important;
+          padding: 0 !important;
+          line-height: inherit !important;
+        }
 
-              .UjzbJG_controls, .UjzbJG_bigControls {
-                width: 100% !important;
-                justify-content: space-between !important;
-                padding: 0 4vw !important;
-              }
+        /* 隐藏无内容的副歌词（翻译/音译行），杜绝幽灵高度 */
+        [class*="lyricSubLine"]:empty,
+        .FmKaba_lyricSubLine:empty,
+        .KxF9Iq_lyricSubLine:empty {
+          display: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          height: 0 !important;
+          min-height: 0 !important;
+        }
 
-              /* 4. 🚨 修复歌词：强制膨胀，把控件狠狠挤到底部！ */
-              .-DaA0W_lyric {
-                width: 100% !important;
-                max-width: 500px !important;
-                flex: 1 1 auto !important; /* 核心魔法：吃掉所有剩余空间 */
-                min-height: 20vh !important;
-                position: relative !important;
-                left: 0 !important;
-                transform: none !important;
-                mask-image: linear-gradient(#0000 0%, #000 10% 90%, #0000 100%) !important;
-              }
-
-              /* 5. 底部附属菜单 (歌词切换等) */
-              .-DaA0W_bottomControls {
-                width: 100% !important;
-                max-width: 500px !important;
-                flex-shrink: 0 !important;
-                justify-content: space-evenly !important;
-                padding: 0 !important;
-                margin-top: 1vh !important;
-              }
-
-              /* ========================================================= */
-              /* 🪄 交互联动：完美的物理占位控制 */
-              /* ========================================================= */
-
-              /* 状态 A：当歌词打开时 (膨胀的歌词会负责把控件挤到底部) */
-              .-DaA0W_horizontalLayout:not(.-DaA0W_hideLyric) .-DaA0W_cover {
-                width: 25vw !important; /* 封面缩小到左侧 */
-                margin: 0 auto 0 0 !important;
-                border-radius: 8px !important;
-              }
-              .-DaA0W_horizontalLayout:not(.-DaA0W_hideLyric) .-DaA0W_lyric {
-                display: block !important;
-              }
-
-              /* 状态 B：当歌词关闭时 (没有了歌词，由封面负责把控件挤到底部) */
-              .-DaA0W_horizontalLayout.-DaA0W_hideLyric .-DaA0W_lyric {
-                display: none !important;
-              }
-              .-DaA0W_horizontalLayout.-DaA0W_hideLyric .-DaA0W_cover {
-                /* 核心魔法：上下 margin 设置 auto，封面会完美居中，并把底下的控件顶到屏幕最下方 */
-                margin-top: auto !important;
-                margin-bottom: auto !important;
-              }
+        [class*="lyricSubLine"]:not(:empty),
+        .FmKaba_lyricSubLine:not(:empty),
+        .KxF9Iq_lyricSubLine:not(:empty) {
+          font-size: clamp(15px, 2.2vh, 22px) !important;
+          font-weight: 600 !important;
+          line-height: 1.2em !important;
+          opacity: 0.75 !important;
+          margin-top: 4px !important;
+          padding: 0 !important;
+        }
       `}</style>
 
       <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
         <AppleMusicBackground />
         <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 1 }}>
-          {mounted && <AMLL.PrebuiltLyricPlayer />}
+          {mounted && (
+            <AMLL.PrebuiltLyricPlayer
+              style={{ width: "100%", height: "100%" }}
+            />
+          )}
         </div>
       </div>
-    </>
+    </Theme>
   );
 }

@@ -6,6 +6,8 @@ import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthReposito
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepositoryImpl
 import com.example.seteasecloudmusic.feature.home.data.HomeRecommendRepositoryImpl
 import com.example.seteasecloudmusic.feature.home.domain.repository.HomeRecommendRepository
+import com.example.seteasecloudmusic.feature.player.data.repository.LyricRepositoryImpl
+import com.example.seteasecloudmusic.feature.player.domain.repository.LyricRepository
 import com.example.seteasecloudmusic.feature.search.data.SearchRepositoryImpl
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
 import dagger.Binds
@@ -40,4 +42,10 @@ abstract class RepositoryModule {
     abstract fun bindHomeRecommendRepository(
         impl: HomeRecommendRepositoryImpl
     ): HomeRecommendRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLyricRepository(
+        impl: LyricRepositoryImpl
+    ): LyricRepository
 }

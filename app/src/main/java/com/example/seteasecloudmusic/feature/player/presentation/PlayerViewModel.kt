@@ -1,58 +1,73 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
-import com.example.seteasecloudmusic.feature.player.domain.GetLyricsUseCase
-import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
+import com.example.seteasecloudmusic.feature.player.data.LyricResponse
+import com.example.seteasecloudmusic.feature.player.domain.usecase.GetLyricUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * 播放器 ViewModel：
+ * 1) 对 UI 暴露只读播放状态
+ * 2) 转发播放控制命令
+ * 3) 统一处理 connect 生命周期入口
+ * 4) 获取和管理歌词数据
+ * 5) 持有播放器风格设置管理器
+ */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val controller: MusicPlayerController,
-    private val getLyricsUseCase: GetLyricsUseCase
+    private val getLyricUseCase: GetLyricUseCase,
+    val playerSettingsManager: PlayerSettingsManager
 ) : ViewModel() {
 
+    // 直接复用 Controller 内部的状态流
     val playbackState: StateFlow<PlaybackState> = controller.playbackState
 
-    private val _lyricsState = MutableStateFlow<LyricsUiState>(LyricsUiState.Idle)
-    val lyricsState: StateFlow<LyricsUiState> = _lyricsState.asStateFlow()
+    private val _lyricState = MutableStateFlow<Result<LyricResponse>?>(null)
+    val lyricState: StateFlow<Result<LyricResponse>?> = _lyricState.asStateFlow()
 
-    val currentPositionMs: StateFlow<Int> = controller.playbackState
-        .map { it.currentPositionMs }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0)
+    private var currentLyricTrackId: Long? = null
 
-    val activeLineIndex: StateFlow<Int> = combine(_lyricsState, currentPositionMs) { state, pos ->
-        if (state !is LyricsUiState.Success) return@combine -1
-        state.lyrics.lines.indexOfLast { it.startTime <= pos }.coerceAtLeast(0)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0)
-
-    private var loadLyricsJob: Job? = null
-
-    fun loadLyrics(songId: Long) {
-        loadLyricsJob?.cancel()
-        loadLyricsJob = viewModelScope.launch {
-            _lyricsState.value = LyricsUiState.Loading
-            getLyricsUseCase(songId)
-                .onSuccess { _lyricsState.value = LyricsUiState.Success(it) }
-                .onFailure { _lyricsState.value = LyricsUiState.Error(it.message) }
+    init {
+        viewModelScope.launch {
+            controller.playbackState.collect { state ->
+                val trackId = state.currentTrack?.id
+                if (trackId != null && trackId != currentLyricTrackId) {
+                    currentLyricTrackId = trackId
+                    fetchLyric(trackId)
+                }
+            }
         }
     }
 
-    fun clearLyrics() {
-        _lyricsState.value = LyricsUiState.Idle
+    suspend fun getLyricDataDirectly(songId: Long): String? {
+        val res = getLyricUseCase(songId)
+        val data = res.getOrNull()
+        val yrcLyric = data?.yrc?.lyric
+        val lrcLyric = data?.lrc?.lyric
+        return yrcLyric.takeIf { !it.isNullOrBlank() } ?: lrcLyric.takeIf { !it.isNullOrBlank() }
+    }
+
+    private fun fetchLyric(songId: Long) {
+        viewModelScope.launch {
+            _lyricState.value = getLyricUseCase(songId)
+        }
+    }
+
+    /** 建立与 MusicService 的连接 */
+    fun connect() {
+        controller.connect()
     }
 
     fun onPlayPause() {
@@ -77,11 +92,4 @@ class PlayerViewModel @Inject constructor(
     fun seekTo(positionMs: Int) {
         controller.seekTo(positionMs)
     }
-}
-
-sealed class LyricsUiState {
-    object Idle : LyricsUiState()
-    object Loading : LyricsUiState()
-    data class Success(val lyrics: ParsedLyrics) : LyricsUiState()
-    data class Error(val message: String?) : LyricsUiState()
 }

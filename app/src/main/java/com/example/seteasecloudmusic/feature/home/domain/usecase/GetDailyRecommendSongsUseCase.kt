@@ -12,4 +12,8 @@ class GetDailyRecommendSongsUseCase @Inject constructor(
     ): Result<List<Track>> {
         return homeRecommendRepository.getDailyRecommendSongs(afresh)
     }
+
+    fun getCached(): List<Track>? {
+        return homeRecommendRepository.getCachedDailyRecommendSongs()
+    }
 }

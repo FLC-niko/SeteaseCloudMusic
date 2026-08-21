@@ -32,13 +32,21 @@ class HomeViewModel @Inject constructor(
     private var playbackJob: Job? = null
 
     init {
-        refreshDailyRecommend()
+        // 1. 0ms 瞬间加载本地持久化推荐缓存，冷启动直接秒出封面与曲目，绝不转圈
+        val cached = getDailyRecommendSongsUseCase.getCached()
+        if (!cached.isNullOrEmpty()) {
+            _uiState.update { it.copy(tracks = cached, isLoading = false) }
+        }
+        // 2. 后台静默拉取今日最新推荐
+        refreshDailyRecommend(afresh = false, silent = !cached.isNullOrEmpty())
     }
 
-    fun refreshDailyRecommend(afresh: Boolean = false) {
+    fun refreshDailyRecommend(afresh: Boolean = false, silent: Boolean = false) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            if (!silent) {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            }
 
             val result = getDailyRecommendSongsUseCase(afresh)
             result.fold(
@@ -53,9 +61,10 @@ class HomeViewModel @Inject constructor(
                 },
                 onFailure = { throwable ->
                     _uiState.update { state ->
+                        // 若本地已有缓存，失败时不遮挡已有缓存内容
                         state.copy(
                             isLoading = false,
-                            errorMessage = throwable.message ?: "获取每日推荐失败"
+                            errorMessage = if (state.tracks.isEmpty()) (throwable.message ?: "获取每日推荐失败") else null
                         )
                     }
                 }
@@ -64,11 +73,11 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onRetryClick() {
-        refreshDailyRecommend(afresh = false)
+        refreshDailyRecommend(afresh = false, silent = false)
     }
 
     fun onRefreshClick() {
-        refreshDailyRecommend(afresh = true)
+        refreshDailyRecommend(afresh = true, silent = false)
     }
 
     fun onTrackClick(track: Track) {
