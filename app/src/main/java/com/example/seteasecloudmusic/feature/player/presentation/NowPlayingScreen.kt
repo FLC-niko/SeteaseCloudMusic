@@ -8,14 +8,16 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.seteasecloudmusic.core.player.PlaybackState
+import com.example.seteasecloudmusic.core.settings.PlayerStyle
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
-import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
-import kotlinx.coroutines.flow.first
 
 @Composable
 fun NowPlayingScreen(
@@ -28,28 +30,40 @@ fun NowPlayingScreen(
 ) {
     val searchViewModel: SearchViewModel = hiltViewModel()
     val playerViewModel: PlayerViewModel = hiltViewModel()
+    val playerStyle by playerViewModel.playerSettingsManager.playerStyle.collectAsState()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        WebPlayerScreen(
-            musicPlayerController = searchViewModel.musicPlayerController,
-            ttmlProvider = { songId ->
-                try {
-                    playerViewModel.getLyricDataDirectly(songId.toLong())
-                } catch (e: Exception) {
-                    null
+    when (playerStyle) {
+        PlayerStyle.AMLL_WEB -> {
+            Box(modifier = Modifier.fillMaxSize()) {
+                WebPlayerScreen(
+                    musicPlayerController = searchViewModel.musicPlayerController,
+                    ttmlProvider = { songId ->
+                        try {
+                            playerViewModel.getLyricDataDirectly(songId.toLong())
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                )
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "关闭",
+                        tint = Color.White
+                    )
                 }
             }
-        )
-
-        IconButton(
-            onClick = onClose,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 12.dp, end = 12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "关闭"
+        }
+        PlayerStyle.NATIVE_COMPOSE -> {
+            NativePlayerScreen(
+                playerViewModel = playerViewModel,
+                onClose = onClose
             )
         }
     }

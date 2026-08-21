@@ -67,7 +67,8 @@ class AuthViewModel @Inject constructor(
     private val pollQrStatusUseCase: PollQrStatusUseCase,
     private val observeAuthStateUseCase: ObserveAuthStateUseCase,
     private val refreshSessionUseCase: RefreshSessionUseCase,
-    private val logoutUseCase: LogoutUseCase
+    private val logoutUseCase: LogoutUseCase,
+    val playerSettingsManager: com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())

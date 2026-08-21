@@ -34,11 +34,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
+import com.example.seteasecloudmusic.core.settings.PlayerStyle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,8 +62,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,6 +99,8 @@ fun AccountLoginSheetContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val contentScrollState = rememberScrollState()
+    var showPlayerStyleDialog by remember { mutableStateOf(false) }
+    val playerStyle by viewModel.playerSettingsManager.playerStyle.collectAsState()
 
     LaunchedEffect(viewModel.snackbarMessage) {
         viewModel.snackbarMessage.collectLatest { message ->
@@ -164,9 +170,7 @@ fun AccountLoginSheetContent(
                             onCaptchaClick = { viewModel.onCaptchaPanelOpened() },
                             onQrClick = { viewModel.onQrPanelOpened() },
                             onSettingsClick = {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("音乐设置功能开发中")
-                                }
+                                showPlayerStyleDialog = true
                             },
                             onProfileClick = {
                                 viewModel.onAccountDetailsOpened()
@@ -232,6 +236,8 @@ fun AccountLoginSheetContent(
                             onPersonalizedRecommendationChange = {
                                 viewModel.onPersonalizedRecommendationToggled(it)
                             },
+                            playerStyle = playerStyle,
+                            onPlayerStyleClick = { showPlayerStyleDialog = true },
                             onLogoutClick = { viewModel.onRequestLogout() }
                         )
                     }
@@ -268,6 +274,17 @@ fun AccountLoginSheetContent(
                         Text(text = "取消", color = Color(0xFF5F5F67))
                     }
                 }
+            )
+        }
+
+        if (showPlayerStyleDialog) {
+            PlayerStyleSelectionDialog(
+                currentStyle = playerStyle,
+                onSelect = { style ->
+                    viewModel.playerSettingsManager.setPlayerStyle(style)
+                    showPlayerStyleDialog = false
+                },
+                onDismiss = { showPlayerStyleDialog = false }
             )
         }
 
@@ -388,6 +405,8 @@ private fun AccountDetailsPanel(
     onCountryRegionClick: () -> Unit,
     onRatingsAndReviewsClick: () -> Unit,
     onPersonalizedRecommendationChange: (Boolean) -> Unit,
+    playerStyle: PlayerStyle,
+    onPlayerStyleClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val secondary = Color(0xFF8D8D93)
@@ -431,6 +450,16 @@ private fun AccountDetailsPanel(
                     modifier = Modifier.size(22.dp)
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        SettingsSectionCard {
+            SettingsNavigationRow(
+                title = "播放页风格",
+                trailingText = if (playerStyle == PlayerStyle.AMLL_WEB) "Apple Music 动效" else "原生质感",
+                onClick = onPlayerStyleClick
+            )
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -1163,3 +1192,80 @@ private fun PanelTitle(
         )
     }
 }
+
+@Composable
+private fun PlayerStyleSelectionDialog(
+    currentStyle: PlayerStyle,
+    onSelect: (PlayerStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "选择播放页风格",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF111111)
+                )
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                PlayerStyle.values().forEach { style ->
+                    val isSelected = currentStyle == style
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (isSelected) Color(0xFFFA233B).copy(alpha = 0.08f) else Color(0xFFF5F5F7)
+                            )
+                            .clickable { onSelect(style) }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = style.title,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color(0xFFFA233B) else Color(0xFF111111)
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = style.desc,
+                                fontSize = 12.sp,
+                                color = Color(0xFF8E8E93)
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = Color(0xFFFA233B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFA233B))
+            ) {
+                Text("完成", color = Color.White)
+            }
+        },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = Color.White
+    )
+}
+

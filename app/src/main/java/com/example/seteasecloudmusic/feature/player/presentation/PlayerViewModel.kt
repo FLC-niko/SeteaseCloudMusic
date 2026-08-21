@@ -1,42 +1,45 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
-import com.example.seteasecloudmusic.core.model.Track
+import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
-import com.example.seteasecloudmusic.feature.player.domain.usecase.GetLyricUseCase
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.feature.player.data.LyricResponse
+import com.example.seteasecloudmusic.feature.player.domain.usecase.GetLyricUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import android.util.Log
 
 /**
  * 播放器 ViewModel：
  * 1) 对 UI 暴露只读播放状态
  * 2) 转发播放控制命令
- * 3) 统一处理 connect/release 生命周期入口
+ * 3) 统一处理 connect 生命周期入口
  * 4) 获取和管理歌词数据
+ * 5) 持有播放器风格设置管理器
  */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val controller: MusicPlayerController,
-    private val getLyricUseCase: GetLyricUseCase
-) : ViewModel(){
+    private val getLyricUseCase: GetLyricUseCase,
+    val playerSettingsManager: PlayerSettingsManager
+) : ViewModel() {
 
-    // 直接复用 Controller 内部的状态流，避免重复维护一份状态
+    // 直接复用 Controller 内部的状态流
     val playbackState: StateFlow<PlaybackState> = controller.playbackState
 
     private val _lyricState = MutableStateFlow<Result<LyricResponse>?>(null)
     val lyricState: StateFlow<Result<LyricResponse>?> = _lyricState.asStateFlow()
 
+    private var currentLyricTrackId: Long? = null
+
     init {
-        // Observe track changes to fetch new lyrics
         viewModelScope.launch {
             controller.playbackState.collect { state ->
                 val trackId = state.currentTrack?.id
@@ -48,18 +51,11 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private var currentLyricTrackId: Long? = null
-
     suspend fun getLyricDataDirectly(songId: Long): String? {
         val res = getLyricUseCase(songId)
-        Log.d("PlayerViewModel", "getLyricDataDirectly: songId=$songId, result isSuccess=${res.isSuccess}")
         val data = res.getOrNull()
-        if (res.isFailure) {
-            Log.e("PlayerViewModel", "API Error: ", res.exceptionOrNull())
-        }
         val yrcLyric = data?.yrc?.lyric
         val lrcLyric = data?.lrc?.lyric
-        Log.d("PlayerViewModel", "yrc length=${yrcLyric?.length}, lrc length=${lrcLyric?.length}")
         return yrcLyric.takeIf { !it.isNullOrBlank() } ?: lrcLyric.takeIf { !it.isNullOrBlank() }
     }
 
@@ -75,13 +71,13 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun onPlayPause() {
-        when(playbackState.value.status) {
+        when (playbackState.value.status) {
             PlayerStatus.PLAYING -> controller.pause()
-            PlayerStatus.PAUSED -> controller.pause()
+            PlayerStatus.PAUSED -> controller.resume()
             PlayerStatus.BUFFERING -> Unit
             PlayerStatus.IDLE,
             PlayerStatus.ENDED,
-            PlayerStatus.ERROR ->  controller.replayCurrent()
+            PlayerStatus.ERROR -> controller.replayCurrent()
         }
     }
 
@@ -95,11 +91,5 @@ class PlayerViewModel @Inject constructor(
 
     fun seekTo(positionMs: Int) {
         controller.seekTo(positionMs)
-    }
-
-    override  fun onCleared() {
-        // ViewModel 销毁时释放控制器，避免监听器和协程泄漏
-        controller.release()
-        super.onCleared()
     }
 }
