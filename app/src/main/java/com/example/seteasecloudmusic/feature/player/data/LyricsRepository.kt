@@ -18,7 +18,7 @@ import javax.inject.Singleton
 @Singleton
 class LyricsRepository @Inject constructor(
     private val lyricService: LyricService,
-    @Named("ttmlClient") private val ttmlClient: OkHttpClient
+    @param:Named("ttmlClient") private val ttmlClient: OkHttpClient
 ) {
 
     private val ttmlMirrors = listOf(

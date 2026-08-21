@@ -9,10 +9,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.example.seteasecloudmusic.core.database.dao.RecentTrackDao
-import com.example.seteasecloudmusic.core.database.entity.RecentTrackEntity
+import com.example.seteasecloudmusic.core.database.RecentTrackRecorder
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.feature.search.domain.PrepareTrackForPlaybackUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -52,9 +50,9 @@ data class PlaybackState(
 
 @Singleton
 class MusicPlayerController @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase,
-    private val recentTrackDao: RecentTrackDao
+    @param:ApplicationContext private val context: Context,
+    private val trackPlaybackPreparer: TrackPlaybackPreparer,
+    private val recentTrackRecorder: RecentTrackRecorder
 ) {
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -318,7 +316,7 @@ class MusicPlayerController @Inject constructor(
                 )
             }
 
-            val prepared = withContext(ioDispatcher) { prepareTrackForPlaybackUseCase(track) }
+            val prepared = withContext(ioDispatcher) { trackPlaybackPreparer(track) }
             if (isStaleRequest(requestId)) {
                 return@launch
             }
@@ -363,20 +361,9 @@ class MusicPlayerController @Inject constructor(
                         play()
                     }
 
-                    // 记录到 Room 数据库最近播放
+                    // 播放器只报告成功播放，具体持久化由数据库记录器负责。
                     withContext(ioDispatcher) {
-                        try {
-                            recentTrackDao.insertOrUpdate(
-                                RecentTrackEntity(
-                                    id = t.id,
-                                    name = t.title,
-                                    artist = t.artists.joinToString(" / ") { it.name },
-                                    album = t.album.title,
-                                    picUrl = t.coverUrl.orEmpty(),
-                                    durationMs = t.durationMs ?: 0L
-                                )
-                            )
-                        } catch (_: Exception) {}
+                        runCatching { recentTrackRecorder.record(t) }
                     }
                 }
                 .onFailure { e ->
@@ -475,7 +462,7 @@ class MusicPlayerController @Inject constructor(
         prefetchedTrackId = nextTrack.id
         prefetchJob = scope.launch(ioDispatcher) {
             try {
-                prepareTrackForPlaybackUseCase(nextTrack)
+                trackPlaybackPreparer(nextTrack)
             } catch (_: Exception) {}
         }
     }

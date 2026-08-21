@@ -96,9 +96,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     
-    // Compose Activity
-    implementation("androidx.activity:activity-compose:1.9.0")
-    
     // Navigation - 这是缺失的关键依赖
     implementation("androidx.navigation:navigation-compose:2.7.7")
     

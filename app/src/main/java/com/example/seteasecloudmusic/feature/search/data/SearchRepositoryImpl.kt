@@ -4,6 +4,7 @@ import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
@@ -24,7 +25,13 @@ import javax.inject.Inject
  */
 class SearchRepositoryImpl @Inject constructor(
     private val musicService: NeteaseMusicService
-) : SearchRepository {
+) : SearchRepository, TrackPlaybackPreparer {
+
+    override suspend operator fun invoke(track: Track): Result<Track> {
+        return getTrackUrl(track.id).map { url ->
+            track.copy(playableUrl = url, isPlayable = url.isNotBlank())
+        }
+    }
 
     override suspend fun searchTracks(
         query: String,

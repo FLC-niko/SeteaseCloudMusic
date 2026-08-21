@@ -9,7 +9,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.example.seteasecloudmusic.core.cache.AudioCacheManager
-import com.example.seteasecloudmusic.feature.main.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -55,10 +54,11 @@ class MusicService : MediaSessionService() {
         this.player = exoPlayer
 
         // 5. 设置点击通知栏时的跳转意图
+        val launchIntent = requireNotNull(packageManager.getLaunchIntentForPackage(packageName))
         val sessionActivity = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
+            launchIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
 

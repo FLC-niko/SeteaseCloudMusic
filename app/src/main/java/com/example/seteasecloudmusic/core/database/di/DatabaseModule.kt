@@ -3,6 +3,8 @@ package com.example.seteasecloudmusic.core.database.di
 import android.content.Context
 import androidx.room.Room
 import com.example.seteasecloudmusic.core.database.AppDatabase
+import com.example.seteasecloudmusic.core.database.RecentTrackRecorder
+import com.example.seteasecloudmusic.core.database.RoomRecentTrackRecorder
 import com.example.seteasecloudmusic.core.database.dao.RecentTrackDao
 import dagger.Module
 import dagger.Provides
@@ -25,7 +27,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "setease_music.db"
         )
-            .fallbackToDestructiveMigration()
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
 
@@ -33,4 +35,10 @@ object DatabaseModule {
     fun provideRecentTrackDao(appDatabase: AppDatabase): RecentTrackDao {
         return appDatabase.recentTrackDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideRecentTrackRecorder(
+        impl: RoomRecentTrackRecorder
+    ): RecentTrackRecorder = impl
 }

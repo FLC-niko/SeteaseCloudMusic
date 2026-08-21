@@ -77,6 +77,7 @@ import com.example.seteasecloudmusic.feature.home.presentation.HomeRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
 import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
+import com.example.seteasecloudmusic.feature.player.presentation.GlobalPlayerViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -258,6 +259,7 @@ fun AppNavigation(
 ) {
     val searchViewModel: SearchViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
+    val globalPlayerViewModel: GlobalPlayerViewModel = hiltViewModel()
 
     val searchUiState by searchViewModel.uiState.collectAsState()
     val authUiState by authViewModel.uiState.collectAsState()
@@ -804,10 +806,10 @@ fun AppNavigation(
         GlobalMiniPlayerBar(
             backdrop = backdrop,
             cornerRadius = cornerRadius,
-            playbackStateFlow = searchViewModel.playbackState,
+            playbackStateFlow = globalPlayerViewModel.playbackState,
             useDynamicBackdrop = useBackdropEffects,
-            onPlayPauseClick = { searchViewModel.onMiniPlayerPlayPause() },
-            onNextClick = { searchViewModel.onMiniPlayerNext() },
+            onPlayPauseClick = globalPlayerViewModel::onPlayPause,
+            onNextClick = globalPlayerViewModel::onNext,
             onBarClick = {
                 if (!showNowPlaying) {
                     showNowPlaying = true

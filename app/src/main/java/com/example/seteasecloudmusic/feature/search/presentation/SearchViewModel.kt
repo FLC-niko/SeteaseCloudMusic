@@ -3,7 +3,6 @@ package com.example.seteasecloudmusic.feature.search.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
-import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.GetSearchSuggestionsUseCase
@@ -41,7 +40,6 @@ class SearchViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState = _uiState.asStateFlow()
-    val playbackState = musicPlayerController.playbackState
 
     private var lastSubmittedQuery: String? = null
     // 正式搜索和联想建议各自维护独立 Job，避免互相取消或状态覆盖。
@@ -410,27 +408,6 @@ class SearchViewModel @Inject constructor(
                 suggestionErrorMessage = null
             )
         }
-    }
-
-    /**
-     * 迷你播放器的播放/暂停按钮。
-     */
-    fun onMiniPlayerPlayPause() {
-        when (playbackState.value.status) {
-            PlayerStatus.PLAYING -> musicPlayerController.pause()
-            PlayerStatus.PAUSED -> musicPlayerController.resume()
-            PlayerStatus.BUFFERING -> Unit
-            PlayerStatus.IDLE,
-            PlayerStatus.ENDED,
-            PlayerStatus.ERROR -> musicPlayerController.replayCurrent()
-        }
-    }
-
-    /**
-     * 迷你播放器的下一首按钮。
-     */
-    fun onMiniPlayerNext() {
-        musicPlayerController.playNext()
     }
 
     override fun onCleared() {
