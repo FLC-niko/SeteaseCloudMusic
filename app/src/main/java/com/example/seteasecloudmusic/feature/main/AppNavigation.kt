@@ -71,6 +71,7 @@ import com.example.seteasecloudmusic.feature.artist.presentation.ArtistDetailRou
 import com.example.seteasecloudmusic.feature.home.presentation.DailyRecommendDetailRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
+import com.example.seteasecloudmusic.feature.mine.presentation.MineRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
@@ -374,7 +375,11 @@ fun AppNavigation(
                     }
                 )
                 1 -> AppPageBackground() // 电台
-                2 -> AppPageBackground() // 我的
+                2 -> MineRoute(
+                    topContentPadding = searchContentTopPadding,
+                    bottomContentPadding = 180.dp + animatedImeOffset,
+                    onLoginClick = { showAccountSheet = true }
+                ) // 我的
                 3 -> SearchRoute(
                     viewModel = searchViewModel,
                     topContentPadding = searchContentTopPadding,
@@ -391,6 +396,13 @@ fun AppNavigation(
             }
         }
 
+        val isMineTab = selectedIndex == 2
+        val topLargeTitleAlpha by animateFloatAsState(
+            targetValue = if (isMineTab) 0f else (1f - sinkProgress),
+            animationSpec = tween(durationMillis = 220),
+            label = "topLargeTitleAlpha"
+        )
+
         AnimatedContent(
             targetState = pageTitle,
             transitionSpec = {
@@ -402,10 +414,16 @@ fun AppNavigation(
                 .align(Alignment.TopStart)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 24.dp, top = 16.dp)
-                .graphicsLayer { alpha = 1f - sinkProgress }
+                .graphicsLayer { alpha = topLargeTitleAlpha }
         ) { animatedTitle ->
             LargePageTitle(title = animatedTitle)
         }
+
+        val topAvatarAlpha by animateFloatAsState(
+            targetValue = if (isMineTab) 0f else (1f - sinkProgress),
+            animationSpec = tween(durationMillis = 220),
+            label = "topAvatarAlpha"
+        )
 
         UserAvatarButton(
             avatarUrl = authUiState.authSession?.avatarUrl,
@@ -414,12 +432,12 @@ fun AppNavigation(
                 showAccountSheet = true
                 onAvatarClick?.invoke()
             },
-            enabled = true,
+            enabled = !isMineTab,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(end = 24.dp, top = 12.dp)
-                .graphicsLayer { alpha = 1f - sinkProgress }
+                .graphicsLayer { alpha = topAvatarAlpha }
         )
 
         // --- 顶层悬浮导航栏及独立搜索按钮 ---

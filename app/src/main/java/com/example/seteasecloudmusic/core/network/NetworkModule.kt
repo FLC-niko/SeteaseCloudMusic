@@ -184,6 +184,14 @@ class NetworkModule {
     fun provideDiscoverService(retrofit: Retrofit): DiscoverService =
         retrofit.create(DiscoverService::class.java)
 
+    /**
+     * 暴露我的页面 API 服务实例。
+     */
+    @Provides
+    @Singleton
+    fun provideMineService(retrofit: Retrofit): com.example.seteasecloudmusic.feature.mine.data.MineService =
+        retrofit.create(com.example.seteasecloudmusic.feature.mine.data.MineService::class.java)
+
     //改成依赖注入的方式后，提供 NeteaseMusicService 的方法可以直接注入 Retrofit 实例，无需手动调用 provideHttpClient 和 provideRetrofit。
 
 //    fun provideNeteaseMusicService(): NeteaseMusicService {
