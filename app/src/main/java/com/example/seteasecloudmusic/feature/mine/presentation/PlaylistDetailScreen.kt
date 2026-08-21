@@ -91,12 +91,11 @@ fun PlaylistDetailScreen(
                     )
                 }
 
-                // 2. 歌曲列表头部统计
+                // 2. 歌曲列表头部统计 (优先使用真实总歌曲数 detail.trackCount)
                 item(key = "track_count_header") {
-                    val countText = if (detail.tracks.isNotEmpty()) {
-                        "歌曲列表 (${detail.tracks.size})"
-                    } else if (detail.trackCount > 0) {
-                        "歌曲列表 (${detail.trackCount})"
+                    val totalCount = if (detail.trackCount > 0) detail.trackCount else detail.tracks.size
+                    val countText = if (totalCount > 0) {
+                        "歌曲列表 ($totalCount)"
                     } else {
                         "歌曲列表"
                     }
@@ -280,8 +279,8 @@ private fun PlaylistHeroSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 创建者与歌曲数
-        val count = if (detail.tracks.isNotEmpty()) detail.tracks.size else detail.trackCount
+        // 创建者与歌曲数 (优先使用真实总歌曲数 detail.trackCount，避免显示前屏缓存曲目数量)
+        val count = if (detail.trackCount > 0) detail.trackCount else detail.tracks.size
         Text(
             text = "$count 首歌曲" + if (!detail.creatorName.isNullOrBlank()) " · ${detail.creatorName}" else "",
             style = MaterialTheme.typography.bodyMedium.copy(

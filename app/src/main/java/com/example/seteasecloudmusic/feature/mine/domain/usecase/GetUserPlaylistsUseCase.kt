@@ -13,4 +13,9 @@ class GetUserPlaylistsUseCase @Inject constructor(
         }
         return mineRepository.getUserPlaylists(userId)
     }
+
+    fun getCached(userId: Long): UserPlaylistsGroup? {
+        if (userId <= 0L) return null
+        return mineRepository.getCachedUserPlaylists(userId)
+    }
 }

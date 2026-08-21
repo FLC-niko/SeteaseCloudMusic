@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.feature.home.data
 
 import android.content.Context
+import com.example.seteasecloudmusic.core.cache.DataCacheManager
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
@@ -13,18 +14,32 @@ import javax.inject.Inject
 
 class HomeRecommendRepositoryImpl @Inject constructor(
     private val dailyRecommendService: DailyRecommendService,
+    private val dataCacheManager: DataCacheManager,
     @param:ApplicationContext private val context: Context
 ) : HomeRecommendRepository {
+
+    override fun getCachedDailyRecommendSongs(): List<Track>? {
+        return dataCacheManager.getDailyRecommend()
+    }
 
     override suspend fun getDailyRecommendSongs(afresh: Boolean): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             try {
                 if (!hasLoginCookie()) {
+                    // 若未登录但本地有历史缓存，先降级返回历史缓存
+                    val cached = dataCacheManager.getDailyRecommend()
+                    if (!cached.isNullOrEmpty()) {
+                        return@withContext Result.success(cached)
+                    }
                     return@withContext Result.failure(Exception("请先登录后再获取每日推荐"))
                 }
 
                 val response = dailyRecommendService.getDailyRecommendSongs(afresh)
                 if (response.code != 200) {
+                    val cached = dataCacheManager.getDailyRecommend()
+                    if (!cached.isNullOrEmpty()) {
+                        return@withContext Result.success(cached)
+                    }
                     return@withContext Result.failure(Exception("获取每日推荐失败: ${response.code}"))
                 }
 
@@ -36,9 +51,18 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                     .map(::mapToTrack)
                     .distinctBy { it.id }
 
+                if (tracks.isNotEmpty()) {
+                    dataCacheManager.saveDailyRecommend(tracks)
+                }
+
                 Result.success(tracks)
             } catch (e: Exception) {
-                Result.failure(e)
+                val cached = dataCacheManager.getDailyRecommend()
+                if (!cached.isNullOrEmpty()) {
+                    Result.success(cached)
+                } else {
+                    Result.failure(e)
+                }
             }
         }
 

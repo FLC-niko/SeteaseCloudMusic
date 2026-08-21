@@ -55,7 +55,20 @@ class MineViewModel @Inject constructor(
             authRepository.observeAuthState().collect { session ->
                 _uiState.update { it.copy(authSession = session) }
                 if (session?.isLoggedIn == true && session.userId != null) {
-                    loadUserPlaylists(session.userId)
+                    // 1. 0ms 瞬间加载本地持久化歌单缓存，绝不让用户在「我的」界面等待白屏转圈
+                    val cachedGroup = getUserPlaylistsUseCase.getCached(session.userId)
+                    if (cachedGroup != null) {
+                        _uiState.update {
+                            it.copy(
+                                likedPlaylist = cachedGroup.likedPlaylist,
+                                createdPlaylists = cachedGroup.createdPlaylists,
+                                favoritedPlaylists = cachedGroup.favoritedPlaylists,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    // 2. 静默拉取最新歌单更新
+                    loadUserPlaylists(session.userId, silent = (cachedGroup != null))
                 } else {
                     _uiState.update {
                         it.copy(
@@ -75,14 +88,16 @@ class MineViewModel @Inject constructor(
         if (session?.isLoggedIn == true && session.userId != null) {
             viewModelScope.launch {
                 _uiState.update { it.copy(isRefreshing = true) }
-                loadUserPlaylists(session.userId)
+                loadUserPlaylists(session.userId, silent = false)
                 _uiState.update { it.copy(isRefreshing = false) }
             }
         }
     }
 
-    private suspend fun loadUserPlaylists(userId: Long) {
-        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+    private suspend fun loadUserPlaylists(userId: Long, silent: Boolean = false) {
+        if (!silent) {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        }
         val result = getUserPlaylistsUseCase(userId)
         result.fold(
             onSuccess = { group ->
@@ -97,10 +112,12 @@ class MineViewModel @Inject constructor(
                 }
             },
             onFailure = { err ->
-                _uiState.update {
-                    it.copy(
+                _uiState.update { current ->
+                    current.copy(
                         isLoading = false,
-                        errorMessage = err.message ?: "加载歌单失败"
+                        errorMessage = if (current.createdPlaylists.isEmpty() && current.likedPlaylist == null) {
+                            err.message ?: "加载歌单失败"
+                        } else null
                     )
                 }
             }
@@ -112,12 +129,20 @@ class MineViewModel @Inject constructor(
     }
 
     /**
-     * 极速打开歌单（0ms 秒级弹出，不等待网络返回）
+     * 极速打开歌单（0ms 秒级弹出，结合内存与首屏持久化缓存）
      */
     fun openPlaylist(playlist: UserPlaylist) {
-        // 1. 若有缓存，立即以完整缓存数据秒开；若无缓存，先立即以基础元信息弹窗展示封面与骨架
+        // 1. 优先从内存取，其次从轻量磁盘首屏缓存取（前20首歌曲+封面秒显），最后兜底基础元信息
         val cached = playlistDetailCache[playlist.id]
-        val instantPreview = cached ?: PlaylistDetail(
+            ?: getPlaylistDetailUseCase.getCachedPreview(playlist.id)
+
+        val instantPreview = cached?.let {
+            if (playlist.trackCount > 0 && it.trackCount != playlist.trackCount) {
+                it.copy(trackCount = playlist.trackCount)
+            } else {
+                it
+            }
+        } ?: PlaylistDetail(
             id = playlist.id,
             name = playlist.name,
             coverUrl = playlist.coverUrl,
@@ -132,7 +157,7 @@ class MineViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 activePlaylistDetail = instantPreview,
-                isLoadingDetail = (cached == null),
+                isLoadingDetail = (instantPreview.tracks.isEmpty()),
                 errorMessage = null
             )
         }
@@ -160,7 +185,9 @@ class MineViewModel @Inject constructor(
                         if (current.activePlaylistDetail?.id == playlist.id) {
                             current.copy(
                                 isLoadingDetail = false,
-                                errorMessage = err.message ?: "加载歌单曲目失败"
+                                errorMessage = if (current.activePlaylistDetail?.tracks.isNullOrEmpty()) {
+                                    err.message ?: "加载歌单曲目失败"
+                                } else null
                             )
                         } else {
                             current

@@ -14,7 +14,17 @@ interface MineRepository {
     suspend fun getUserPlaylists(userId: Long): Result<UserPlaylistsGroup>
 
     /**
+     * 读取本地持久化的用户歌单列表
+     */
+    fun getCachedUserPlaylists(userId: Long): UserPlaylistsGroup?
+
+    /**
      * 获取歌单详情及其全部曲目
      */
     suspend fun getPlaylistDetail(playlistId: Long): Result<PlaylistDetail>
+
+    /**
+     * 读取本地轻量持久化的歌单详情首屏曲目（前20首）
+     */
+    fun getCachedPlaylistDetailPreview(playlistId: Long): PlaylistDetail?
 }

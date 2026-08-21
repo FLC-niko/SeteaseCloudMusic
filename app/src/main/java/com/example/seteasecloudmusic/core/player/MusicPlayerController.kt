@@ -9,6 +9,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.example.seteasecloudmusic.core.cache.PlaybackCacheManager
+import com.example.seteasecloudmusic.core.cache.SavedPlaybackState
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.PrepareTrackForPlaybackUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -43,8 +45,9 @@ data class PlaybackState(
 
 @Singleton
 class MusicPlayerController @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase
+    @param:ApplicationContext private val context: Context,
+    private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase,
+    private val playbackCacheManager: PlaybackCacheManager
 ) {
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -59,9 +62,28 @@ class MusicPlayerController @Inject constructor(
     private var playJob: Job? = null
     private var prefetchJob: Job? = null
     private var latestPlayRequestId: Long = 0L
+    private var lastPersistTimeMs: Long = 0L
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    init {
+        // 冷启动自动恢复上次持久化的播放状态、播放列表与进度
+        val saved = playbackCacheManager.getSavedPlaybackState()
+        if (saved != null && saved.queueTracks.isNotEmpty() && saved.currentQueueIndex in saved.queueTracks.indices) {
+            val track = saved.queueTracks.getOrNull(saved.currentQueueIndex)
+            _playbackState.update {
+                it.copy(
+                    status = PlayerStatus.PAUSED,
+                    currentTrack = track,
+                    currentPositionMs = saved.currentPositionMs,
+                    durationMs = saved.durationMs,
+                    queueTracks = saved.queueTracks,
+                    currentQueueIndex = saved.currentQueueIndex
+                )
+            }
+        }
+    }
 
     // 监听 Media3 播放器状态变化，统一映射到你的 PlaybackState
     private val playerListener = object : Player.Listener {
@@ -81,11 +103,17 @@ class MusicPlayerController @Inject constructor(
                 }
             }
 
-            _playbackState.update {
-                it.copy(
+            _playbackState.update { current ->
+                val pos = if (mapped == PlayerStatus.BUFFERING && current.currentPositionMs > 0 && c.currentPosition <= 0L) {
+                    current.currentPositionMs
+                } else {
+                    c.currentPosition.toInt().coerceAtLeast(0)
+                }
+                val dur = c.duration.takeIf { d -> d > 0 }?.toInt() ?: current.durationMs
+                current.copy(
                     status = mapped,
-                    currentPositionMs = c.currentPosition.toInt().coerceAtLeast(0),
-                    durationMs = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
+                    currentPositionMs = pos,
+                    durationMs = dur
                 )
             }
 
@@ -96,7 +124,12 @@ class MusicPlayerController @Inject constructor(
             _playbackState.update {
                 it.copy(status = if (isPlaying) PlayerStatus.PLAYING else PlayerStatus.PAUSED)
             }
-            if (isPlaying) startProgressTicker() else stopProgressTicker()
+            if (isPlaying) {
+                startProgressTicker()
+            } else {
+                stopProgressTicker()
+                persistCurrentState()
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -151,11 +184,12 @@ class MusicPlayerController @Inject constructor(
             it.copy(
                 queueTracks = snapshot,
                 currentQueueIndex = startIndex,
+                currentPositionMs = 0,
                 errorMessage = null
             )
         }
 
-        playQueueIndex(startIndex)
+        playQueueIndex(startIndex, initialSeekMs = 0)
     }
 
     fun play(track: Track) {
@@ -170,7 +204,7 @@ class MusicPlayerController @Inject constructor(
         val state = _playbackState.value
         val previousIndex = state.currentQueueIndex - 1
         if (previousIndex in state.queueTracks.indices) {
-            playQueueIndex(previousIndex)
+            playQueueIndex(previousIndex, initialSeekMs = 0)
         } else {
             seekTo(0)
         }
@@ -180,7 +214,7 @@ class MusicPlayerController @Inject constructor(
         val state = _playbackState.value
         when {
             state.currentQueueIndex in state.queueTracks.indices -> {
-                playQueueIndex(state.currentQueueIndex)
+                playQueueIndex(state.currentQueueIndex, initialSeekMs = state.currentPositionMs)
             }
 
             state.currentTrack != null -> {
@@ -189,12 +223,37 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
-    fun pause() = controller?.pause() ?: Unit
-    fun resume() = controller?.play() ?: Unit
-    fun stop() = controller?.stop() ?: Unit
-    fun seekTo(positionMs: Int) = controller?.seekTo(positionMs.toLong()) ?: Unit
+    fun pause() {
+        controller?.pause()
+        persistCurrentState()
+    }
+
+    fun resume() {
+        val c = controller
+        val state = _playbackState.value
+        if (c != null && c.currentMediaItem != null) {
+            c.play()
+        } else if (state.currentQueueIndex in state.queueTracks.indices) {
+            // 冷启动恢复播放：使用 setMediaItem(item, startPositionMs) 精确从上次记忆的进度开始无缝续播
+            playQueueIndex(state.currentQueueIndex, initialSeekMs = state.currentPositionMs)
+        } else {
+            c?.play()
+        }
+    }
+
+    fun stop() {
+        controller?.stop()
+        persistCurrentState()
+    }
+
+    fun seekTo(positionMs: Int) {
+        controller?.seekTo(positionMs.toLong())
+        _playbackState.update { it.copy(currentPositionMs = positionMs) }
+        persistCurrentState()
+    }
 
     fun release() {
+        persistCurrentState()
         stopProgressTicker()
         playJob?.cancel()
         playJob = null
@@ -206,7 +265,7 @@ class MusicPlayerController @Inject constructor(
         scope.cancel()
     }
 
-    private fun playQueueIndex(index: Int) {
+    private fun playQueueIndex(index: Int, initialSeekMs: Int = 0) {
         val queue = _playbackState.value.queueTracks
         if (index !in queue.indices) {
             _playbackState.update {
@@ -225,6 +284,7 @@ class MusicPlayerController @Inject constructor(
                     status = PlayerStatus.BUFFERING,
                     currentTrack = track,
                     currentQueueIndex = index,
+                    currentPositionMs = initialSeekMs,
                     errorMessage = null
                 )
             }
@@ -262,12 +322,18 @@ class MusicPlayerController @Inject constructor(
                         .build()
 
                     controller?.apply {
-                        setMediaItem(item)
+                        if (initialSeekMs > 0) {
+                            setMediaItem(item, initialSeekMs.toLong())
+                        } else {
+                            setMediaItem(item)
+                        }
                         prepare()
                         play()
                     } ?: _playbackState.update {
                         it.copy(status = PlayerStatus.ERROR, errorMessage = "Controller not connected")
                     }
+
+                    persistCurrentState()
 
                     // 2. 核心秒切优化：在后台静默预加载上一首和下一首的播放直链
                     prefetchNeighbors(index)
@@ -309,14 +375,28 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
+    private fun persistCurrentState() {
+        val state = _playbackState.value
+        if (state.queueTracks.isNotEmpty() && state.currentQueueIndex in state.queueTracks.indices) {
+            playbackCacheManager.savePlaybackState(
+                SavedPlaybackState(
+                    queueTracks = state.queueTracks,
+                    currentQueueIndex = state.currentQueueIndex,
+                    currentPositionMs = state.currentPositionMs,
+                    durationMs = state.durationMs
+                )
+            )
+        }
+    }
+
     private fun playNextInternal(): Boolean {
         val state = _playbackState.value
         val nextIndex = state.currentQueueIndex + 1
         if (nextIndex in state.queueTracks.indices) {
-            playQueueIndex(nextIndex)
+            playQueueIndex(nextIndex, initialSeekMs = 0)
             return true
         } else if (state.queueTracks.isNotEmpty()) {
-            playQueueIndex(0)
+            playQueueIndex(0, initialSeekMs = 0)
             return true
         }
         _playbackState.update {
@@ -337,12 +417,22 @@ class MusicPlayerController @Inject constructor(
         progressJob = scope.launch {
             while (isActive) {
                 val c = controller ?: break
+                val pos = c.currentPosition.toInt().coerceAtLeast(0)
+                val dur = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
                 _playbackState.update {
                     it.copy(
-                        currentPositionMs = c.currentPosition.toInt().coerceAtLeast(0),
-                        durationMs = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
+                        currentPositionMs = pos,
+                        durationMs = if (dur > 0) dur else it.durationMs
                     )
                 }
+
+                // 每隔 3 秒周期性同步进度到本地持久化存储
+                val now = System.currentTimeMillis()
+                if (now - lastPersistTimeMs > 3000L) {
+                    lastPersistTimeMs = now
+                    persistCurrentState()
+                }
+
                 delay(500L)
             }
         }

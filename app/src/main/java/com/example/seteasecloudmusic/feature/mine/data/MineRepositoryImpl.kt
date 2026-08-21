@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.mine.data
 
+import com.example.seteasecloudmusic.core.cache.DataCacheManager
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
@@ -12,13 +13,25 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class MineRepositoryImpl @Inject constructor(
-    private val mineService: MineService
+    private val mineService: MineService,
+    private val dataCacheManager: DataCacheManager
 ) : MineRepository {
+
+    override fun getCachedUserPlaylists(userId: Long): UserPlaylistsGroup? {
+        return dataCacheManager.getUserPlaylists(userId)
+    }
+
+    override fun getCachedPlaylistDetailPreview(playlistId: Long): PlaylistDetail? {
+        return dataCacheManager.getPlaylistDetailPreview(playlistId)
+    }
 
     override suspend fun getUserPlaylists(userId: Long): Result<UserPlaylistsGroup> = withContext(Dispatchers.IO) {
         runCatching {
             val response = mineService.getUserPlaylists(uid = userId)
             if ((response.code ?: 0) != 200) {
+                // 异常时若有缓存则优先返回缓存
+                val cached = dataCacheManager.getUserPlaylists(userId)
+                if (cached != null) return@runCatching cached
                 throw Exception("获取用户歌单失败: code=${response.code}")
             }
 
@@ -72,11 +85,19 @@ class MineRepositoryImpl @Inject constructor(
                     )
                 }
 
-            UserPlaylistsGroup(
+            val group = UserPlaylistsGroup(
                 likedPlaylist = likedPlaylist,
                 createdPlaylists = createdPlaylists,
                 favoritedPlaylists = favoritedPlaylists
             )
+
+            // 持久化到本地缓存
+            dataCacheManager.saveUserPlaylists(userId, group)
+
+            group
+        }.recoverCatching { err ->
+            val cached = dataCacheManager.getUserPlaylists(userId)
+            cached ?: throw err
         }
     }
 
@@ -84,6 +105,8 @@ class MineRepositoryImpl @Inject constructor(
         runCatching {
             val response = mineService.getPlaylistDetail(id = playlistId)
             if ((response.code ?: 0) != 200) {
+                val cached = dataCacheManager.getPlaylistDetailPreview(playlistId)
+                if (cached != null) return@runCatching cached
                 throw Exception("获取歌单详情失败: code=${response.code}")
             }
 
@@ -112,7 +135,7 @@ class MineRepositoryImpl @Inject constructor(
                 )
             }
 
-            PlaylistDetail(
+            val detail = PlaylistDetail(
                 id = pl.id ?: 0L,
                 name = pl.name ?: "歌单详情",
                 coverUrl = pl.coverImgUrl,
@@ -122,6 +145,14 @@ class MineRepositoryImpl @Inject constructor(
                 creatorName = pl.creator?.nickname,
                 tracks = tracks
             )
+
+            // 轻量持久化歌单首屏曲目（前20首）
+            dataCacheManager.savePlaylistDetailPreview(detail)
+
+            detail
+        }.recoverCatching { err ->
+            val cached = dataCacheManager.getPlaylistDetailPreview(playlistId)
+            cached ?: throw err
         }
     }
 }

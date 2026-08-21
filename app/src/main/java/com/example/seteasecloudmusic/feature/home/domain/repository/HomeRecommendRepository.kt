@@ -6,4 +6,6 @@ interface HomeRecommendRepository {
     suspend fun getDailyRecommendSongs(
         afresh: Boolean = false
     ): Result<List<Track>>
+
+    fun getCachedDailyRecommendSongs(): List<Track>?
 }

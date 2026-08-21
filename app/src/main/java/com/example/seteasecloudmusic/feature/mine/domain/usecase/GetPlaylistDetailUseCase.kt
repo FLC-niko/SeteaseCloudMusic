@@ -13,4 +13,9 @@ class GetPlaylistDetailUseCase @Inject constructor(
         }
         return mineRepository.getPlaylistDetail(playlistId)
     }
+
+    fun getCachedPreview(playlistId: Long): PlaylistDetail? {
+        if (playlistId <= 0L) return null
+        return mineRepository.getCachedPlaylistDetailPreview(playlistId)
+    }
 }
