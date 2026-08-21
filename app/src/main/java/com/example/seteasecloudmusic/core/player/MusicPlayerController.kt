@@ -9,6 +9,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.example.seteasecloudmusic.core.database.dao.RecentTrackDao
+import com.example.seteasecloudmusic.core.database.entity.RecentTrackEntity
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.PrepareTrackForPlaybackUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -52,6 +54,7 @@ data class PlaybackState(
 class MusicPlayerController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase,
+    private val recentTrackDao: RecentTrackDao
 ) {
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -66,6 +69,8 @@ class MusicPlayerController @Inject constructor(
     // 进度轮询任务：同步 position/duration 到 UI，歌词逐字高亮需要更密的节奏。
     private var progressJob: Job? = null
     private var playJob: Job? = null
+    private var prefetchJob: Job? = null
+    private var prefetchedTrackId: Long? = null
     private val latestPlayRequestId = AtomicLong(0L)
     private val playedShuffleIndices = Collections.synchronizedSet(mutableSetOf<Int>())
 
@@ -357,6 +362,22 @@ class MusicPlayerController @Inject constructor(
                         prepare()
                         play()
                     }
+
+                    // 记录到 Room 数据库最近播放
+                    withContext(ioDispatcher) {
+                        try {
+                            recentTrackDao.insertOrUpdate(
+                                RecentTrackEntity(
+                                    id = t.id,
+                                    name = t.title,
+                                    artist = t.artists.joinToString(" / ") { it.name },
+                                    album = t.album.title,
+                                    picUrl = t.coverUrl.orEmpty(),
+                                    durationMs = t.durationMs ?: 0L
+                                )
+                            )
+                        } catch (_: Exception) {}
+                    }
                 }
                 .onFailure { e ->
                     if (isStaleRequest(requestId)) {
@@ -418,14 +439,44 @@ class MusicPlayerController @Inject constructor(
         progressJob = scope.launch {
             while (isActive) {
                 val c = controller ?: break
+                val pos = c.currentPosition.toInt().coerceAtLeast(0)
+                val dur = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
                 _playbackState.update {
                     it.copy(
-                        currentPositionMs = c.currentPosition.toInt().coerceAtLeast(0),
-                        durationMs = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
+                        currentPositionMs = pos,
+                        durationMs = dur
                     )
                 }
+
+                // 预加载下一首：当播放进度超过 70% 或剩余少于 20 秒时
+                if (dur > 0 && (pos.toFloat() / dur > 0.7f || (dur - pos) < 20_000)) {
+                    triggerPrefetchNextTrack()
+                }
+
                 delay(100L)
             }
+        }
+    }
+
+    private fun triggerPrefetchNextTrack() {
+        val state = _playbackState.value
+        if (state.queueTracks.isEmpty() || prefetchJob?.isActive == true) return
+
+        val nextIndex = when {
+            state.shuffleEnabled -> null // 随机模式下一首未定，不预拉取
+            state.currentQueueIndex < state.queueTracks.lastIndex -> state.currentQueueIndex + 1
+            state.repeatMode == QueueRepeatMode.ALL -> 0
+            else -> null
+        } ?: return
+
+        val nextTrack = state.queueTracks.getOrNull(nextIndex) ?: return
+        if (nextTrack.id == prefetchedTrackId) return
+
+        prefetchedTrackId = nextTrack.id
+        prefetchJob = scope.launch(ioDispatcher) {
+            try {
+                prepareTrackForPlaybackUseCase(nextTrack)
+            } catch (_: Exception) {}
         }
     }
 

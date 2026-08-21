@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.auth.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.seteasecloudmusic.core.cache.AudioCacheManager
 import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrStatus
@@ -37,7 +38,10 @@ data class AuthUiState(
     val isLoggedIn: Boolean = false,
     val authSession: AuthSession? = null,
     val isDarkModeEnabled: Boolean = false,
-    val showLogoutConfirmDialog: Boolean = false
+    val showLogoutConfirmDialog: Boolean = false,
+    val showSettingsDialog: Boolean = false,
+    val maxCacheMb: Int = 200,
+    val currentCacheMb: Float = 0f
 )
 
 enum class AuthPanel {
@@ -54,7 +58,8 @@ class AuthViewModel @Inject constructor(
     private val pollQrStatusUseCase: PollQrStatusUseCase,
     private val observeAuthStateUseCase: ObserveAuthStateUseCase,
     private val refreshSessionUseCase: RefreshSessionUseCase,
-    private val logoutUseCase: LogoutUseCase
+    private val logoutUseCase: LogoutUseCase,
+    private val audioCacheManager: AudioCacheManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -71,6 +76,17 @@ class AuthViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            audioCacheManager.maxCacheMb.collect { maxMb ->
+                _uiState.update { it.copy(maxCacheMb = maxMb) }
+            }
+        }
+        viewModelScope.launch {
+            audioCacheManager.currentCacheSizeMb.collect { currentMb ->
+                _uiState.update { it.copy(currentCacheMb = currentMb) }
+            }
+        }
+
+        viewModelScope.launch {
             observeAuthStateUseCase().collect { session ->
                 _uiState.update {
                     val isLoggedIn = session?.isLoggedIn == true
@@ -82,6 +98,26 @@ class AuthViewModel @Inject constructor(
                 }
                 maybeRefreshProfileIfNeeded(session)
             }
+        }
+    }
+
+    fun onOpenSettings() {
+        audioCacheManager.refreshCacheSize()
+        _uiState.update { it.copy(showSettingsDialog = true) }
+    }
+
+    fun onDismissSettings() {
+        _uiState.update { it.copy(showSettingsDialog = false) }
+    }
+
+    fun onSetMaxCacheMb(mb: Int) {
+        audioCacheManager.setMaxCacheMb(mb)
+    }
+
+    fun onClearAudioCache() {
+        val success = audioCacheManager.clearCache()
+        viewModelScope.launch {
+            _snackbarMessage.emit(if (success) "音频缓存已清理" else "清理缓存失败")
         }
     }
 

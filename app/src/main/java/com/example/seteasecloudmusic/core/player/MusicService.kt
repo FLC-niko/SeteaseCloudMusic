@@ -5,19 +5,25 @@ import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.example.seteasecloudmusic.core.cache.AudioCacheManager
 import com.example.seteasecloudmusic.feature.main.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * 后台播放服务：
- * 1. 持有 ExoPlayer 实例
+ * 1. 持有 ExoPlayer 实例（挂载 LRU 磁盘缓存）
  * 2. 持有 MediaSession，用于通知栏、锁屏、耳机按键控制
  * 3. 由系统在后台托管播放能力
  */
 @AndroidEntryPoint
 class MusicService : MediaSessionService() {
+
+    @Inject
+    lateinit var audioCacheManager: AudioCacheManager
 
     // 播放器实例：真正负责音频播放
     private var player: ExoPlayer? = null
@@ -34,16 +40,21 @@ class MusicService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
-        // 2. 先创建一个局部非空变量 exoPlayer
+        // 2. 挂载 200MB 默认 LRU Cache 缓存数据源工厂
+        val cacheDataSourceFactory = audioCacheManager.createCacheDataSourceFactory()
+        val mediaSourceFactory = DefaultMediaSourceFactory(cacheDataSourceFactory)
+
+        // 3. 创建挂载缓存数据源的 ExoPlayer
         val exoPlayer = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true) // 耳机拔出时自动暂停
             .build()
 
-        // 3. 将局部变量赋值给类成员变量 player
+        // 4. 将局部变量赋值给类成员变量 player
         this.player = exoPlayer
 
-        // 4. 设置点击通知栏时的跳转意图
+        // 5. 设置点击通知栏时的跳转意图
         val sessionActivity = PendingIntent.getActivity(
             this,
             0,
@@ -51,7 +62,7 @@ class MusicService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 5. 使用局部变量 exoPlayer 创建 MediaSession，无需使用 !!
+        // 6. 使用局部变量 exoPlayer 创建 MediaSession，无需使用 !!
         mediaSession = MediaSession.Builder(this, exoPlayer)
             .setSessionActivity(sessionActivity)
             .build()

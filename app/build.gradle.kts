@@ -134,6 +134,12 @@ dependencies {
     // Palette API for extracting dominant colors from album artwork
     implementation("androidx.palette:palette-ktx:1.0.0")
 
+    // Room 持久化数据库
+    val roomVersion = "2.7.0-alpha13"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+
     //hilt依赖注入框架
     implementation("com.google.dagger:hilt-android:2.59.2")
     ksp("com.google.dagger:hilt-android-compiler:2.59.2")

@@ -150,6 +150,7 @@ fun AccountLoginSheetContent(
                             onWeiboClick = { scope.launch { snackbarHostState.showSnackbar("微博登录开发中") } },
                             onDarkModeToggled = { viewModel.onDarkModeToggled(it) },
                             onLogoutClick = { viewModel.onRequestLogout() },
+                            onSettingsClick = { viewModel.onOpenSettings() },
                             onPlaceholderClick = { label ->
                                 scope.launch { snackbarHostState.showSnackbar("$label 开发中") }
                             }
@@ -208,6 +209,16 @@ fun AccountLoginSheetContent(
                         Text(text = "取消", color = Color(0xFF5F5F67))
                     }
                 }
+            )
+        }
+
+        if (uiState.showSettingsDialog) {
+            SettingsDialog(
+                maxCacheMb = uiState.maxCacheMb,
+                currentCacheMb = uiState.currentCacheMb,
+                onSetMaxCacheMb = { viewModel.onSetMaxCacheMb(it) },
+                onClearCache = { viewModel.onClearAudioCache() },
+                onDismiss = { viewModel.onDismissSettings() }
             )
         }
 
@@ -431,6 +442,7 @@ private fun MethodSelectionPanel(
     onWeiboClick: () -> Unit,
     onDarkModeToggled: (Boolean) -> Unit,
     onLogoutClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     if (isLoggedIn) {
@@ -442,6 +454,7 @@ private fun MethodSelectionPanel(
             isDarkModeEnabled = isDarkModeEnabled,
             onDarkModeToggled = onDarkModeToggled,
             onLogoutClick = onLogoutClick,
+            onSettingsClick = onSettingsClick,
             onPlaceholderClick = onPlaceholderClick
         )
     } else {
@@ -644,6 +657,7 @@ private fun ProfileHomePanel(
     isDarkModeEnabled: Boolean,
     onDarkModeToggled: (Boolean) -> Unit,
     onLogoutClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -702,7 +716,7 @@ private fun ProfileHomePanel(
             ProfileMenuItem(
                 title = "设置",
                 iconVector = Icons.Filled.Settings,
-                onClick = { onPlaceholderClick("设置") }
+                onClick = onSettingsClick
             )
         }
 
@@ -739,6 +753,164 @@ private fun ProfileHomePanel(
                     fontWeight = FontWeight.SemiBold,
                     color = red
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsDialog(
+    maxCacheMb: Int,
+    currentCacheMb: Float,
+    onSetMaxCacheMb: (Int) -> Unit,
+    onClearCache: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val cacheOptions = listOf(100, 200, 500, 1024)
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F2F7)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "设置",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1C1C1E)
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFFE5E5EA), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "关闭",
+                            tint = Color(0xFF1C1C1E),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "播放与缓存",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF8E8E93),
+                    modifier = Modifier.padding(start = 6.dp, bottom = 8.dp)
+                )
+
+                SettingsSectionCard {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "歌曲缓存上限",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF1C1C1E)
+                            )
+                            Text(
+                                text = "${maxCacheMb}MB",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFFA233B)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            cacheOptions.forEach { size ->
+                                val isSelected = maxCacheMb == size
+                                val label = if (size >= 1024) "1GB" else "${size}MB"
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(
+                                            color = if (isSelected) Color(0xFFFA233B) else Color(0xFFF2F2F7),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable { onSetMaxCacheMb(size) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        SettingsDivider(Color(0xFFE2E2E8))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "当前缓存占用",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF1C1C1E)
+                                )
+                                Text(
+                                    text = String.format(java.util.Locale.getDefault(), "%.1f MB", currentCacheMb),
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF8E8E93)
+                                )
+                            }
+                            TextButton(
+                                onClick = onClearCache,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFA233B))
+                            ) {
+                                Text(
+                                    text = "清理缓存",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
