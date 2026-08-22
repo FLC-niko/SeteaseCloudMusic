@@ -80,22 +80,17 @@ class HomeViewModel @Inject constructor(
         refreshDailyRecommend(afresh = true, silent = false)
     }
 
-    fun onTrackClick(track: Track) {
-        val snapshotTracks = uiState.value.tracks.distinctBy { it.id }
+    fun onTrackClick(track: Track, tracksOverride: List<Track>? = null) {
+        val tracksToUse = if (!tracksOverride.isNullOrEmpty()) tracksOverride else uiState.value.tracks
+        val snapshotTracks = tracksToUse.distinctBy { it.id }
         if (snapshotTracks.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "暂无可播放的每日推荐") }
+            _uiState.update { it.copy(errorMessage = "暂无可播放的歌曲") }
             return
         }
 
         val clickedIndex = snapshotTracks.indexOfFirst { it.id == track.id }
-        if (clickedIndex !in snapshotTracks.indices) {
-            _uiState.update { it.copy(errorMessage = "未找到所选歌曲") }
-            return
-        }
+        val finalIndex = if (clickedIndex in snapshotTracks.indices) clickedIndex else 0
 
-        playbackJob?.cancel()
-        playbackJob = viewModelScope.launch {
-            musicPlayerController.replaceQueueAndPlay(snapshotTracks, clickedIndex)
-        }
+        musicPlayerController.replaceQueueAndPlay(snapshotTracks, finalIndex)
     }
 }

@@ -37,11 +37,13 @@ fun LyricsColumn(
 
     // 自动滚动到当前歌词行
     LaunchedEffect(activeLineIndex) {
-        if (activeLineIndex >= 0 && activeLineIndex < lyrics.lines.size) {
-            listState.animateScrollToItem(
-                index = activeLineIndex,
-                scrollOffset = -180
-            )
+        if (activeLineIndex in lyrics.lines.indices) {
+            runCatching {
+                listState.animateScrollToItem(
+                    index = activeLineIndex,
+                    scrollOffset = -180
+                )
+            }
         }
     }
 
@@ -50,7 +52,10 @@ fun LyricsColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(vertical = 120.dp)
     ) {
-        itemsIndexed(lyrics.lines) { index, line ->
+        itemsIndexed(
+            items = lyrics.lines,
+            key = { index, line -> "${line.startTime}_$index" }
+        ) { index, line ->
             if (!line.isBG) {
                 LyricLineItem(
                     line = line,

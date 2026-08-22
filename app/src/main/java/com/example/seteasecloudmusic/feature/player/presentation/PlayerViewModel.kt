@@ -10,6 +10,8 @@ import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.feature.player.data.LyricResponse
 import com.example.seteasecloudmusic.feature.player.domain.usecase.GetLyricUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,9 +61,15 @@ class PlayerViewModel @Inject constructor(
         return yrcLyric.takeIf { !it.isNullOrBlank() } ?: lrcLyric.takeIf { !it.isNullOrBlank() }
     }
 
+    private var lyricJob: Job? = null
+
     private fun fetchLyric(songId: Long) {
-        viewModelScope.launch {
-            _lyricState.value = getLyricUseCase(songId)
+        lyricJob?.cancel()
+        _lyricState.value = null
+        lyricJob = viewModelScope.launch {
+            delay(100L) // 快速连续切歌防抖，避免高频发包与 UI 线程重绘卡顿
+            val res = getLyricUseCase(songId)
+            _lyricState.value = res
         }
     }
 

@@ -60,45 +60,31 @@ class SearchRepositoryImpl @Inject constructor(
                 }
             }
 
-            // 2. 优化请求策略：优先请求无损/极高标准，单次网络往返直出最佳音源
-            val primaryLevel = if (level.isNotBlank()) level else "lossless"
-            val levelsToTry = if (primaryLevel == "hires") {
-                listOf("hires", "lossless", "standard")
-            } else {
-                listOf(primaryLevel, "standard")
-            }.distinct()
+            // 2. 单次快速直出音频 URL（单次网络往返直出，彻底杜绝多次串行重试导致的半分钟卡死）
+            val targetLevel = if (level.isNotBlank() && level != "hires") level else "standard"
+            val response = musicService.getSongUrl(trackId, targetLevel)
+            if (response.code == 200) {
+                val item = response.data.firstOrNull()
+                val url = item?.url
+                if (!url.isNullOrBlank()) {
+                    trackUrlCache[trackId] = url
+                    return@withContext Result.success(url)
+                }
+            }
 
-            var bestUrl: String? = null
-            var trialUrl: String? = null
-
-            for (lvl in levelsToTry) {
-                val response = musicService.getSongUrl(trackId, lvl)
-                if (response.code == 200) {
-                    val item = response.data.firstOrNull()
-                    val url = item?.url
-                    if (!url.isNullOrBlank()) {
-                        // 判断是否为试听限制（freeTrialInfo 存在或者不可播原因）
-                        val isTrial = item.freeTrialInfo != null ||
-                            (item.freeTimeTrialPrivilege?.type != null && item.freeTimeTrialPrivilege.type != 0) ||
-                            item.freeTrialPrivilege?.cannotListenReason == 1
-
-                        if (!isTrial) {
-                            bestUrl = url
-                            break
-                        } else if (trialUrl == null) {
-                            trialUrl = url
-                        }
+            // 3. 兜底请求 standard（仅当指定了非 standard 音质且首选未返回有效直链时轻量重试一次）
+            if (targetLevel != "standard") {
+                val fallbackResponse = musicService.getSongUrl(trackId, "standard")
+                if (fallbackResponse.code == 200) {
+                    val fallbackUrl = fallbackResponse.data.firstOrNull()?.url
+                    if (!fallbackUrl.isNullOrBlank()) {
+                        trackUrlCache[trackId] = fallbackUrl
+                        return@withContext Result.success(fallbackUrl)
                     }
                 }
             }
 
-            val finalUrl = bestUrl ?: trialUrl
-            if (finalUrl != null) {
-                trackUrlCache[trackId] = finalUrl
-                Result.success(finalUrl)
-            } else {
-                Result.failure(Exception("URL parameter is null"))
-            }
+            Result.failure(Exception("无法获取歌曲播放直链"))
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -72,12 +72,14 @@ class MusicPlayerController @Inject constructor(
 
     // 历史播放足迹栈：记录实际听过的曲目顺序，切上一首时按真实顺序依次倒序返回
     private val playbackHistory = ArrayDeque<Int>()
+    private var pendingPlayItem: Pair<MediaItem, Int>? = null
+    private var isConnecting: Boolean = false
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     init {
-        // 冷启动自动恢复上次持久化的播放状态、播放列表与进度
+        // 1. 冷启动自动恢复上次持久化的播放状态、播放列表与进度
         val saved = playbackCacheManager.getSavedPlaybackState()
         if (saved != null && saved.queueTracks.isNotEmpty() && saved.currentQueueIndex in saved.queueTracks.indices) {
             val track = saved.queueTracks.getOrNull(saved.currentQueueIndex)
@@ -93,6 +95,9 @@ class MusicPlayerController @Inject constructor(
                 )
             }
         }
+
+        // 2. 启动时后台即刻建立到 MusicService 的 MediaController 管道，保证冷启动起播 0ms 秒响应
+        connect()
     }
 
     // 监听 Media3 播放器状态变化，统一映射到你的 PlaybackState
@@ -107,10 +112,9 @@ class MusicPlayerController @Inject constructor(
                 else -> PlayerStatus.ERROR
             }
 
-            if (mapped == PlayerStatus.ENDED) {
-                if (playNextInternal()) {
-                    return
-                }
+            if (playbackState == Player.STATE_ENDED) {
+                playNextInternal()
+                return
             }
 
             _playbackState.update { current ->
@@ -131,8 +135,12 @@ class MusicPlayerController @Inject constructor(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            _playbackState.update {
-                it.copy(status = if (isPlaying) PlayerStatus.PLAYING else PlayerStatus.PAUSED)
+            _playbackState.update { current ->
+                if (current.status == PlayerStatus.BUFFERING && !isPlaying) {
+                    current // 正在缓冲新曲目时不要被旧播放器的 isPlaying=false 冲刷成 PAUSED
+                } else {
+                    current.copy(status = if (isPlaying) PlayerStatus.PLAYING else PlayerStatus.PAUSED)
+                }
             }
             if (isPlaying) {
                 startProgressTicker()
@@ -150,17 +158,31 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
-    /** 在 ViewModel 初始化时调用：建立到 MusicService 的连接 */
+    /** 建立到 MusicService 的连接 */
     fun connect() {
+        if (controller != null || isConnecting) return
+        isConnecting = true
         val token = SessionToken(context, ComponentName(context, MusicService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
 
         future.addListener(
             {
+                isConnecting = false
                 runCatching { future.get() }
                     .onSuccess { c ->
                         controller = c
                         c.addListener(playerListener)
+                        // 若有在连接建立前触发的待播放项目，连接就绪瞬间立即起播！
+                        pendingPlayItem?.let { (item, seekMs) ->
+                            if (seekMs > 0) {
+                                c.setMediaItem(item, seekMs.toLong())
+                            } else {
+                                c.setMediaItem(item)
+                            }
+                            c.prepare()
+                            c.play()
+                            pendingPlayItem = null
+                        }
                     }
                     .onFailure { e ->
                         _playbackState.update {
@@ -317,6 +339,30 @@ class MusicPlayerController @Inject constructor(
         scope.cancel()
     }
 
+    private fun buildMediaItem(track: Track, url: String): MediaItem {
+        val artistName = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
+        val albumName = track.album?.title ?: track.title
+        val coverUri = track.coverUrl?.toUri()
+
+        return MediaItem.Builder()
+            .setMediaId(track.id.toString())
+            .setUri(url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setDisplayTitle(track.title)
+                    .setArtist(artistName)
+                    .setSubtitle(artistName)
+                    .setDescription(artistName)
+                    .setAlbumTitle(albumName)
+                    .setArtworkUri(coverUri)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .build()
+            )
+            .build()
+    }
+
     private fun playQueueIndex(index: Int, initialSeekMs: Int = 0) {
         val queue = _playbackState.value.queueTracks
         if (index !in queue.indices) {
@@ -341,7 +387,31 @@ class MusicPlayerController @Inject constructor(
                 )
             }
 
-            // 1. 获取当前曲目直链（命中缓存 0ms 即刻返回）
+            // 0. 若曲目已带有可用直链（预加载命中），立即 0ms 起播，无需等待任何网络！
+            val directUrl = track.playableUrl
+            if (!directUrl.isNullOrBlank() && track.isPlayable) {
+                val item = buildMediaItem(track, directUrl)
+
+                val c = controller
+                if (c != null) {
+                    if (initialSeekMs > 0) {
+                        c.setMediaItem(item, initialSeekMs.toLong())
+                    } else {
+                        c.setMediaItem(item)
+                    }
+                    c.prepare()
+                    c.play()
+                } else {
+                    pendingPlayItem = item to initialSeekMs
+                    connect()
+                }
+
+                persistCurrentState()
+                prefetchNeighbors(index)
+                return@launch
+            }
+
+            // 1. 获取当前曲目直链（命中内存缓存 0ms 即刻返回）
             val prepared = withContext(ioDispatcher) { prepareTrackForPlaybackUseCase(track) }
             if (isStaleRequest(requestId)) {
                 return@launch
@@ -361,28 +431,20 @@ class MusicPlayerController @Inject constructor(
                         return@onSuccess
                     }
 
-                    val item = MediaItem.Builder()
-                        .setMediaId(t.id.toString())
-                        .setUri(url)
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(t.title)
-                                .setArtist(t.artists.joinToString(" / ") { it.name })
-                                .setArtworkUri(t.coverUrl?.toUri())
-                                .build()
-                        )
-                        .build()
+                    val item = buildMediaItem(t, url)
 
-                    controller?.apply {
+                    val ctrl = controller
+                    if (ctrl != null) {
                         if (initialSeekMs > 0) {
-                            setMediaItem(item, initialSeekMs.toLong())
+                            ctrl.setMediaItem(item, initialSeekMs.toLong())
                         } else {
-                            setMediaItem(item)
+                            ctrl.setMediaItem(item)
                         }
-                        prepare()
-                        play()
-                    } ?: _playbackState.update {
-                        it.copy(status = PlayerStatus.ERROR, errorMessage = "Controller not connected")
+                        ctrl.prepare()
+                        ctrl.play()
+                    } else {
+                        pendingPlayItem = item to initialSeekMs
+                        connect()
                     }
 
                     persistCurrentState()

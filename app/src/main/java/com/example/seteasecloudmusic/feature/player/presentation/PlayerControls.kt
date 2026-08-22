@@ -1,11 +1,13 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -26,7 +27,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,8 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,10 +62,20 @@ fun PlayerControls(
     onTogglePlaybackMode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val progress = if (durationMs > 0) {
+    var isDragging by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableFloatStateOf(0f) }
+
+    val rawProgress = if (durationMs > 0) {
         (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
+    }
+
+    val displayProgress = if (isDragging) dragProgress else rawProgress
+    val displayCurrentMs = if (isDragging) {
+        (dragProgress * durationMs).toInt().coerceIn(0, durationMs)
+    } else {
+        currentPositionMs
     }
 
     Column(
@@ -71,11 +83,16 @@ fun PlayerControls(
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 12.dp)
     ) {
-        // 1. 进度条
-        ThinProgressBar(
-            progress = progress,
+        // 1. 丝滑可点可拖进度条（零延迟跟手 + 拖拽时两端时间实时高频联动）
+        SmoothProgressBar(
+            progress = displayProgress,
+            isDragging = isDragging,
+            durationMs = durationMs,
             onSeekTo = onSeekTo,
-            durationMs = durationMs
+            onDragUpdate = { dragging, frac ->
+                isDragging = dragging
+                dragProgress = frac
+            }
         )
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -86,20 +103,26 @@ fun PlayerControls(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = formatTime(currentPositionMs),
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 12.sp
+                text = formatTime(displayCurrentMs),
+                color = if (isDragging) Color.White else Color.White.copy(alpha = 0.65f),
+                fontSize = 12.sp,
+                fontWeight = if (isDragging) FontWeight.Bold else FontWeight.Normal
             )
             Text(
-                text = if (durationMs > 0) "-" + formatTime((durationMs - currentPositionMs).coerceAtLeast(0)) else "--:--",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 12.sp
+                text = if (durationMs > 0) {
+                    "-" + formatTime((durationMs - displayCurrentMs).coerceAtLeast(0))
+                } else {
+                    "--:--"
+                },
+                color = if (isDragging) Color.White else Color.White.copy(alpha = 0.65f),
+                fontSize = 12.sp,
+                fontWeight = if (isDragging) FontWeight.Bold else FontWeight.Normal
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 3. 核心主控制按键（模式切换、上一首、播放/暂停、下一首、模式提示按钮）
+        // 3. 核心主控制按键（模式切换、上一首、播放/暂停、下一首、模式提示胶囊）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -192,63 +215,91 @@ fun PlayerControls(
     }
 }
 
+/**
+ * 极简丝滑进度条：
+ * 1. 扩大点击与拖拽热区至 32dp，零死角响应触摸与任意位置点击即跳；
+ * 2. 使用底层手势队列实时监听触点变化，手指滑动实时渲染；
+ * 3. 拖拽触碰时轨道高度微动增强视觉反馈。
+ */
 @Composable
-private fun ThinProgressBar(
+private fun SmoothProgressBar(
     progress: Float,
+    isDragging: Boolean,
+    durationMs: Int,
     onSeekTo: (Int) -> Unit,
-    durationMs: Int
+    onDragUpdate: (Boolean, Float) -> Unit
 ) {
-    var isDragging by remember { mutableStateOf(false) }
-    var dragProgress by remember { mutableFloatStateOf(0f) }
-    val displayProgress = if (isDragging) dragProgress else progress
+    val barHeight by animateDpAsState(
+        targetValue = if (isDragging) 6.dp else 4.dp,
+        label = "barHeight"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(24.dp)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        isDragging = true
-                        dragProgress = (offset.x / size.width).coerceIn(0f, 1f)
-                    },
-                    onDrag = { change, dragAmount ->
+            .height(32.dp)
+            .pointerInput(durationMs) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    val initialFraction = (down.position.x / width).coerceIn(0f, 1f)
+                    onDragUpdate(true, initialFraction)
+
+                    val pointerId = down.id
+                    var latestFraction = initialFraction
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        if (change.changedToUp()) {
+                            change.consume()
+                            break
+                        }
                         change.consume()
-                        dragProgress = (dragProgress + dragAmount.x / size.width).coerceIn(0f, 1f)
-                    },
-                    onDragEnd = {
-                        isDragging = false
-                        onSeekTo((dragProgress * durationMs).toInt())
+                        latestFraction = (change.position.x / width).coerceIn(0f, 1f)
+                        onDragUpdate(true, latestFraction)
                     }
-                )
-            }
+
+                    onDragUpdate(false, latestFraction)
+                    if (durationMs > 0) {
+                        onSeekTo((latestFraction * durationMs).toInt())
+                    }
+                }
+            },
+        contentAlignment = Alignment.CenterStart
     ) {
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .align(Alignment.CenterStart)
+                .height(barHeight)
         ) {
-            // 背景轨道（白色半透明）
+            val h = size.height
+            val w = size.width
+            val currentW = (progress * w).coerceIn(0f, w)
+
+            // 背景轨道
             drawRoundRect(
-                color = Color.White.copy(0.3f),
-                cornerRadius = CornerRadius(2.dp.toPx())
+                color = Color.White.copy(alpha = 0.28f),
+                cornerRadius = CornerRadius(h / 2, h / 2)
             )
-            // 进度填充（白色）
-            drawRoundRect(
-                color = Color.White,
-                size = Size(displayProgress * size.width, size.height),
-                cornerRadius = CornerRadius(2.dp.toPx())
-            )
-        }
-        // 拖拽时显示小圆点 thumb
-        if (isDragging) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(displayProgress)
-                    .size(14.dp)
-                    .background(Color.White, CircleShape)
-            )
+
+            // 已播放高亮填充
+            if (currentW > 0f) {
+                drawRoundRect(
+                    color = Color.White,
+                    size = Size(currentW, h),
+                    cornerRadius = CornerRadius(h / 2, h / 2)
+                )
+            }
+
+            // 拖拽时绘制醒目的圆点 Thumb
+            if (isDragging) {
+                drawCircle(
+                    color = Color.White,
+                    radius = 7.dp.toPx(),
+                    center = Offset(currentW, h / 2)
+                )
+            }
         }
     }
 }

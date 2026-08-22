@@ -64,7 +64,7 @@ fun DailyRecommendDetailRoute(
 ) {
     DailyRecommendDetailScreen(
         tracks = tracks,
-        onTrackClick = viewModel::onTrackClick,
+        onTrackClick = { track -> viewModel.onTrackClick(track, tracks) },
         onClose = onClose
     )
 }
