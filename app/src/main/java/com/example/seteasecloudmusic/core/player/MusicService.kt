@@ -18,7 +18,6 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import coil.imageLoader
 import coil.request.ImageRequest
-import com.example.seteasecloudmusic.feature.main.MainActivity
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import androidx.core.net.toUri
@@ -114,28 +113,21 @@ class MusicService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
-        // 2. 创建 ExoPlayer 并配置后台网络保活（WAKE_MODE_NETWORK）和监听播放结束自动切下一首
+        // 2. 创建 ExoPlayer 并配置后台网络保活（WAKE_MODE_NETWORK）
         val exoPlayer = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true) // 耳机拔出时自动暂停
             .setWakeMode(C.WAKE_MODE_NETWORK)  // 保持 CPU 和网络锁，防止挂后台被系统挂起冻结
             .build()
 
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    musicPlayerController.playNext()
-                }
-            }
-        })
-
         this.player = exoPlayer
 
         // 3. 设置点击通知栏时的跳转意图
+        val launchIntent = requireNotNull(packageManager.getLaunchIntentForPackage(packageName))
         val sessionActivity = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
+            launchIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
 

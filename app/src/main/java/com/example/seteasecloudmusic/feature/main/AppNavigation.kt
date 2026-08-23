@@ -75,6 +75,7 @@ import com.example.seteasecloudmusic.feature.mine.presentation.MineRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
+import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -253,10 +254,11 @@ fun AppNavigation(
     onAvatarClick: (() -> Unit)? = null
 ) {
     val searchViewModel: SearchViewModel = hiltViewModel()
+    val playerViewModel: PlayerViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
 
     val searchUiState by searchViewModel.uiState.collectAsState()
-    val playbackState by searchViewModel.playbackState.collectAsState()
+    val playbackState by playerViewModel.playbackState.collectAsState()
     val authUiState by authViewModel.uiState.collectAsState()
 
     var showNowPlaying by remember { mutableStateOf(false) }
@@ -805,8 +807,8 @@ fun AppNavigation(
             backdrop = backdrop,
             cornerRadius = cornerRadius,
             playbackState = playbackState,
-            onPlayPauseClick = { searchViewModel.onMiniPlayerPlayPause() },
-            onNextClick = { searchViewModel.onMiniPlayerNext() },
+            onPlayPauseClick = { playerViewModel.onPlayPause() },
+            onNextClick = { playerViewModel.onNext() },
             onBarClick = { showNowPlaying = true },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -844,8 +846,8 @@ fun AppNavigation(
             NowPlayingScreen(
                 playbackState = playbackState,
                 onClose = { showNowPlaying = false },
-                onPlayPause = { searchViewModel.onMiniPlayerPlayPause() },
-                onNext = { searchViewModel.onMiniPlayerNext() },
+                onPlayPause = { playerViewModel.onPlayPause() },
+                onNext = { playerViewModel.onNext() },
                 onPrevious = { /* TODO */ },
                 onSeekTo = { /* TODO */ }
             )

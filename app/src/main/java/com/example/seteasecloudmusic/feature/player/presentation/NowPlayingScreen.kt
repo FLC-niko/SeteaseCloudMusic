@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.settings.PlayerStyle
-import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 
 @Composable
 fun NowPlayingScreen(
@@ -28,7 +27,6 @@ fun NowPlayingScreen(
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit
 ) {
-    val searchViewModel: SearchViewModel = hiltViewModel()
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val playerStyle by playerViewModel.playerSettingsManager.playerStyle.collectAsState()
 
@@ -36,7 +34,7 @@ fun NowPlayingScreen(
         PlayerStyle.AMLL_WEB -> {
             Box(modifier = Modifier.fillMaxSize()) {
                 WebPlayerScreen(
-                    musicPlayerController = searchViewModel.musicPlayerController,
+                    musicPlayerController = playerViewModel.controller,
                     ttmlProvider = { songId ->
                         try {
                             playerViewModel.getLyricDataDirectly(songId.toLong())

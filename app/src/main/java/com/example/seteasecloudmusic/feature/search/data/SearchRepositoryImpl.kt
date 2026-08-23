@@ -4,6 +4,7 @@ import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
@@ -23,7 +24,7 @@ import javax.inject.Inject
  */
 class SearchRepositoryImpl @Inject constructor(
     private val musicService: NeteaseMusicService
-) : SearchRepository {
+) : SearchRepository, TrackPlaybackPreparer {
 
     // 内存高速缓存：已解析的歌曲播放直链，避免重复发起耗时网络请求（0ms 极速切歌）
     private val trackUrlCache = ConcurrentHashMap<Long, String>()
@@ -87,6 +88,12 @@ class SearchRepositoryImpl @Inject constructor(
             Result.failure(Exception("无法获取歌曲播放直链"))
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun invoke(track: Track): Result<Track> {
+        return getTrackUrl(track.id).map { url ->
+            track.copy(playableUrl = url, isPlayable = url.isNotBlank())
         }
     }
 

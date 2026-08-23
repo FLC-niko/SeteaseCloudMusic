@@ -12,7 +12,6 @@ import androidx.media3.session.SessionToken
 import com.example.seteasecloudmusic.core.cache.PlaybackCacheManager
 import com.example.seteasecloudmusic.core.cache.SavedPlaybackState
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.feature.search.domain.PrepareTrackForPlaybackUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +51,7 @@ data class PlaybackState(
 @Singleton
 class MusicPlayerController @Inject constructor(
     @param:ApplicationContext private val context: Context,
-    private val prepareTrackForPlaybackUseCase: PrepareTrackForPlaybackUseCase,
+    private val trackPlaybackPreparer: TrackPlaybackPreparer,
     private val playbackCacheManager: PlaybackCacheManager
 ) {
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
@@ -412,7 +411,7 @@ class MusicPlayerController @Inject constructor(
             }
 
             // 1. 获取当前曲目直链（命中内存缓存 0ms 即刻返回）
-            val prepared = withContext(ioDispatcher) { prepareTrackForPlaybackUseCase(track) }
+            val prepared = withContext(ioDispatcher) { trackPlaybackPreparer(track) }
             if (isStaleRequest(requestId)) {
                 return@launch
             }
@@ -477,22 +476,22 @@ class MusicPlayerController @Inject constructor(
                 PlaybackMode.SEQUENTIAL -> {
                     // 优先预加载下一首
                     val nextIndex = (currentIndex + 1) % queue.size
-                    runCatching { prepareTrackForPlaybackUseCase(queue[nextIndex]) }
+                    runCatching { trackPlaybackPreparer(queue[nextIndex]) }
 
                     // 预加载上一首
                     val prevIndex = if (currentIndex - 1 < 0) queue.size - 1 else currentIndex - 1
-                    runCatching { prepareTrackForPlaybackUseCase(queue[prevIndex]) }
+                    runCatching { trackPlaybackPreparer(queue[prevIndex]) }
                 }
                 PlaybackMode.SHUFFLE -> {
                     if (queue.size > 1) {
                         val candidates = queue.indices.filter { it != currentIndex }
                         val nextRandom = candidates.random()
-                        runCatching { prepareTrackForPlaybackUseCase(queue[nextRandom]) }
+                        runCatching { trackPlaybackPreparer(queue[nextRandom]) }
                     }
                     if (playbackHistory.isNotEmpty()) {
                         val lastHistoryIndex = playbackHistory.last()
                         if (lastHistoryIndex in queue.indices) {
-                            runCatching { prepareTrackForPlaybackUseCase(queue[lastHistoryIndex]) }
+                            runCatching { trackPlaybackPreparer(queue[lastHistoryIndex]) }
                         }
                     }
                 }

@@ -3,12 +3,7 @@ package com.example.seteasecloudmusic.core.network
 import android.content.Context
 import android.util.Log
 import com.example.seteasecloudmusic.BuildConfig
-import com.example.seteasecloudmusic.feature.artist.data.ArtistService
 import com.example.seteasecloudmusic.core.network.interceptor.AuthInterceptor
-import com.example.seteasecloudmusic.feature.auth.data.AuthService
-import com.example.seteasecloudmusic.feature.discover.data.DiscoverService
-import com.example.seteasecloudmusic.feature.home.data.DailyRecommendService
-import com.example.seteasecloudmusic.feature.search.data.NeteaseMusicService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -32,7 +27,7 @@ import javax.inject.Singleton
  * `NetworkModule` 当前主要负责：
  * 1. 定义服务端基础地址。
  * 2. 配置 OkHttp 超时等网络参数。
- * 3. 创建 Retrofit 并产出 `NeteaseMusicService`。
+ * 3. 创建 Retrofit，业务 Service 由应用级 DI 模块按 feature 提供。
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -43,7 +38,7 @@ class NetworkModule {
      */
     @Provides
     @Singleton
-    fun provideBaseUrl(): String = "http://57.158.26.135:3000/";
+    fun provideBaseUrl(): String = BuildConfig.BASE_URL
 
     /**
      * 提供统一超时配置的 HTTP 客户端。
@@ -144,59 +139,4 @@ class NetworkModule {
             .build()
     }
 
-    /**
-     * 暴露音乐 API 服务实例。
-     */
-    @Provides
-    @Singleton
-    fun provideNeteaseMusicService(retrofit: Retrofit): NeteaseMusicService =
-        retrofit.create(NeteaseMusicService::class.java)
-
-    /**
-     * Expose artist API service.
-     */
-    @Provides
-    @Singleton
-    fun provideArtistService(retrofit: Retrofit): ArtistService =
-        retrofit.create(ArtistService::class.java)
-
-    /**
-     * 暴露认证 API 服务实例。
-     */
-    @Provides
-    @Singleton
-    fun provideAuthService(retrofit: Retrofit): AuthService =
-        retrofit.create(AuthService::class.java)
-
-    /**
-     * 暴露主页每日推荐 API 服务实例。
-     */
-    @Provides
-    @Singleton
-    fun provideDailyRecommendService(retrofit: Retrofit): DailyRecommendService =
-        retrofit.create(DailyRecommendService::class.java)
-
-    /**
-     * 暴露发现页 API 服务实例。
-     */
-    @Provides
-    @Singleton
-    fun provideDiscoverService(retrofit: Retrofit): DiscoverService =
-        retrofit.create(DiscoverService::class.java)
-
-    /**
-     * 暴露我的页面 API 服务实例。
-     */
-    @Provides
-    @Singleton
-    fun provideMineService(retrofit: Retrofit): com.example.seteasecloudmusic.feature.mine.data.MineService =
-        retrofit.create(com.example.seteasecloudmusic.feature.mine.data.MineService::class.java)
-
-    //改成依赖注入的方式后，提供 NeteaseMusicService 的方法可以直接注入 Retrofit 实例，无需手动调用 provideHttpClient 和 provideRetrofit。
-
-//    fun provideNeteaseMusicService(): NeteaseMusicService {
-//        val client: OkHttpClient = provideHttpClient()
-//        val retrofit: Retrofit = provideRetrofit(client)
-//        return retrofit.create(NeteaseMusicService::class.java)
-//    }
 }
