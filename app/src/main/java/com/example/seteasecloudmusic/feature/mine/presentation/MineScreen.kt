@@ -1,5 +1,10 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,23 +35,35 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +72,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -62,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
@@ -84,12 +103,51 @@ fun MineScreen(
     onCloseDetail: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: (List<Track>) -> Unit,
+    onScanLocal: (String?) -> Unit,
+    onSetLocalDirectory: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val lazyListState = rememberLazyListState()
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    // 线性平滑滚动计算：彻底杜绝跳变 (0f 初始展开 -> 1f 完全收起)
+    var showDirectoryDialog by remember { mutableStateOf(false) }
+
+    // 动态权限适配
+    val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, permissionToRequest) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasPermission = isGranted
+        if (isGranted) {
+            onScanLocal(uiState.localDirectoryPath)
+        }
+    }
+
+    LaunchedEffect(uiState.selectedTab) {
+        if (uiState.selectedTab == MinePlaylistTab.LOCAL) {
+            val granted = ContextCompat.checkSelfPermission(context, permissionToRequest) == PackageManager.PERMISSION_GRANTED
+            hasPermission = granted
+            if (!granted) {
+                permissionLauncher.launch(permissionToRequest)
+            } else if (uiState.localSongs.isEmpty()) {
+                onScanLocal(uiState.localDirectoryPath)
+            }
+        }
+    }
+
+    // 线性平滑滚动计算
     val collapseFraction by remember {
         derivedStateOf {
             if (lazyListState.firstVisibleItemIndex == 0) {
@@ -100,7 +158,7 @@ fun MineScreen(
         }
     }
 
-    // 顶部小标题平滑淡入（在大标题淡出过半后平滑交接）
+    // 顶部小标题平滑淡入
     val topTitleAlpha by remember {
         derivedStateOf {
             ((collapseFraction - 0.45f) / 0.55f).coerceIn(0f, 1f)
@@ -131,7 +189,7 @@ fun MineScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // 0. 大标题「我的」（线性平滑缩放、向上位移并自然淡出）
+                // 0. 大标题「我的」
                 item(key = "large_page_title") {
                     Text(
                         text = "我的",
@@ -150,7 +208,7 @@ fun MineScreen(
                     )
                 }
 
-                // 1. 用户个人信息展台 (中心化大卡片，不与右上角冲突)
+                // 1. 用户个人信息展台 (中心化大卡片)
                 item(key = "user_header") {
                     UserProfileCenterpiece(
                         nickname = session.nickname ?: "云音乐用户",
@@ -159,13 +217,14 @@ fun MineScreen(
                         createdCount = uiState.createdPlaylists.size,
                         favoritedCount = uiState.favoritedPlaylists.size,
                         likedCount = uiState.likedPlaylist?.trackCount ?: 0,
+                        localCount = uiState.localSongs.size,
                         onRefresh = onRefresh,
                         onAccountClick = onLoginClick,
                         isLoading = uiState.isLoading
                     )
                 }
 
-                // 2. 「我喜欢的音乐」Hero 精选大卡片 (Apple Music 渐变红心 + 纯圆播放键)
+                // 2. 「我喜欢的音乐」Hero 精选大卡片
                 item(key = "liked_hero") {
                     LikedSongsHeroCard(
                         playlist = uiState.likedPlaylist,
@@ -175,37 +234,81 @@ fun MineScreen(
                     )
                 }
 
-                // 3. 歌单模块 Tabs（创建的歌单 / 收藏的歌单 - 液态玻璃微质感）
+                // 3. 歌单模块 Tabs（创建歌单 / 收藏歌单 / 本地音乐）
                 item(key = "playlist_tabs") {
                     MinePlaylistTabs(
                         selectedTab = uiState.selectedTab,
                         createdCount = uiState.createdPlaylists.size,
                         favoritedCount = uiState.favoritedPlaylists.size,
+                        localCount = uiState.localSongs.size,
                         onTabSelected = onTabSelected
                     )
                 }
 
-                // 4. 歌单列表展示 (纯白底卡片，深色文字，极简 Apple Music 质感)
-                val currentPlaylists = when (uiState.selectedTab) {
-                    MinePlaylistTab.CREATED -> uiState.createdPlaylists
-                    MinePlaylistTab.FAVORITED -> uiState.favoritedPlaylists
-                }
-
-                if (currentPlaylists.isEmpty() && !uiState.isLoading) {
-                    item(key = "empty_playlists") {
-                        EmptyPlaylistNotice(
-                            message = if (uiState.selectedTab == MinePlaylistTab.CREATED) "暂无自建歌单" else "暂无收藏歌单"
-                        )
+                // 4. Tab 内容展示
+                when (uiState.selectedTab) {
+                    MinePlaylistTab.CREATED -> {
+                        if (uiState.createdPlaylists.isEmpty() && !uiState.isLoading) {
+                            item(key = "empty_created") {
+                                EmptyPlaylistNotice(message = "暂无自建歌单")
+                            }
+                        } else {
+                            items(
+                                items = uiState.createdPlaylists,
+                                key = { it.id }
+                            ) { playlist ->
+                                PlaylistRowItem(
+                                    playlist = playlist,
+                                    onClick = { onPlaylistClick(playlist) }
+                                )
+                            }
+                        }
                     }
-                } else {
-                    items(
-                        items = currentPlaylists,
-                        key = { it.id }
-                    ) { playlist ->
-                        PlaylistRowItem(
-                            playlist = playlist,
-                            onClick = { onPlaylistClick(playlist) }
-                        )
+
+                    MinePlaylistTab.FAVORITED -> {
+                        if (uiState.favoritedPlaylists.isEmpty() && !uiState.isLoading) {
+                            item(key = "empty_favorited") {
+                                EmptyPlaylistNotice(message = "暂无收藏歌单")
+                            }
+                        } else {
+                            items(
+                                items = uiState.favoritedPlaylists,
+                                key = { it.id }
+                            ) { playlist ->
+                                PlaylistRowItem(
+                                    playlist = playlist,
+                                    onClick = { onPlaylistClick(playlist) }
+                                )
+                            }
+                        }
+                    }
+
+                    MinePlaylistTab.LOCAL -> {
+                        // 统一歌单入口卡片：作为本地歌单入口，点击后与在线歌单完全一致进入全屏沉浸歌单详情
+                        item(key = "local_playlist_entry") {
+                            PlaylistRowItem(
+                                playlist = uiState.localPlaylist,
+                                onClick = { onPlaylistClick(uiState.localPlaylist) }
+                            )
+                        }
+
+                        // 目录设置与刷新工具条
+                        item(key = "local_dir_control_bar") {
+                            LocalMusicDirectoryBar(
+                                directoryPath = uiState.localDirectoryPath,
+                                hasPermission = hasPermission,
+                                isScanning = uiState.isScanningLocal,
+                                onChangeDirectory = { showDirectoryDialog = true },
+                                onRequestPermission = { permissionLauncher.launch(permissionToRequest) },
+                                onRescan = {
+                                    if (!hasPermission) {
+                                        permissionLauncher.launch(permissionToRequest)
+                                    } else {
+                                        onScanLocal(uiState.localDirectoryPath)
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -227,13 +330,12 @@ fun MineScreen(
                 }
             }
 
-            // 2. 顶部浓郁渐变悬浮导航条（纯白保护底 + 相册级多阶深邃渐变，透明度降一档）
+            // 顶部浓郁渐变悬浮导航条
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
             ) {
-                // 手机状态栏纯白底（100% 不透明，绝对保护状态栏图标）
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -241,7 +343,6 @@ fun MineScreen(
                         .background(Color.White)
                 )
 
-                // 浓郁渐变顶栏：顶部高白度保真文字可读性，向下深度渐变羽化（相册同款）
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -273,7 +374,22 @@ fun MineScreen(
             }
         }
 
-        // 全屏歌单详情曲目页面 (Playlist Detail Screen - 纯白背景，全屏沉浸，相册级深邃渐变顶栏)
+        // 修改扫描目录弹窗
+        if (showDirectoryDialog) {
+            ChangeLocalDirectoryDialog(
+                currentPath = uiState.localDirectoryPath ?: "",
+                onDismiss = { showDirectoryDialog = false },
+                onConfirm = { newPath ->
+                    showDirectoryDialog = false
+                    if (!hasPermission) {
+                        permissionLauncher.launch(permissionToRequest)
+                    }
+                    onSetLocalDirectory(newPath)
+                }
+            )
+        }
+
+        // 全屏歌单详情曲目页面（在线歌单与本地音乐歌单完全统一）
         AnimatedVisibility(
             visible = uiState.activePlaylistDetail != null,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -296,6 +412,96 @@ fun MineScreen(
 }
 
 /**
+ * 本地音乐目录与扫描管理小组件
+ */
+@Composable
+private fun LocalMusicDirectoryBar(
+    directoryPath: String?,
+    hasPermission: Boolean,
+    isScanning: Boolean,
+    onChangeDirectory: () -> Unit,
+    onRequestPermission: () -> Unit,
+    onRescan: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MineCardBg)
+            .border(1.dp, MineCardBorder, RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = null,
+                tint = MineAccentRed,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = directoryPath?.ifBlank { "全部系统音频 / 默认目录" } ?: "全部系统音频 / 默认目录",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    color = MineTextSecondary
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (!hasPermission) {
+                TextButton(
+                    onClick = onRequestPermission,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("授权权限", fontSize = 12.sp, color = MineAccentRed, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                TextButton(
+                    onClick = onChangeDirectory,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("指定目录", fontSize = 12.sp, color = MineTextPrimary)
+                }
+
+                IconButton(
+                    onClick = onRescan,
+                    enabled = !isScanning,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = MineAccentRed,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Rescan",
+                            tint = MineTextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * 用户个人信息展台 (中心化优雅卡片)
  */
 @Composable
@@ -306,6 +512,7 @@ private fun UserProfileCenterpiece(
     createdCount: Int,
     favoritedCount: Int,
     likedCount: Int,
+    localCount: Int,
     onRefresh: () -> Unit,
     onAccountClick: () -> Unit,
     isLoading: Boolean
@@ -320,7 +527,6 @@ private fun UserProfileCenterpiece(
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 头像与刷新按钮
         Box(modifier = Modifier.fillMaxWidth()) {
             AsyncImage(
                 model = avatarUrl,
@@ -359,7 +565,6 @@ private fun UserProfileCenterpiece(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 用户昵称
         Text(
             text = nickname,
             style = MaterialTheme.typography.titleLarge.copy(
@@ -373,7 +578,6 @@ private fun UserProfileCenterpiece(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // UID 胶囊徽章
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
@@ -392,18 +596,18 @@ private fun UserProfileCenterpiece(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 个人资产统计小组件
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.White)
-                .padding(vertical = 12.dp),
+                .padding(vertical = 12.dp, horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             ProfileStatItem(title = "喜欢的音乐", value = "$likedCount")
             ProfileStatItem(title = "创建歌单", value = "$createdCount")
             ProfileStatItem(title = "收藏歌单", value = "$favoritedCount")
+            ProfileStatItem(title = "本地音乐", value = "$localCount")
         }
     }
 }
@@ -417,7 +621,7 @@ private fun ProfileStatItem(
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = 17.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = MineTextPrimary
             )
@@ -515,7 +719,7 @@ private fun MineLoggedOutView(
 }
 
 /**
- * 「我喜欢的音乐」Hero 精选卡片 (Apple Music 渐变红心 + 纯圆白底播放按钮)
+ * 「我喜欢的音乐」Hero 精选卡片
  */
 @Composable
 private fun LikedSongsHeroCard(
@@ -551,7 +755,6 @@ private fun LikedSongsHeroCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 红心标志大图标或歌单封面
                 Box(
                     modifier = Modifier
                         .size(72.dp)
@@ -599,7 +802,6 @@ private fun LikedSongsHeroCard(
                     )
                 }
 
-                // 纯圆白色播放按钮
                 Box(
                     modifier = Modifier
                         .size(46.dp)
@@ -621,13 +823,14 @@ private fun LikedSongsHeroCard(
 }
 
 /**
- * 歌单分类 Tabs（创建 / 收藏 - 液态玻璃微质感）
+ * 歌单分类 Tabs（创建 / 收藏 / 本地 - 液态玻璃微质感）
  */
 @Composable
 private fun MinePlaylistTabs(
     selectedTab: MinePlaylistTab,
     createdCount: Int,
     favoritedCount: Int,
+    localCount: Int,
     onTabSelected: (MinePlaylistTab) -> Unit
 ) {
     Box(
@@ -653,6 +856,12 @@ private fun MinePlaylistTabs(
                 title = "收藏歌单 (${favoritedCount})",
                 isSelected = selectedTab == MinePlaylistTab.FAVORITED,
                 onClick = { onTabSelected(MinePlaylistTab.FAVORITED) },
+                modifier = Modifier.weight(1f)
+            )
+            MineTabButton(
+                title = "本地音乐 (${localCount})",
+                isSelected = selectedTab == MinePlaylistTab.LOCAL,
+                onClick = { onTabSelected(MinePlaylistTab.LOCAL) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -687,16 +896,96 @@ private fun MineTabButton(
         Text(
             text = title,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = if (isSelected) MineTextPrimary else MineTextSecondary
-            )
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
 
 /**
- * 歌单单项行 (白底卡片 + 深色文本)
+ * 切换扫描目录弹窗
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChangeLocalDirectoryDialog(
+    currentPath: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var inputPath by remember { mutableStateOf(currentPath) }
+
+    val quickPaths = listOf(
+        "/storage/emulated/0/Music",
+        "/storage/emulated/0/Download",
+        "/storage/emulated/0/netease/cloudmusic/Music",
+        "/sdcard/Music"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "设置音乐扫描目录", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "请输入存放音频文件的完整目录路径（支持递归扫描子目录）：",
+                    style = MaterialTheme.typography.bodySmall.copy(color = MineTextSecondary)
+                )
+
+                OutlinedTextField(
+                    value = inputPath,
+                    onValueChange = { inputPath = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("/storage/emulated/0/Music") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MineAccentRed,
+                        cursorColor = MineAccentRed
+                    )
+                )
+
+                Text(
+                    text = "常用快捷目录：",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    quickPaths.take(3).forEach { path ->
+                        val shortName = path.substringAfterLast("/")
+                        SuggestionChip(
+                            onClick = { inputPath = path },
+                            label = { Text(shortName, fontSize = 11.sp) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(inputPath.trim()) },
+                colors = ButtonDefaults.buttonColors(containerColor = MineAccentRed)
+            ) {
+                Text("确定并扫描")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = MineTextSecondary)
+            }
+        }
+    )
+}
+
+/**
+ * 歌单单项行
  */
 @Composable
 private fun PlaylistRowItem(
@@ -713,14 +1002,32 @@ private fun PlaylistRowItem(
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = playlist.coverUrl,
-            contentDescription = null,
+        Box(
             modifier = Modifier
                 .size(54.dp)
-                .clip(RoundedCornerShape(12.dp)),
-            contentScale = ContentScale.Crop
-        )
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (!playlist.coverUrl.isNullOrBlank()) Color.Transparent
+                    else Color(0xFFF3F3F7)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!playlist.coverUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = playlist.coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = MineAccentRed,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.width(14.dp))
 

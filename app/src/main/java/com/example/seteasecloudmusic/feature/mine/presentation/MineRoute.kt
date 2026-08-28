@@ -28,6 +28,8 @@ fun MineRoute(
         onCloseDetail = viewModel::closePlaylistDetail,
         onPlayTrack = viewModel::playTrack,
         onPlayAll = viewModel::playAll,
+        onScanLocal = viewModel::scanLocalMusic,
+        onSetLocalDirectory = viewModel::setLocalDirectoryAndScan,
         modifier = modifier
     )
 }

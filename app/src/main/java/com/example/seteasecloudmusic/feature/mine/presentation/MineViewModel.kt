@@ -8,6 +8,7 @@ import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
+import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetPlaylistDetailUseCase
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetUserPlaylistsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,9 +19,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+const val LOCAL_PLAYLIST_ID = -9999L
+
 enum class MinePlaylistTab(val title: String) {
-    CREATED("创建的歌单"),
-    FAVORITED("收藏的歌单")
+    CREATED("创建歌单"),
+    FAVORITED("收藏歌单"),
+    LOCAL("本地音乐")
 }
 
 data class MineUiState(
@@ -30,17 +34,33 @@ data class MineUiState(
     val likedPlaylist: UserPlaylist? = null,
     val createdPlaylists: List<UserPlaylist> = emptyList(),
     val favoritedPlaylists: List<UserPlaylist> = emptyList(),
+    val localSongs: List<Track> = emptyList(),
+    val isScanningLocal: Boolean = false,
+    val localDirectoryPath: String? = null,
     val selectedTab: MinePlaylistTab = MinePlaylistTab.CREATED,
     val activePlaylistDetail: PlaylistDetail? = null,
     val isLoadingDetail: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    val localPlaylist: UserPlaylist
+        get() = UserPlaylist(
+            id = LOCAL_PLAYLIST_ID,
+            name = "本地音乐",
+            coverUrl = localSongs.firstOrNull { !it.coverUrl.isNullOrBlank() }?.coverUrl,
+            trackCount = localSongs.size,
+            playCount = localSongs.size.toLong(),
+            isLikedHero = false,
+            creatorName = "本地媒体库",
+            description = "设备存储音频 · 离线畅享高品质音乐"
+        )
+}
 
 @HiltViewModel
 class MineViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val getUserPlaylistsUseCase: GetUserPlaylistsUseCase,
     private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
+    private val localMusicRepository: LocalMusicRepository,
     private val musicPlayerController: MusicPlayerController
 ) : ViewModel() {
 
@@ -51,11 +71,11 @@ class MineViewModel @Inject constructor(
     private val playlistDetailCache = mutableMapOf<Long, PlaylistDetail>()
 
     init {
+        // 1. 监听账号登录状态与云端歌单
         viewModelScope.launch {
             authRepository.observeAuthState().collect { session ->
                 _uiState.update { it.copy(authSession = session) }
                 if (session?.isLoggedIn == true && session.userId != null) {
-                    // 1. 0ms 瞬间加载本地持久化歌单缓存，绝不让用户在「我的」界面等待白屏转圈
                     val cachedGroup = getUserPlaylistsUseCase.getCached(session.userId)
                     if (cachedGroup != null) {
                         _uiState.update {
@@ -67,7 +87,6 @@ class MineViewModel @Inject constructor(
                             )
                         }
                     }
-                    // 2. 静默拉取最新歌单更新
                     loadUserPlaylists(session.userId, silent = (cachedGroup != null))
                 } else {
                     _uiState.update {
@@ -81,6 +100,31 @@ class MineViewModel @Inject constructor(
                 }
             }
         }
+
+        // 2. 监听本地音乐列表更新
+        viewModelScope.launch {
+            localMusicRepository.localTracksFlow.collect { tracks ->
+                _uiState.update { it.copy(localSongs = tracks) }
+                // 若当前正打开本地歌单详情，同步刷新曲目
+                if (_uiState.value.activePlaylistDetail?.id == LOCAL_PLAYLIST_ID) {
+                    _uiState.update { current ->
+                        current.copy(
+                            activePlaylistDetail = current.activePlaylistDetail?.copy(
+                                trackCount = tracks.size,
+                                tracks = tracks
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. 初始后台加载本地音乐目录及索引（供在线匹配与本地展示）
+        viewModelScope.launch {
+            val dirPath = localMusicRepository.getCustomDirectoryPath()
+            _uiState.update { it.copy(localDirectoryPath = dirPath) }
+            localMusicRepository.getLocalTracks(forceRefresh = false)
+        }
     }
 
     fun refresh() {
@@ -92,6 +136,40 @@ class MineViewModel @Inject constructor(
                 _uiState.update { it.copy(isRefreshing = false) }
             }
         }
+        if (_uiState.value.selectedTab == MinePlaylistTab.LOCAL) {
+            scanLocalMusic()
+        }
+    }
+
+    /**
+     * 扫描本地音乐（指定目录或系统媒体库）
+     */
+    fun scanLocalMusic(customDirectory: String? = null) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanningLocal = true) }
+            val dir = customDirectory ?: _uiState.value.localDirectoryPath
+            val songs = if (!dir.isNullOrBlank()) {
+                localMusicRepository.scanDirectory(dir)
+            } else {
+                localMusicRepository.getLocalTracks(forceRefresh = true)
+            }
+            _uiState.update {
+                it.copy(
+                    localSongs = songs,
+                    localDirectoryPath = localMusicRepository.getCustomDirectoryPath(),
+                    isScanningLocal = false
+                )
+            }
+        }
+    }
+
+    /**
+     * 更改自定义扫描目录并触发扫描
+     */
+    fun setLocalDirectoryAndScan(path: String) {
+        localMusicRepository.setCustomDirectoryPath(path)
+        _uiState.update { it.copy(localDirectoryPath = path) }
+        scanLocalMusic(path)
     }
 
     private suspend fun loadUserPlaylists(userId: Long, silent: Boolean = false) {
@@ -126,13 +204,42 @@ class MineViewModel @Inject constructor(
 
     fun selectTab(tab: MinePlaylistTab) {
         _uiState.update { it.copy(selectedTab = tab) }
+        if (tab == MinePlaylistTab.LOCAL && _uiState.value.localSongs.isEmpty() && !_uiState.value.isScanningLocal) {
+            scanLocalMusic()
+        }
     }
 
     /**
-     * 极速打开歌单（0ms 秒级弹出，结合内存与首屏持久化缓存）
+     * 极速打开歌单（0ms 秒级弹出，统一在线歌单与本地歌单）
      */
     fun openPlaylist(playlist: UserPlaylist) {
-        // 1. 优先从内存取，其次从轻量磁盘首屏缓存取（前20首歌曲+封面秒显），最后兜底基础元信息
+        // 1. 本地音乐歌单统一秒开逻辑
+        if (playlist.id == LOCAL_PLAYLIST_ID) {
+            val songs = _uiState.value.localSongs
+            val localDetail = PlaylistDetail(
+                id = LOCAL_PLAYLIST_ID,
+                name = "本地音乐",
+                coverUrl = songs.firstOrNull { !it.coverUrl.isNullOrBlank() }?.coverUrl,
+                description = "设备中的本地音频文件 · 离线畅听",
+                trackCount = songs.size,
+                playCount = songs.size.toLong(),
+                creatorName = "本地媒体库",
+                tracks = songs
+            )
+            _uiState.update {
+                it.copy(
+                    activePlaylistDetail = localDetail,
+                    isLoadingDetail = false,
+                    errorMessage = null
+                )
+            }
+            if (songs.isEmpty() && !_uiState.value.isScanningLocal) {
+                scanLocalMusic()
+            }
+            return
+        }
+
+        // 2. 在线歌单逻辑
         val cached = playlistDetailCache[playlist.id]
             ?: getPlaylistDetailUseCase.getCachedPreview(playlist.id)
 
@@ -162,13 +269,12 @@ class MineViewModel @Inject constructor(
             )
         }
 
-        // 2. 异步请求/刷新完整曲目列表
+        // 异步请求/刷新完整曲目列表
         viewModelScope.launch {
             val result = getPlaylistDetailUseCase(playlist.id)
             result.fold(
                 onSuccess = { detail ->
                     playlistDetailCache[playlist.id] = detail
-                    // 仅当用户仍在当前歌单时平滑更新
                     _uiState.update { current ->
                         if (current.activePlaylistDetail?.id == playlist.id) {
                             current.copy(

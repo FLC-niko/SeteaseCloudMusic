@@ -1,6 +1,8 @@
 package com.example.seteasecloudmusic.feature.mine.di
 
+import com.example.seteasecloudmusic.feature.mine.data.LocalMusicRepositoryImpl
 import com.example.seteasecloudmusic.feature.mine.data.MineRepositoryImpl
+import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 import dagger.Binds
 import dagger.Module
@@ -17,4 +19,10 @@ abstract class MineFeatureModule {
     abstract fun bindMineRepository(
         impl: MineRepositoryImpl
     ): MineRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLocalMusicRepository(
+        impl: LocalMusicRepositoryImpl
+    ): LocalMusicRepository
 }

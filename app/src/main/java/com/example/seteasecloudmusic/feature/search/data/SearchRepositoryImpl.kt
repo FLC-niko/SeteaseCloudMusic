@@ -5,6 +5,7 @@ import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
+import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
@@ -23,7 +24,8 @@ import javax.inject.Inject
  * 3. 屏蔽数据来源细节，让上层只依赖抽象接口。
  */
 class SearchRepositoryImpl @Inject constructor(
-    private val musicService: NeteaseMusicService
+    private val musicService: NeteaseMusicService,
+    private val localMusicRepository: LocalMusicRepository
 ) : SearchRepository, TrackPlaybackPreparer {
 
     // 内存高速缓存：已解析的歌曲播放直链，避免重复发起耗时网络请求（0ms 极速切歌）
@@ -92,6 +94,23 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     override suspend fun invoke(track: Track): Result<Track> {
+        // 1. 若当前曲目已带有可用播放直链（本地扫描或预先准备），0ms 立即起播
+        if (!track.playableUrl.isNullOrBlank() && track.isPlayable) {
+            return Result.success(track)
+        }
+
+        // 2. 核心省流量机制：在线歌单曲目优先检索本地已下载/已存在的本地音频
+        val localMatch = localMusicRepository.findMatchingLocalTrack(track)
+        if (localMatch != null && !localMatch.playableUrl.isNullOrBlank()) {
+            return Result.success(
+                track.copy(
+                    playableUrl = localMatch.playableUrl,
+                    isPlayable = true
+                )
+            )
+        }
+
+        // 3. 本地无匹配，回退请求云端直链
         return getTrackUrl(track.id).map { url ->
             track.copy(playableUrl = url, isPlayable = url.isNotBlank())
         }

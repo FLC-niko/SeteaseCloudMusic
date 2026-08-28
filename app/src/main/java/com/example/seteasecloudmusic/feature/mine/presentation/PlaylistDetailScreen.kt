@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -158,7 +159,7 @@ fun PlaylistDetailScreen(
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
             ) {
-                // 手机状态栏纯白遮罩（彻底杜绝与电量/时间/灵动岛重叠）
+                // 手机状态栏纯白遮罩
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -166,7 +167,7 @@ fun PlaylistDetailScreen(
                         .background(Color.White)
                 )
 
-                // 浓郁渐变磨砂返回条（相册同款多阶渐变，降低透明度一档，文字/按钮锐利清晰）
+                // 浓郁渐变磨砂返回条
                 PlaylistDetailTopBar(
                     title = detail.name,
                     onClose = onClose
@@ -177,7 +178,7 @@ fun PlaylistDetailScreen(
 }
 
 /**
- * 顶部悬浮返回导航栏（相册级浓郁渐变质感）
+ * 顶部悬浮返回导航栏
  */
 @Composable
 private fun PlaylistDetailTopBar(
@@ -219,7 +220,7 @@ private fun PlaylistDetailTopBar(
                 )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
             Text(
                 text = title,
@@ -229,8 +230,7 @@ private fun PlaylistDetailTopBar(
                     color = PlaylistTextPrimary
                 ),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -252,16 +252,38 @@ private fun PlaylistHeroSection(
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 封面图
-        AsyncImage(
-            model = detail.coverUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(136.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .shadow(elevation = 8.dp, shape = RoundedCornerShape(20.dp)),
-            contentScale = ContentScale.Crop
-        )
+        // 封面图或默认图标
+        if (!detail.coverUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = detail.coverUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(136.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(20.dp)),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(136.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFFFA233B), Color(0xFFFF647C))
+                        )
+                    )
+                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(64.dp)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -279,7 +301,7 @@ private fun PlaylistHeroSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 创建者与歌曲数 (优先使用真实总歌曲数 detail.trackCount，避免显示前屏缓存曲目数量)
+        // 创建者与歌曲数
         val count = if (detail.trackCount > 0) detail.trackCount else detail.tracks.size
         Text(
             text = "$count 首歌曲" + if (!detail.creatorName.isNullOrBlank()) " · ${detail.creatorName}" else "",
@@ -294,6 +316,7 @@ private fun PlaylistHeroSection(
         // 播放全部按钮
         Button(
             onClick = onPlayAll,
+            enabled = count > 0,
             modifier = Modifier
                 .height(44.dp)
                 .fillMaxWidth(0.65f),
@@ -348,14 +371,29 @@ private fun PlaylistDetailTrackRow(
             modifier = Modifier.width(28.dp)
         )
 
-        AsyncImage(
-            model = track.coverUrl,
-            contentDescription = null,
+        Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(RoundedCornerShape(10.dp)),
-            contentScale = ContentScale.Crop
-        )
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFF0F0F3)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!track.coverUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = track.coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = PlaylistAccentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.width(14.dp))
 
@@ -373,8 +411,16 @@ private fun PlaylistDetailTrackRow(
 
             Spacer(modifier = Modifier.height(3.dp))
 
+            val artistText = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
+            val albumText = track.album?.title ?: ""
+            val subtitle = if (albumText.isNotBlank() && albumText != "本地音乐") {
+                "$artistText · $albumText"
+            } else {
+                artistText
+            }
+
             Text(
-                text = track.artists.joinToString(" / ") { it.name } + if (!track.album.title.isNullOrBlank()) " - ${track.album.title}" else "",
+                text = subtitle,
                 style = MaterialTheme.typography.bodySmall.copy(
                     color = PlaylistTextSecondary,
                     fontSize = 12.sp

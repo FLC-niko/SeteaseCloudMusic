@@ -342,10 +342,15 @@ class MusicPlayerController @Inject constructor(
         val artistName = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
         val albumName = track.album?.title ?: track.title
         val coverUri = track.coverUrl?.toUri()
+        val mediaUri = if (url.startsWith("/") && !url.startsWith("http")) {
+            android.net.Uri.fromFile(java.io.File(url))
+        } else {
+            url.toUri()
+        }
 
         return MediaItem.Builder()
             .setMediaId(track.id.toString())
-            .setUri(url)
+            .setUri(mediaUri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(track.title)
