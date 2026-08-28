@@ -78,6 +78,13 @@ class PlayerViewModel @Inject constructor(
         controller.connect()
     }
 
+    val currentAudioQuality: StateFlow<com.example.seteasecloudmusic.core.settings.OnlineAudioQuality> = playerSettingsManager.audioQuality
+
+    fun selectAudioQuality(quality: com.example.seteasecloudmusic.core.settings.OnlineAudioQuality) {
+        playerSettingsManager.setAudioQuality(quality)
+        controller.reloadCurrentTrackWithQuality()
+    }
+
     fun onPlayPause() {
         when (playbackState.value.status) {
             PlayerStatus.PLAYING -> controller.pause()

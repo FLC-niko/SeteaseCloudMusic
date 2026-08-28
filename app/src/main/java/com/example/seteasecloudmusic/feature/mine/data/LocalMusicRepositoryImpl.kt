@@ -3,6 +3,7 @@ package com.example.seteasecloudmusic.feature.mine.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Environment
+import android.util.Log
 import com.example.seteasecloudmusic.core.local.LocalMusicScanner
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
@@ -59,21 +60,21 @@ class LocalMusicRepositoryImpl @Inject constructor(
             combinedTracks.addAll(dirTracks)
         }
 
-        // 3. 去重（按标题+歌手+时长或文件路径）
         val deduplicated = deduplicateTracks(combinedTracks)
         _localTracksFlow.value = deduplicated
         hasScanned = true
+        Log.d("LocalMusicRepo", "scanDirectory [$directoryPath] completed, total found: ${deduplicated.size}")
         deduplicated
     }
 
     override suspend fun getLocalTracks(forceRefresh: Boolean): List<Track> = withContext(Dispatchers.IO) {
-        if (!forceRefresh && hasScanned && _localTracksFlow.value.isNotEmpty()) {
+        if (!forceRefresh && _localTracksFlow.value.isNotEmpty()) {
             return@withContext _localTracksFlow.value
         }
 
         val combinedTracks = mutableListOf<Track>()
 
-        // 1. 优先扫描系统 MediaStore（快速提取系统索引的所有音频）
+        // 1. 优先扫描系统 MediaStore
         val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
         combinedTracks.addAll(mediaStoreTracks)
 
@@ -99,6 +100,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
         val deduplicated = deduplicateTracks(combinedTracks)
         _localTracksFlow.value = deduplicated
         hasScanned = true
+        Log.d("LocalMusicRepo", "getLocalTracks completed, total found: ${deduplicated.size}")
         deduplicated
     }
 
@@ -124,10 +126,11 @@ class LocalMusicRepositoryImpl @Inject constructor(
     }
 
     /**
-     * 智能匹配在线歌曲与本地音频：
-     * 1. 歌名归一化（去除音轨编号、版本后缀如 (Live)、[FLAC] 等）
-     * 2. 歌手归一化并模糊匹配
-     * 3. 时长容差判断（8秒内误差）
+     * 智能多维度匹配在线歌曲与本地音频库：
+     * 1. 标题纯净度清洗（去除序号、Live、伴奏、无损标记、副标题、全半角括号）
+     * 2. 支持文件名倒推匹配（如 "歌手 - 歌名.mp3"）
+     * 3. 歌手模糊匹配（支持未知歌手容错）
+     * 4. 时长容差扩展至 15 秒（适应不同格式的前后静音差异）
      */
     override suspend fun findMatchingLocalTrack(onlineTrack: Track): Track? = withContext(Dispatchers.Default) {
         val localList = if (_localTracksFlow.value.isEmpty()) {
@@ -136,57 +139,109 @@ class LocalMusicRepositoryImpl @Inject constructor(
             _localTracksFlow.value
         }
 
-        if (localList.isEmpty()) return@withContext null
+        if (localList.isEmpty()) {
+            Log.d("LocalMusicMatch", "findMatchingLocalTrack: local library is empty, skipping matching for '${onlineTrack.title}'")
+            return@withContext null
+        }
 
         val targetTitleNorm = normalizeTitle(onlineTrack.title)
         val targetArtists = onlineTrack.artists.map { normalizeString(it.name) }.filter { it.isNotBlank() }
         val targetDuration = onlineTrack.durationMs ?: 0L
 
-        // 1. 尝试全匹配：歌名 + 歌手 + 时长容差
-        val fullMatch = localList.firstOrNull { local ->
+        Log.d("LocalMusicMatch", "Matching online track: title='${onlineTrack.title}' (norm='$targetTitleNorm'), artists=$targetArtists, dur=$targetDuration, localPoolSize=${localList.size}")
+
+        // 1. 最高精度：规范化标题全等 + (歌手匹配 或 歌手未知) + 时长容差(15s)
+        var matched = localList.firstOrNull { local ->
             val localTitleNorm = normalizeTitle(local.title)
+            val filename = getFilename(local.playableUrl)
+            val filenameNorm = normalizeTitle(filename)
+
             val titleMatches = localTitleNorm.equals(targetTitleNorm, ignoreCase = true) ||
-                    localTitleNorm.contains(targetTitleNorm, ignoreCase = true) ||
-                    targetTitleNorm.contains(localTitleNorm, ignoreCase = true)
+                    filenameNorm.equals(targetTitleNorm, ignoreCase = true) ||
+                    (targetTitleNorm.length >= 2 && (filenameNorm.endsWith(targetTitleNorm) || filenameNorm.startsWith(targetTitleNorm)))
 
             if (!titleMatches) return@firstOrNull false
 
             val localArtistNorm = local.artists.joinToString(" ") { normalizeString(it.name) }
-            val artistMatches = targetArtists.isEmpty() || targetArtists.any {
-                localArtistNorm.contains(it, ignoreCase = true) || it.contains(localArtistNorm, ignoreCase = true)
+            val localIsUnknownArtist = localArtistNorm.isBlank() || localArtistNorm.contains("未知") || localArtistNorm.contains("unknown")
+            val artistMatches = localIsUnknownArtist || targetArtists.isEmpty() || targetArtists.any {
+                localArtistNorm.contains(it, ignoreCase = true) ||
+                        it.contains(localArtistNorm, ignoreCase = true) ||
+                        filename.contains(it, ignoreCase = true)
             }
 
             val localDuration = local.durationMs ?: 0L
             val durationMatches = if (targetDuration > 0 && localDuration > 0) {
-                abs(targetDuration - localDuration) <= 8000L
+                abs(targetDuration - localDuration) <= 15000L
             } else {
                 true
             }
 
-            artistMatches && durationMatches
+            titleMatches && artistMatches && durationMatches
         }
 
-        if (fullMatch != null) return@withContext fullMatch
+        // 2. 次级匹配：规范化标题全等 + 歌手匹配（忽略时长）
+        if (matched == null) {
+            matched = localList.firstOrNull { local ->
+                val localTitleNorm = normalizeTitle(local.title)
+                val filename = getFilename(local.playableUrl)
+                val filenameNorm = normalizeTitle(filename)
 
-        // 2. 次级匹配：精确歌名 + 歌手匹配（忽略时长）
-        val titleArtistMatch = localList.firstOrNull { local ->
-            val localTitleNorm = normalizeTitle(local.title)
-            if (!localTitleNorm.equals(targetTitleNorm, ignoreCase = true)) return@firstOrNull false
+                val titleMatches = localTitleNorm.equals(targetTitleNorm, ignoreCase = true) ||
+                        filenameNorm.equals(targetTitleNorm, ignoreCase = true)
 
-            val localArtistNorm = local.artists.joinToString(" ") { normalizeString(it.name) }
-            targetArtists.any {
-                localArtistNorm.contains(it, ignoreCase = true) || it.contains(localArtistNorm, ignoreCase = true)
+                if (!titleMatches) return@firstOrNull false
+
+                val localArtistNorm = local.artists.joinToString(" ") { normalizeString(it.name) }
+                val localIsUnknownArtist = localArtistNorm.isBlank() || localArtistNorm.contains("未知") || localArtistNorm.contains("unknown")
+                val artistMatches = localIsUnknownArtist || targetArtists.isEmpty() || targetArtists.any {
+                    localArtistNorm.contains(it, ignoreCase = true) ||
+                            it.contains(localArtistNorm, ignoreCase = true) ||
+                            filename.contains(it, ignoreCase = true)
+                }
+
+                artistMatches
             }
         }
 
-        titleArtistMatch
+        // 3. 包含匹配：文件名包含完整歌名与歌手
+        if (matched == null && targetTitleNorm.length >= 2) {
+            matched = localList.firstOrNull { local ->
+                val filename = getFilename(local.playableUrl).lowercase()
+                val hasTitle = filename.contains(targetTitleNorm)
+                val hasArtist = targetArtists.isEmpty() || targetArtists.any { filename.contains(it) }
+                hasTitle && hasArtist
+            }
+        }
+
+        if (matched != null) {
+            Log.d("LocalMusicMatch", ">>> MATCH SUCCESS! Online '${onlineTrack.title}' matched local '${matched.title}' (Path: ${matched.playableUrl})")
+        } else {
+            Log.d("LocalMusicMatch", ">>> Match failed for '${onlineTrack.title}'")
+        }
+
+        matched
+    }
+
+    private fun getFilename(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        return try {
+            if (url.startsWith("/") || url.startsWith("file://")) {
+                File(url.removePrefix("file://")).nameWithoutExtension
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     private fun normalizeTitle(title: String): String {
         return title.lowercase()
-            .replace(Regex("\\(.*\\)|\\[.*\\]|\\{.*\\}"), "")
-            .replace(Regex("[-_~`!@#\$%^&*+=|:;\"'<>,.?/\\\\]"), "")
-            .replace(Regex("\\s+"), "")
+            .replace(Regex("^\\d+[.\\-_\\s]+"), "") // 去除开头的音轨序号 "01. ", "01 - "
+            .replace(Regex("\\(.*\\)|\\[.*\\]|\\{.*\\}|【.*】|（.*）"), "") // 去除各种括号内容 (Live), [FLAC] 等
+            .replace(Regex("[-_~`!@#\$%^&*+=|:;\"'<>,.?/\\\\]"), "") // 去除标点符号
+            .replace(Regex("\\s+"), "") // 去除空格
             .trim()
     }
 

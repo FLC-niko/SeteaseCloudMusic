@@ -1,10 +1,10 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.seteasecloudmusic.core.player.PlaybackMode
+import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 
 @Composable
 fun PlayerControls(
@@ -54,12 +56,15 @@ fun PlayerControls(
     durationMs: Int,
     isPlaying: Boolean,
     playbackMode: PlaybackMode = PlaybackMode.SEQUENTIAL,
+    isLocalTrack: Boolean = false,
+    currentQuality: OnlineAudioQuality = OnlineAudioQuality.STANDARD,
     dominantColor: Color = Color.Transparent,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
     onTogglePlaybackMode: () -> Unit = {},
+    onSelectQualityClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isDragging by remember { mutableStateOf(false) }
@@ -122,7 +127,7 @@ fun PlayerControls(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 3. 核心主控制按键（模式切换、上一首、播放/暂停、下一首、模式提示胶囊）
+        // 3. 核心主控制按键（播放模式切换、上一首、播放/暂停、下一首、音质选择胶囊）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -194,17 +199,24 @@ fun PlayerControls(
                 )
             }
 
-            // 模式状态辅助胶囊按钮（点击也可直接切换）
+            // 4. 音质显示与切换纯文字按钮（本地播放时显示“本地”且不可点击；在线播放时显示当前音质并支持点击切换）
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onTogglePlaybackMode),
+                    .then(
+                        if (!isLocalTrack) {
+                            Modifier
+                                .clip(CircleShape)
+                                .clickable(onClick = onSelectQualityClick)
+                        } else {
+                            Modifier
+                        }
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (playbackMode == PlaybackMode.SHUFFLE) "随机" else "顺序",
-                    color = if (playbackMode == PlaybackMode.SHUFFLE) Color(0xFFFA233B) else Color.White.copy(alpha = 0.75f),
+                    text = if (isLocalTrack) "本地" else currentQuality.title,
+                    color = if (isLocalTrack) Color.White.copy(alpha = 0.50f) else Color.White.copy(alpha = 0.90f),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -229,10 +241,8 @@ private fun SmoothProgressBar(
     onSeekTo: (Int) -> Unit,
     onDragUpdate: (Boolean, Float) -> Unit
 ) {
-    val barHeight by animateDpAsState(
-        targetValue = if (isDragging) 6.dp else 4.dp,
-        label = "barHeight"
-    )
+    val trackHeight = if (isDragging) 6.dp else 4.dp
+    val thumbRadius = if (isDragging) 8.dp else 5.dp
 
     Box(
         modifier = Modifier
@@ -241,65 +251,63 @@ private fun SmoothProgressBar(
             .pointerInput(durationMs) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    val width = size.width.toFloat()
+                    if (width <= 0f) return@awaitEachGesture
+
                     val initialFraction = (down.position.x / width).coerceIn(0f, 1f)
                     onDragUpdate(true, initialFraction)
 
-                    val pointerId = down.id
-                    var latestFraction = initialFraction
-
+                    var currentFraction = initialFraction
                     while (true) {
                         val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        val change = event.changes.firstOrNull() ?: break
                         if (change.changedToUp()) {
+                            val finalFraction = (change.position.x / width).coerceIn(0f, 1f)
+                            onDragUpdate(false, finalFraction)
+                            if (durationMs > 0) {
+                                onSeekTo((finalFraction * durationMs).toInt())
+                            }
                             change.consume()
                             break
+                        } else {
+                            currentFraction = (change.position.x / width).coerceIn(0f, 1f)
+                            onDragUpdate(true, currentFraction)
+                            change.consume()
                         }
-                        change.consume()
-                        latestFraction = (change.position.x / width).coerceIn(0f, 1f)
-                        onDragUpdate(true, latestFraction)
-                    }
-
-                    onDragUpdate(false, latestFraction)
-                    if (durationMs > 0) {
-                        onSeekTo((latestFraction * durationMs).toInt())
                     }
                 }
             },
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight)
-        ) {
-            val h = size.height
-            val w = size.width
-            val currentW = (progress * w).coerceIn(0f, w)
+        Canvas(modifier = Modifier.fillMaxWidth().height(trackHeight)) {
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            val activeWidth = canvasWidth * progress.coerceIn(0f, 1f)
 
-            // 背景轨道
+            // 背景底轨
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.28f),
-                cornerRadius = CornerRadius(h / 2, h / 2)
+                color = Color.White.copy(alpha = 0.25f),
+                topLeft = Offset(0f, 0f),
+                size = Size(canvasWidth, canvasHeight),
+                cornerRadius = CornerRadius(canvasHeight / 2, canvasHeight / 2)
             )
 
-            // 已播放高亮填充
-            if (currentW > 0f) {
+            // 激活进度轨
+            if (activeWidth > 0f) {
                 drawRoundRect(
                     color = Color.White,
-                    size = Size(currentW, h),
-                    cornerRadius = CornerRadius(h / 2, h / 2)
+                    topLeft = Offset(0f, 0f),
+                    size = Size(activeWidth, canvasHeight),
+                    cornerRadius = CornerRadius(canvasHeight / 2, canvasHeight / 2)
                 )
             }
 
-            // 拖拽时绘制醒目的圆点 Thumb
-            if (isDragging) {
-                drawCircle(
-                    color = Color.White,
-                    radius = 7.dp.toPx(),
-                    center = Offset(currentW, h / 2)
-                )
-            }
+            // 拖拽手柄小圆点
+            drawCircle(
+                color = Color.White,
+                radius = thumbRadius.toPx(),
+                center = Offset(activeWidth, canvasHeight / 2)
+            )
         }
     }
 }
@@ -308,5 +316,5 @@ private fun formatTime(ms: Int): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return "%d:%02d".format(minutes, seconds)
+    return String.format(java.util.Locale.getDefault(), "%02d:%02d", minutes, seconds)
 }

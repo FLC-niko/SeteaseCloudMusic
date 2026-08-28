@@ -13,6 +13,13 @@ enum class PlayerStyle(val title: String, val desc: String) {
     NATIVE_COMPOSE("原生质感 (Compose)", "沉浸式专辑主色渐变与原生丝滑歌词滚动")
 }
 
+enum class OnlineAudioQuality(val title: String, val levelKey: String, val desc: String) {
+    STANDARD("标准", "standard", "标准音质 · 128Kbps"),
+    HIGH("极高", "exhigh", "极高音质 · 320Kbps"),
+    LOSSLESS("无损", "lossless", "SQ 无损音质 · FLAC"),
+    HIRES("Hi-Res", "hires", "Hi-Res 超清母带 · 24bit/96kHz")
+}
+
 @Singleton
 class PlayerSettingsManager @Inject constructor(
     @param:ApplicationContext private val context: Context
@@ -22,9 +29,17 @@ class PlayerSettingsManager @Inject constructor(
     private val _playerStyle = MutableStateFlow(loadSavedStyle())
     val playerStyle: StateFlow<PlayerStyle> = _playerStyle.asStateFlow()
 
+    private val _audioQuality = MutableStateFlow(loadSavedAudioQuality())
+    val audioQuality: StateFlow<OnlineAudioQuality> = _audioQuality.asStateFlow()
+
     fun setPlayerStyle(style: PlayerStyle) {
         _playerStyle.value = style
         prefs.edit().putString(KEY_PLAYER_STYLE, style.name).apply()
+    }
+
+    fun setAudioQuality(quality: OnlineAudioQuality) {
+        _audioQuality.value = quality
+        prefs.edit().putString(KEY_AUDIO_QUALITY, quality.name).apply()
     }
 
     private fun loadSavedStyle(): PlayerStyle {
@@ -36,8 +51,18 @@ class PlayerSettingsManager @Inject constructor(
         }
     }
 
+    private fun loadSavedAudioQuality(): OnlineAudioQuality {
+        val name = prefs.getString(KEY_AUDIO_QUALITY, OnlineAudioQuality.STANDARD.name)
+        return try {
+            OnlineAudioQuality.valueOf(name ?: OnlineAudioQuality.STANDARD.name)
+        } catch (e: Exception) {
+            OnlineAudioQuality.STANDARD
+        }
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_PLAYER_STYLE = "player_style_mode"
+        private const val KEY_AUDIO_QUALITY = "player_audio_quality"
     }
 }

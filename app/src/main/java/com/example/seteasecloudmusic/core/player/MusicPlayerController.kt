@@ -325,6 +325,57 @@ class MusicPlayerController @Inject constructor(
         persistCurrentState()
     }
 
+    /**
+     * 动态热切换当前播放曲目的音质（保持当前播放位置平滑过渡）
+     */
+    fun reloadCurrentTrackWithQuality() {
+        val state = _playbackState.value
+        val current = state.currentTrack ?: return
+        val pos = state.currentPositionMs
+        val isLocal = current.playableUrl?.let {
+            it.startsWith("content://") || it.startsWith("file://") || (it.startsWith("/") && !it.startsWith("http"))
+        } ?: false
+
+        if (isLocal) return
+
+        playJob?.cancel()
+        val requestId = nextPlayRequestId()
+        playJob = scope.launch {
+            _playbackState.update { it.copy(status = PlayerStatus.BUFFERING) }
+            val prepared = withContext(ioDispatcher) {
+                trackPlaybackPreparer(current.copy(playableUrl = null))
+            }
+            if (isStaleRequest(requestId)) return@launch
+
+            prepared.fold(
+                onSuccess = { newTrack ->
+                    val url = newTrack.playableUrl
+                    if (!url.isNullOrBlank()) {
+                        val item = buildMediaItem(newTrack, url)
+                        val c = controller
+                        if (c != null) {
+                            if (pos > 0) {
+                                c.setMediaItem(item, pos.toLong())
+                            } else {
+                                c.setMediaItem(item)
+                            }
+                            c.prepare()
+                            c.play()
+                        }
+                        _playbackState.update {
+                            it.copy(currentTrack = newTrack, status = PlayerStatus.PLAYING)
+                        }
+                    }
+                },
+                onFailure = { err ->
+                    _playbackState.update {
+                        it.copy(status = PlayerStatus.ERROR, errorMessage = err.message ?: "切换音质失败")
+                    }
+                }
+            )
+        }
+    }
+
     fun release() {
         persistCurrentState()
         stopProgressTicker()
@@ -437,6 +488,18 @@ class MusicPlayerController @Inject constructor(
 
                     val item = buildMediaItem(t, url)
 
+                    _playbackState.update { current ->
+                        val updatedQueue = current.queueTracks.toMutableList()
+                        if (index in updatedQueue.indices) {
+                            updatedQueue[index] = t
+                        }
+                        current.copy(
+                            currentTrack = t,
+                            queueTracks = updatedQueue,
+                            status = PlayerStatus.PLAYING
+                        )
+                    }
+
                     val ctrl = controller
                     if (ctrl != null) {
                         if (initialSeekMs > 0) {
@@ -481,22 +544,58 @@ class MusicPlayerController @Inject constructor(
                 PlaybackMode.SEQUENTIAL -> {
                     // 优先预加载下一首
                     val nextIndex = (currentIndex + 1) % queue.size
-                    runCatching { trackPlaybackPreparer(queue[nextIndex]) }
+                    val nextPrep = runCatching { trackPlaybackPreparer(queue[nextIndex]) }.getOrNull()
+                    nextPrep?.onSuccess { nextTrack ->
+                        _playbackState.update { current ->
+                            val q = current.queueTracks.toMutableList()
+                            if (nextIndex in q.indices) {
+                                q[nextIndex] = nextTrack
+                            }
+                            current.copy(queueTracks = q)
+                        }
+                    }
 
                     // 预加载上一首
                     val prevIndex = if (currentIndex - 1 < 0) queue.size - 1 else currentIndex - 1
-                    runCatching { trackPlaybackPreparer(queue[prevIndex]) }
+                    val prevPrep = runCatching { trackPlaybackPreparer(queue[prevIndex]) }.getOrNull()
+                    prevPrep?.onSuccess { prevTrack ->
+                        _playbackState.update { current ->
+                            val q = current.queueTracks.toMutableList()
+                            if (prevIndex in q.indices) {
+                                q[prevIndex] = prevTrack
+                            }
+                            current.copy(queueTracks = q)
+                        }
+                    }
                 }
                 PlaybackMode.SHUFFLE -> {
                     if (queue.size > 1) {
                         val candidates = queue.indices.filter { it != currentIndex }
                         val nextRandom = candidates.random()
-                        runCatching { trackPlaybackPreparer(queue[nextRandom]) }
+                        val randPrep = runCatching { trackPlaybackPreparer(queue[nextRandom]) }.getOrNull()
+                        randPrep?.onSuccess { randTrack ->
+                            _playbackState.update { current ->
+                                val q = current.queueTracks.toMutableList()
+                                if (nextRandom in q.indices) {
+                                    q[nextRandom] = randTrack
+                                }
+                                current.copy(queueTracks = q)
+                            }
+                        }
                     }
                     if (playbackHistory.isNotEmpty()) {
                         val lastHistoryIndex = playbackHistory.last()
                         if (lastHistoryIndex in queue.indices) {
-                            runCatching { trackPlaybackPreparer(queue[lastHistoryIndex]) }
+                            val histPrep = runCatching { trackPlaybackPreparer(queue[lastHistoryIndex]) }.getOrNull()
+                            histPrep?.onSuccess { histTrack ->
+                                _playbackState.update { current ->
+                                    val q = current.queueTracks.toMutableList()
+                                    if (lastHistoryIndex in q.indices) {
+                                        q[lastHistoryIndex] = histTrack
+                                    }
+                                    current.copy(queueTracks = q)
+                                }
+                            }
                         }
                     }
                 }

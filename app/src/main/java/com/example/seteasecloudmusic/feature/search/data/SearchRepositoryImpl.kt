@@ -5,6 +5,7 @@ import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
@@ -25,11 +26,12 @@ import javax.inject.Inject
  */
 class SearchRepositoryImpl @Inject constructor(
     private val musicService: NeteaseMusicService,
-    private val localMusicRepository: LocalMusicRepository
+    private val localMusicRepository: LocalMusicRepository,
+    private val playerSettingsManager: PlayerSettingsManager
 ) : SearchRepository, TrackPlaybackPreparer {
 
-    // 内存高速缓存：已解析的歌曲播放直链，避免重复发起耗时网络请求（0ms 极速切歌）
-    private val trackUrlCache = ConcurrentHashMap<Long, String>()
+    // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链 (0ms 极速切歌)
+    private val trackUrlCache = ConcurrentHashMap<String, String>()
 
     override suspend fun searchTracks(
         query: String,
@@ -56,32 +58,35 @@ class SearchRepositoryImpl @Inject constructor(
         level: String
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            val targetLevel = if (level.isNotBlank() && level != "hires") level else "standard"
+            val cacheKey = "$trackId-$targetLevel"
+
             // 1. 命中内存缓存直接秒级返回 (0ms)
-            trackUrlCache[trackId]?.let { cachedUrl ->
+            trackUrlCache[cacheKey]?.let { cachedUrl ->
                 if (cachedUrl.isNotBlank()) {
                     return@withContext Result.success(cachedUrl)
                 }
             }
 
-            // 2. 单次快速直出音频 URL（单次网络往返直出，彻底杜绝多次串行重试导致的半分钟卡死）
-            val targetLevel = if (level.isNotBlank() && level != "hires") level else "standard"
+            // 2. 单次快速直出音频 URL
             val response = musicService.getSongUrl(trackId, targetLevel)
             if (response.code == 200) {
                 val item = response.data.firstOrNull()
                 val url = item?.url
                 if (!url.isNullOrBlank()) {
-                    trackUrlCache[trackId] = url
+                    trackUrlCache[cacheKey] = url
                     return@withContext Result.success(url)
                 }
             }
 
-            // 3. 兜底请求 standard（仅当指定了非 standard 音质且首选未返回有效直链时轻量重试一次）
+            // 3. 兜底请求 standard
             if (targetLevel != "standard") {
+                val fallbackKey = "$trackId-standard"
                 val fallbackResponse = musicService.getSongUrl(trackId, "standard")
                 if (fallbackResponse.code == 200) {
                     val fallbackUrl = fallbackResponse.data.firstOrNull()?.url
                     if (!fallbackUrl.isNullOrBlank()) {
-                        trackUrlCache[trackId] = fallbackUrl
+                        trackUrlCache[fallbackKey] = fallbackUrl
                         return@withContext Result.success(fallbackUrl)
                     }
                 }
@@ -102,6 +107,7 @@ class SearchRepositoryImpl @Inject constructor(
         // 2. 核心省流量机制：在线歌单曲目优先检索本地已下载/已存在的本地音频
         val localMatch = localMusicRepository.findMatchingLocalTrack(track)
         if (localMatch != null && !localMatch.playableUrl.isNullOrBlank()) {
+            android.util.Log.d("SearchRepo", "Online track '${track.title}' (ID: ${track.id}) matched LOCAL FILE: ${localMatch.playableUrl}")
             return Result.success(
                 track.copy(
                     playableUrl = localMatch.playableUrl,
@@ -109,9 +115,11 @@ class SearchRepositoryImpl @Inject constructor(
                 )
             )
         }
+        val currentQualityLevel = playerSettingsManager.audioQuality.value.levelKey
+        android.util.Log.d("SearchRepo", "Online track '${track.title}' (ID: ${track.id}) no local match, fetching online stream for quality: $currentQualityLevel")
 
-        // 3. 本地无匹配，回退请求云端直链
-        return getTrackUrl(track.id).map { url ->
+        // 3. 本地无匹配，根据用户设定的音质等级向云端请求直链
+        return getTrackUrl(track.id, level = currentQualityLevel).map { url ->
             track.copy(playableUrl = url, isPlayable = url.isNotBlank())
         }
     }
