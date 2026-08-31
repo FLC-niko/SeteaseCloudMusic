@@ -27,7 +27,8 @@ import javax.inject.Inject
 class SearchRepositoryImpl @Inject constructor(
     private val musicService: NeteaseMusicService,
     private val localMusicRepository: LocalMusicRepository,
-    private val playerSettingsManager: PlayerSettingsManager
+    private val playerSettingsManager: PlayerSettingsManager,
+    private val ncblReporter: com.example.seteasecloudmusic.core.network.ncbl.NcblReporter
 ) : SearchRepository, TrackPlaybackPreparer {
 
     // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链 (0ms 极速切歌)
@@ -57,42 +58,27 @@ class SearchRepositoryImpl @Inject constructor(
         trackId: Long,
         level: String
     ): Result<String> = withContext(Dispatchers.IO) {
+        val cacheKey = "$trackId-$level"
+        trackUrlCache[cacheKey]?.let { cachedUrl ->
+            return@withContext Result.success(cachedUrl)
+        }
+
         try {
-            val targetLevel = if (level.isNotBlank() && level != "hires") level else "standard"
-            val cacheKey = "$trackId-$targetLevel"
+            val response = musicService.getSongUrl(id = trackId, level = level)
+            val songData = response.data.firstOrNull()
+            val url = songData?.url
 
-            // 1. 命中内存缓存直接秒级返回 (0ms)
-            trackUrlCache[cacheKey]?.let { cachedUrl ->
-                if (cachedUrl.isNotBlank()) {
-                    return@withContext Result.success(cachedUrl)
+            if (response.code == 200 && !url.isNullOrBlank()) {
+                val secureUrl = if (url.startsWith("http://")) {
+                    url.replaceFirst("http://", "https://")
+                } else {
+                    url
                 }
+                trackUrlCache[cacheKey] = secureUrl
+                Result.success(secureUrl)
+            } else {
+                Result.failure(Exception("No playable URL available for track $trackId at level $level"))
             }
-
-            // 2. 单次快速直出音频 URL
-            val response = musicService.getSongUrl(trackId, targetLevel)
-            if (response.code == 200) {
-                val item = response.data.firstOrNull()
-                val url = item?.url
-                if (!url.isNullOrBlank()) {
-                    trackUrlCache[cacheKey] = url
-                    return@withContext Result.success(url)
-                }
-            }
-
-            // 3. 兜底请求 standard
-            if (targetLevel != "standard") {
-                val fallbackKey = "$trackId-standard"
-                val fallbackResponse = musicService.getSongUrl(trackId, "standard")
-                if (fallbackResponse.code == 200) {
-                    val fallbackUrl = fallbackResponse.data.firstOrNull()?.url
-                    if (!fallbackUrl.isNullOrBlank()) {
-                        trackUrlCache[fallbackKey] = fallbackUrl
-                        return@withContext Result.success(fallbackUrl)
-                    }
-                }
-            }
-
-            Result.failure(Exception("无法获取歌曲播放直链"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -121,6 +107,77 @@ class SearchRepositoryImpl @Inject constructor(
         // 3. 本地无匹配，根据用户设定的音质等级向云端请求直链
         return getTrackUrl(track.id, level = currentQualityLevel).map { url ->
             track.copy(playableUrl = url, isPlayable = url.isNotBlank())
+        }
+    }
+
+    override suspend fun scrobbleStart(
+        trackId: Long,
+        sourceId: Long?,
+        title: String,
+        artist: String,
+        totalDurationSeconds: Int
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val sid = sourceId ?: 0L
+        ncblReporter.reportPlv(
+            songId = trackId,
+            totalDurationSeconds = totalDurationSeconds,
+            sourceId = sid
+        )
+    }
+
+    override suspend fun scrobble(
+        trackId: Long,
+        durationSeconds: Int,
+        sourceId: Long?,
+        title: String,
+        artist: String,
+        totalDurationSeconds: Int
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val sid = sourceId ?: 0L
+
+        // 1. 优先使用 NCBL 桌面端官方加密日志上报 PLD（直传 clientlog3.music.163.com，100% 实时落库官方今日收听与听歌足迹）
+        val ncblResult = ncblReporter.reportPld(
+            songId = trackId,
+            playDurationSeconds = durationSeconds,
+            totalDurationSeconds = totalDurationSeconds,
+            sourceId = sid,
+            endReason = "playend"
+        )
+
+        // 2. 同时发起 Weblog /scrobble 兜底
+        try {
+            val response = musicService.scrobble(id = trackId, sourceId = sid, time = durationSeconds)
+            android.util.Log.d("Scrobble", ">>> Server /scrobble response code: ${response.code}")
+        } catch (e: Exception) {
+            android.util.Log.w("Scrobble", ">>> Server /scrobble warning: ${e.message}")
+        }
+
+        ncblResult
+    }
+
+    private val localToOnlineIdCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    override suspend fun resolveOnlineTrackId(title: String, artist: String): Long? = withContext(Dispatchers.IO) {
+        val cacheKey = "$title-$artist".lowercase().trim()
+        localToOnlineIdCache[cacheKey]?.let { return@withContext it }
+
+        try {
+            val query = if (artist.isNotBlank() && !artist.contains("未知")) "$title $artist" else title
+            val searchRes = searchTracks(query, limit = 5, offset = 0).getOrNull() ?: emptyList()
+            val matched = searchRes.firstOrNull { t ->
+                val normSearch = t.title.lowercase().replace(" ", "")
+                val normLocal = title.lowercase().replace(" ", "")
+                normSearch == normLocal || normSearch.contains(normLocal) || normLocal.contains(normSearch)
+            } ?: searchRes.firstOrNull()
+
+            val onlineId = matched?.id?.takeIf { it > 0L }
+            if (onlineId != null) {
+                localToOnlineIdCache[cacheKey] = onlineId
+                android.util.Log.d("Scrobble", ">>> Resolved local track '$title - $artist' to online NetEase ID: $onlineId")
+            }
+            onlineId
+        } catch (e: Exception) {
+            null
         }
     }
 

@@ -74,6 +74,11 @@ class MusicPlayerController @Inject constructor(
     private var pendingPlayItem: Pair<MediaItem, Int>? = null
     private var isConnecting: Boolean = false
 
+    // 听歌打卡与时长统计（/scrobble 对应底层 /api/feedback/weblog，计入年度报告与听歌排行）
+    private var listenStartTimeMs: Long = 0L
+    private var accumulatedListenMs: Long = 0L
+    private var currentTrackHasScrobbled: Boolean = false
+
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
@@ -99,6 +104,94 @@ class MusicPlayerController @Inject constructor(
         connect()
     }
 
+    /**
+     * 异步上报歌曲起播行为（PLV，建立官方播放会话）：
+     */
+    private fun triggerScrobbleStart(trackToStart: Track) {
+        scope.launch(ioDispatcher) {
+            val artistName = trackToStart.artists.firstOrNull()?.name ?: ""
+            val effectiveId = if (trackToStart.id > 0L) {
+                trackToStart.id
+            } else {
+                trackPlaybackPreparer.resolveOnlineTrackId(trackToStart.title, artistName)
+            }
+
+            val totalSec = ((trackToStart.durationMs ?: 0L) / 1000L).toInt()
+
+            if (effectiveId != null && effectiveId > 0L) {
+                android.util.Log.d("Scrobble", ">>> Triggering scrobble PLV (session start) for '${trackToStart.title}' (ID: $effectiveId)")
+                trackPlaybackPreparer.scrobbleStart(
+                    trackId = effectiveId,
+                    sourceId = null,
+                    title = trackToStart.title,
+                    artist = artistName,
+                    totalDurationSeconds = totalSec
+                )
+            }
+        }
+    }
+
+    /**
+     * 异步执行单曲打卡完成上报（PLD）：
+     * 1. 若为在线歌曲（track.id > 0），直接向网易云打卡；
+     * 2. 若为本地歌曲（track.id < 0），根据歌曲名与歌手倒查网易云在线曲目 ID，匹配成功后自动打卡；
+     * 3. 符合官方规则：本地播放匹配网易云曲库后计入年度报告与收听时长。
+     */
+    private fun triggerScrobbleForTrack(trackToScrobble: Track, seconds: Int) {
+        scope.launch(ioDispatcher) {
+            val artistName = trackToScrobble.artists.firstOrNull()?.name ?: ""
+            val effectiveId = if (trackToScrobble.id > 0L) {
+                trackToScrobble.id
+            } else {
+                trackPlaybackPreparer.resolveOnlineTrackId(trackToScrobble.title, artistName)
+            }
+
+            val totalSec = ((trackToScrobble.durationMs ?: 0L) / 1000L).toInt()
+
+            if (effectiveId != null && effectiveId > 0L) {
+                android.util.Log.d("Scrobble", ">>> Triggering scrobble PLD (milestone/done) for '${trackToScrobble.title}' (Effective ID: $effectiveId), duration: ${seconds}s")
+                trackPlaybackPreparer.scrobble(
+                    trackId = effectiveId,
+                    durationSeconds = seconds,
+                    sourceId = null,
+                    title = trackToScrobble.title,
+                    artist = artistName,
+                    totalDurationSeconds = totalSec
+                )
+            } else {
+                android.util.Log.d("Scrobble", ">>> Skip scrobble for '${trackToScrobble.title}': Not found on NetEase Cloud")
+            }
+        }
+    }
+
+    /**
+     * 智能判定并在切歌/播完时触发最终打卡与收听时长上报
+     */
+    private fun checkAndTriggerScrobble(trackToScrobble: Track?, positionMs: Int) {
+        if (trackToScrobble == null) return
+
+        if (listenStartTimeMs > 0L) {
+            accumulatedListenMs += (System.currentTimeMillis() - listenStartTimeMs)
+            listenStartTimeMs = 0L
+        }
+
+        val actualListenSec = (accumulatedListenMs / 1000L).toInt()
+        val durationSec = (trackToScrobble.durationMs ?: 0L) / 1000L
+
+        val isValidListen = actualListenSec >= 30 || (durationSec > 0 && positionMs / 1000 >= durationSec / 2 && actualListenSec >= 15)
+
+        if (isValidListen) {
+            val timeToReport = actualListenSec.coerceAtLeast(positionMs / 1000).coerceAtLeast(30)
+            currentTrackHasScrobbled = true
+            triggerScrobbleForTrack(trackToScrobble, timeToReport)
+        } else {
+            android.util.Log.d("Scrobble", ">>> Skip scrobble for '${trackToScrobble.title}': listened only ${actualListenSec}s (threshold: >=30s)")
+        }
+
+        accumulatedListenMs = 0L
+        listenStartTimeMs = 0L
+    }
+
     // 监听 Media3 播放器状态变化，统一映射到你的 PlaybackState
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -112,6 +205,9 @@ class MusicPlayerController @Inject constructor(
             }
 
             if (playbackState == Player.STATE_ENDED) {
+                val current = _playbackState.value.currentTrack
+                val dur = _playbackState.value.durationMs
+                checkAndTriggerScrobble(current, dur)
                 playNextInternal()
                 return
             }
@@ -136,14 +232,19 @@ class MusicPlayerController @Inject constructor(
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _playbackState.update { current ->
                 if (current.status == PlayerStatus.BUFFERING && !isPlaying) {
-                    current // 正在缓冲新曲目时不要被旧播放器的 isPlaying=false 冲刷成 PAUSED
+                    current
                 } else {
                     current.copy(status = if (isPlaying) PlayerStatus.PLAYING else PlayerStatus.PAUSED)
                 }
             }
             if (isPlaying) {
+                listenStartTimeMs = System.currentTimeMillis()
                 startProgressTicker()
             } else {
+                if (listenStartTimeMs > 0L) {
+                    accumulatedListenMs += (System.currentTimeMillis() - listenStartTimeMs)
+                    listenStartTimeMs = 0L
+                }
                 stopProgressTicker()
                 persistCurrentState()
             }
@@ -377,6 +478,10 @@ class MusicPlayerController @Inject constructor(
     }
 
     fun release() {
+        val prevTrack = _playbackState.value.currentTrack
+        val prevPos = _playbackState.value.currentPositionMs
+        checkAndTriggerScrobble(prevTrack, prevPos)
+
         persistCurrentState()
         stopProgressTicker()
         playJob?.cancel()
@@ -430,6 +535,19 @@ class MusicPlayerController @Inject constructor(
         val track = queue[index]
         playJob?.cancel()
         val requestId = nextPlayRequestId()
+
+        val prevTrack = _playbackState.value.currentTrack
+        val prevPos = _playbackState.value.currentPositionMs
+        if (prevTrack != null && prevTrack.id != track.id) {
+            checkAndTriggerScrobble(prevTrack, prevPos)
+        }
+
+        currentTrackHasScrobbled = false
+        accumulatedListenMs = 0L
+        listenStartTimeMs = 0L
+
+        // 起播时立即上报 PLV 会话建立
+        triggerScrobbleStart(track)
 
         playJob = scope.launch {
             _playbackState.update {
@@ -680,6 +798,19 @@ class MusicPlayerController @Inject constructor(
                         currentPositionMs = pos,
                         durationMs = if (dur > 0) dur else it.durationMs
                     )
+                }
+
+                // 播放中实时检测：一旦累积有效收听达到 30 秒里程碑，立即上报网易云打卡！
+                if (!currentTrackHasScrobbled) {
+                    val currentListenMs = accumulatedListenMs + if (listenStartTimeMs > 0) (System.currentTimeMillis() - listenStartTimeMs) else 0L
+                    if (currentListenMs >= 30_000L) {
+                        currentTrackHasScrobbled = true
+                        val currentTrack = _playbackState.value.currentTrack
+                        if (currentTrack != null) {
+                            val timeToReport = (currentListenMs / 1000L).toInt().coerceAtLeast(30)
+                            triggerScrobbleForTrack(currentTrack, timeToReport)
+                        }
+                    }
                 }
 
                 // 每隔 3 秒周期性同步进度到本地持久化存储

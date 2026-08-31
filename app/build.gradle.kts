@@ -140,5 +140,4 @@ dependencies {
 
     // Hilt 与 Compose Navigation 集成（提供 hiltViewModel()）
     implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
-
 }

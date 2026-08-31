@@ -48,7 +48,25 @@ interface NeteaseMusicService {
      */
     @GET("/lyric/new")
     suspend fun getNewLyric(@Query("id") songId: Long): LyricResponse
+
+    /**
+     * 听歌打卡与收听时长上报接口（/scrobble 对应底层 /api/feedback/weblog）
+     * 写入听歌排行、累计听歌量与年度听歌报告
+     */
+    @GET("scrobble")
+    suspend fun scrobble(
+        @Query("id") id: Long,
+        @Query("sourceid") sourceId: Long? = null,
+        @Query("time") time: Int,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
+    ): ScrobbleResponse
 }
+
+data class ScrobbleResponse(
+    val code: Int? = null,
+    val message: String? = null,
+    val data: Any? = null
+)
 
 /**
  * 搜索类型映射，值与后端接口约定保持一致。

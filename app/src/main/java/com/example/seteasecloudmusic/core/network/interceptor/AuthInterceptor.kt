@@ -93,8 +93,17 @@ class AuthInterceptor(private val context: Context) : Interceptor {
             return request
         }
 
-        // 同时在 URL 参数和 Header 中附带 Cookie，确保网易云 Node API 100% 识别 VIP 会员身份
         val originalUrl = request.url
+        val host = originalUrl.host
+
+        // 官方网易云接口（如 clientlog3.music.163.com）只接受标准 Cookie 请求头，不能附加 ?cookie= 查询参数
+        if (host.contains("163.com") || host.contains("netease.com")) {
+            return request.newBuilder()
+                .header("Cookie", savedCookie)
+                .build()
+        }
+
+        // Node.js API 代理服务：同时在 URL 参数和 Header 中附带 Cookie，确保 100% 识别 VIP 会员身份
         val updatedUrl = if (originalUrl.queryParameter("cookie") == null) {
             originalUrl.newBuilder()
                 .addQueryParameter("cookie", savedCookie)

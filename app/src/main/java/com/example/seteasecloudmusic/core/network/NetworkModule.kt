@@ -54,6 +54,11 @@ class NetworkModule {
             val originalRequest = chain.request()
             val originalUrl = originalRequest.url
 
+            // 官方网易云接口（如 clientlog3.music.163.com）保持纯净请求，不附加 randomCNIP
+            if (originalUrl.host.contains("163.com") || originalUrl.host.contains("netease.com")) {
+                return@Interceptor chain.proceed(originalRequest)
+            }
+
             // 若调用方已显式传入 randomCNIP，则保持原值不覆盖。
             val request = if (originalUrl.queryParameter("randomCNIP") != null) {
                 originalRequest
@@ -109,10 +114,46 @@ class NetworkModule {
             response
         }
 
+        val smartDns = object : okhttp3.Dns {
+            override fun lookup(hostname: String): List<java.net.InetAddress> {
+                try {
+                    val res = okhttp3.Dns.SYSTEM.lookup(hostname)
+                    if (res.isNotEmpty()) return res
+                } catch (e: Exception) {
+                    Log.w("NetworkModule", "System DNS failed for $hostname: ${e.message}")
+                }
+
+                if (hostname.contains("clientlog") || hostname.contains("163.com") || hostname.contains("netease")) {
+                    try {
+                        val fallbackIps = when {
+                            hostname.contains("clientlog3") -> listOf(
+                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(220.toByte(), 197.toByte(), 30.toByte(), 68.toByte())),
+                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 60.toByte())),
+                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 38.toByte()))
+                            )
+                            hostname.contains("clientlog") -> listOf(
+                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(220.toByte(), 197.toByte(), 30.toByte(), 68.toByte())),
+                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 60.toByte()))
+                            )
+                            else -> emptyList()
+                        }
+                        if (fallbackIps.isNotEmpty()) {
+                            Log.d("NetworkModule", "Using SmartDNS fallback for $hostname -> ${fallbackIps.map { it.hostAddress }}")
+                            return fallbackIps
+                        }
+                    } catch (e: Exception) {
+                        Log.e("NetworkModule", "Fallback DNS resolution failed for $hostname", e)
+                    }
+                }
+                return okhttp3.Dns.SYSTEM.lookup(hostname)
+            }
+        }
+
         return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .dns(smartDns)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             // 优先补充 randomCNIP 参数，确保后续日志能打印最终 URL。
             .addInterceptor(randomCnIpInterceptor)
             // 先补公共请求头，确保后续拦截器拿到的是完整请求。
