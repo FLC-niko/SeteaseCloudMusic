@@ -6,9 +6,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kyant.backdrop.Backdrop
 
 @Composable
 fun MineRoute(
+    backdrop: Backdrop,
     topContentPadding: Dp,
     bottomContentPadding: Dp,
     onLoginClick: () -> Unit,
@@ -19,6 +21,7 @@ fun MineRoute(
 
     MineScreen(
         uiState = uiState,
+        backdrop = backdrop,
         topContentPadding = topContentPadding,
         bottomContentPadding = bottomContentPadding,
         onLoginClick = onLoginClick,

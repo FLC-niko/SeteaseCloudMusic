@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.mine.presentation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -49,8 +49,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.shapes.RoundedRectangle
 
-private val PlaylistPageBg = Color.White
+private val PlaylistPageBg = Color(0xFFF7F7FA)
 private val PlaylistTextPrimary = Color(0xFF111111)
 private val PlaylistTextSecondary = Color(0xFF8E8E93)
 private val PlaylistDividerColor = Color(0xFFEAEAEE)
@@ -59,11 +65,12 @@ private val PlaylistAccentColor = Color(0xFFFA233B)
 @Composable
 fun PlaylistDetailScreen(
     detail: PlaylistDetail,
-    isLoading: Boolean = false,
+    backdrop: Backdrop,
     onClose: () -> Unit,
     onPlayTrack: (Track) -> Unit,
     onPlayAll: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLoading: Boolean = false
 ) {
     BackHandler(onBack = onClose)
 
@@ -73,7 +80,19 @@ fun PlaylistDetailScreen(
         modifier = modifier.fillMaxSize(),
         color = PlaylistPageBg
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFFFE8ED).copy(alpha = 0.72f),
+                            PlaylistPageBg,
+                            PlaylistPageBg
+                        )
+                    )
+                )
+        ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -88,6 +107,7 @@ fun PlaylistDetailScreen(
                 item(key = "playlist_hero") {
                     PlaylistHeroSection(
                         detail = detail,
+                        backdrop = backdrop,
                         onPlayAll = onPlayAll
                     )
                 }
@@ -153,22 +173,20 @@ fun PlaylistDetailScreen(
                 }
             }
 
-            // 顶部固定手机状态栏纯白背景 + 相册级浓郁多阶渐变悬浮返回栏
+            // 顶部固定状态栏与液态玻璃返回栏
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
             ) {
-                // 手机状态栏纯白遮罩
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(statusBarHeight)
-                        .background(Color.White)
                 )
 
-                // 浓郁渐变磨砂返回条
                 PlaylistDetailTopBar(
+                    backdrop = backdrop,
                     title = detail.name,
                     onClose = onClose
                 )
@@ -182,6 +200,7 @@ fun PlaylistDetailScreen(
  */
 @Composable
 private fun PlaylistDetailTopBar(
+    backdrop: Backdrop,
     title: String,
     onClose: () -> Unit
 ) {
@@ -189,14 +208,15 @@ private fun PlaylistDetailTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp)
-            .background(
-                Brush.verticalGradient(
-                    0.00f to Color.White.copy(alpha = 0.98f),
-                    0.40f to Color.White.copy(alpha = 0.94f),
-                    0.65f to Color.White.copy(alpha = 0.76f),
-                    0.85f to Color.White.copy(alpha = 0.35f),
-                    1.00f to Color.White.copy(alpha = 0.0f)
-                )
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedRectangle(0.dp) },
+                effects = {
+                    vibrancy()
+                    blur(2f.dp.toPx())
+                    lens(16f.dp.toPx(), 32f.dp.toPx())
+                },
+                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.46f)) }
             )
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
@@ -208,7 +228,8 @@ private fun PlaylistDetailTopBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFEFEFF4).copy(alpha = 0.95f))
+                    .background(Color.White.copy(alpha = 0.30f))
+                    .border(1.dp, Color.White.copy(alpha = 0.64f), CircleShape)
                     .clickable(onClick = onClose),
                 contentAlignment = Alignment.Center
             ) {
@@ -242,13 +263,24 @@ private fun PlaylistDetailTopBar(
 @Composable
 private fun PlaylistHeroSection(
     detail: PlaylistDetail,
+    backdrop: Backdrop,
     onPlayAll: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFFF7F7F9))
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedRectangle(24.dp) },
+                effects = {
+                    vibrancy()
+                    blur(2f.dp.toPx())
+                    lens(16f.dp.toPx(), 32f.dp.toPx())
+                },
+                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.42f)) }
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.62f), RoundedCornerShape(24.dp))
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -260,7 +292,7 @@ private fun PlaylistHeroSection(
                 modifier = Modifier
                     .size(136.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(20.dp)),
+                    .border(1.dp, Color.White.copy(alpha = 0.56f), RoundedCornerShape(20.dp)),
                 contentScale = ContentScale.Crop
             )
         } else {
@@ -270,10 +302,10 @@ private fun PlaylistHeroSection(
                     .clip(RoundedCornerShape(20.dp))
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFFFA233B), Color(0xFFFF647C))
+                            listOf(Color(0xFFFA233B), Color(0xFFFF9EAE))
                         )
                     )
-                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(20.dp)),
+                    .border(1.dp, Color.White.copy(alpha = 0.56f), RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
