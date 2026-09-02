@@ -228,6 +228,46 @@ class MusicService : MediaSessionService() {
         }
     }
 
+    private var isForegroundServiceStarted = false
+
+    /**
+     * 系统媒体通知与前台服务生命周期维护：
+     *
+     * 核心防护机制：
+     * 1. 正常起播时，Media3 传入 startInForegroundRequired = true，将服务升级为 Foreground Service。
+     * 2. 在切歌间隙（单曲播放结束进入 Player.STATE_ENDED，等待下一首起播）、缓冲或暂停时，Media3 默认会传入 false 并尝试 stopForeground() 将服务降级为后台普通服务。
+     * 3. 在 Android 14+ / 16 (targetSdkVersion 36) 下，后台进程严禁再次启动前台服务（BFGS 限制）。一旦在后台切歌间隙丢掉前台身份，后续调用 startForeground() 将被系统直接拒绝（报错：Background started FGS: Disallowed / Service.startForeground() not allowed）。
+     * 4. 失去前台身份后，进程优先级骤降为 CACHED（adj 710，procState 16），持有的一切 CPU WakeLock 被系统停用（PowerManager disabled wakeLock reason: Process Priority），最终在几分钟内被小米澎湃 OS/MIUI 的内存回收器（ProcessKillerForUMMS umms_selfcheck）直接杀掉！
+     *
+     * 解决策略：
+     * 一旦前台服务成功启动，强制保持 startInForegroundRequired = true，杜绝中途降级，确保连续后台播放几十首歌也能坚挺存活！
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (startInForegroundRequired) {
+            isForegroundServiceStarted = true
+        }
+        val shouldStayInForeground = startInForegroundRequired || isForegroundServiceStarted
+        try {
+            super.onUpdateNotification(session, shouldStayInForeground)
+        } catch (e: Exception) {
+            android.util.Log.e("MusicService", "Failed to maintain foreground notification", e)
+        }
+    }
+
+    /**
+     * 用户在系统多任务列表（Recents）划掉应用时的处理：
+     * 1. 若当前正在播放音乐（playWhenReady == true），保留前台播放服务，音乐绝不中断；
+     * 2. 若当前已暂停或没有播放内容，立即释放前台服务与通知栏，避免无意义常驻耗电。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val p = player
+        if (p == null || !p.playWhenReady || p.mediaItemCount == 0) {
+            isForegroundServiceStarted = false
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     /**
      * 系统会通过这个方法拿到当前可用的 MediaSession。
      */
@@ -236,6 +276,7 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        isForegroundServiceStarted = false
         serviceScope.cancel()
         mediaSession?.release()
         player?.release()
