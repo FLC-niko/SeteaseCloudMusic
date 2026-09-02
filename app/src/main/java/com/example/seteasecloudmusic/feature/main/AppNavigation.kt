@@ -378,7 +378,6 @@ fun AppNavigation(
                 )
                 1 -> AppPageBackground() // 电台
                 2 -> MineRoute(
-                    backdrop = backdrop,
                     topContentPadding = searchContentTopPadding,
                     bottomContentPadding = 180.dp + animatedImeOffset,
                     onLoginClick = { showAccountSheet = true }

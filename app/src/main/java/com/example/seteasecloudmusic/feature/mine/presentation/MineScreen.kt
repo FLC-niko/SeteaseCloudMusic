@@ -88,7 +88,6 @@ import com.example.seteasecloudmusic.feature.main.components.UserAvatar
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -104,7 +103,6 @@ private val MinePageBase = Color(0xFFF7F7FA)
 @Composable
 fun MineScreen(
     uiState: MineUiState,
-    backdrop: Backdrop,
     topContentPadding: Dp,
     bottomContentPadding: Dp,
     onLoginClick: () -> Unit,
@@ -167,15 +165,29 @@ fun MineScreen(
         derivedStateOf { ((collapseFraction - 0.40f) / 0.60f).coerceIn(0f, 1f) }
     }
 
+    // 不要在 AppNavigation 的全局 layerBackdrop 中再次采样同一个 Backdrop。
+    // “我的”页面只采集自己的静态氛围背景，玻璃卡片从这张局部纹理取景，
+    // 这样既保留液态玻璃效果，也避免渲染反馈导致点击页面后主线程/渲染线程卡死。
+    val mineBackdrop = rememberLayerBackdrop {
+        drawRect(MinePageBase)
+        drawContent()
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
-        MineAmbientBackground()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(mineBackdrop)
+        ) {
+            MineAmbientBackground()
+        }
 
         val session = uiState.authSession
         val isLoggedIn = session?.isLoggedIn == true && session.userId != null
 
         if (!isLoggedIn) {
             MineLoggedOutView(
-                backdrop = backdrop,
+                backdrop = mineBackdrop,
                 topPadding = topContentPadding,
                 bottomPadding = bottomContentPadding,
                 onLoginClick = onLoginClick
@@ -212,7 +224,7 @@ fun MineScreen(
 
                 item(key = "user_header") {
                     UserProfileCenterpiece(
-                        backdrop = backdrop,
+                        backdrop = mineBackdrop,
                         nickname = session.nickname ?: "云音乐用户",
                         userId = session.userId ?: 0L,
                         avatarUrl = session.avatarUrl,
@@ -228,7 +240,7 @@ fun MineScreen(
 
                 item(key = "liked_hero") {
                     LikedSongsHeroCard(
-                        backdrop = backdrop,
+                        backdrop = mineBackdrop,
                         playlist = uiState.likedPlaylist,
                         onClick = { uiState.likedPlaylist?.let(onPlaylistClick) }
                     )
@@ -236,7 +248,7 @@ fun MineScreen(
 
                 item(key = "playlist_tabs") {
                     MinePlaylistTabs(
-                        backdrop = backdrop,
+                        backdrop = mineBackdrop,
                         selectedTab = uiState.selectedTab,
                         createdCount = uiState.createdPlaylists.size,
                         favoritedCount = uiState.favoritedPlaylists.size,
@@ -275,7 +287,7 @@ fun MineScreen(
                         }
                         item(key = "local_dir_control_bar") {
                             LocalMusicDirectoryBar(
-                                backdrop = backdrop,
+                                backdrop = mineBackdrop,
                                 directoryPath = uiState.localDirectoryPath,
                                 hasPermission = hasPermission,
                                 isScanning = uiState.isScanningLocal,
@@ -307,7 +319,7 @@ fun MineScreen(
             }
 
             MineGlassSurface(
-                backdrop = backdrop,
+                backdrop = mineBackdrop,
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
@@ -350,7 +362,7 @@ fun MineScreen(
                 PlaylistDetailScreen(
                     detail = detail,
                     isLoading = uiState.isLoadingDetail,
-                    backdrop = backdrop,
+                    backdrop = mineBackdrop,
                     onClose = onCloseDetail,
                     onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
                     onPlayAll = { onPlayAll(detail.tracks) }
@@ -831,12 +843,10 @@ private fun MinePlaylistTabs(
         MinePlaylistTab.LOCAL to "本地 $localCount"
     )
     val selectedIndex = tabs.indexOfFirst { it.first == selectedTab }.coerceAtLeast(0)
-    val contentBackdrop = rememberLayerBackdrop()
-    val combinedBackdrop = rememberCombinedBackdrop(backdrop, contentBackdrop)
 
     MineGlassSurface(
         backdrop = backdrop,
-        modifier = Modifier.fillMaxWidth().height(52.dp).layerBackdrop(contentBackdrop),
+        modifier = Modifier.fillMaxWidth().height(52.dp),
         cornerRadius = 26.dp,
         surfaceAlpha = 0.38f
     ) {
@@ -844,7 +854,7 @@ private fun MinePlaylistTabs(
             modifier = Modifier.fillMaxSize().padding(4.dp),
             tabs = tabs,
             selectedIndex = selectedIndex,
-            backdrop = combinedBackdrop,
+            backdrop = backdrop,
             onTabSelected = onTabSelected
         )
     }
