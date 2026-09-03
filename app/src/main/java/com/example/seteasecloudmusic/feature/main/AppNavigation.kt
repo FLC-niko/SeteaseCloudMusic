@@ -64,6 +64,7 @@ import androidx.compose.ui.util.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
+import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.auth.presentation.AccountLoginSheetContent
@@ -317,7 +318,7 @@ fun AppNavigation(
 
     // 左侧主导航条目前承载三个一级入口。
     val mainNavItems = listOf(
-        BottomNavItem("主页", Icons.Filled.Home),
+        BottomNavItem("首页", Icons.Filled.Home),
         BottomNavItem("电台", Icons.Filled.Radio),
         BottomNavItem("我的", Icons.Filled.Person)
     )
@@ -329,11 +330,11 @@ fun AppNavigation(
     val searchButtonWidth = navBarHeight
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val pageTitle = when (selectedIndex) {
-        0 -> "主页"
+        0 -> "首页"
         1 -> "电台"
         2 -> "我的"
         3 -> "搜索"
-        else -> "主页"
+        else -> "首页"
     }
     val searchContentTopPadding = statusBarTopPadding + 86.dp
     // 统一形状：使用 RoundedRectangle 实现 G² 连续圆角（squircle），
@@ -373,6 +374,9 @@ fun AppNavigation(
                 0 -> HomeRoute(
                     topContentPadding = searchContentTopPadding,
                     bottomContentPadding = 180.dp + animatedImeOffset,
+                    avatarUrl = authUiState.authSession?.avatarUrl,
+                    displayName = authUiState.authSession?.nickname,
+                    onAvatarClick = { showAccountSheet = true },
                     onPosterWallClick = { tracks, bounds ->
                         dailyRecommendState = DailyRecommendState(tracks, bounds)
                     }
@@ -399,9 +403,9 @@ fun AppNavigation(
             }
         }
 
-        val isMineTab = selectedIndex == 2
+        val hasCustomTopBar = selectedIndex == 0 || selectedIndex == 2
         val topLargeTitleAlpha by animateFloatAsState(
-            targetValue = if (isMineTab) 0f else (1f - sinkProgress),
+            targetValue = if (hasCustomTopBar) 0f else (1f - sinkProgress),
             animationSpec = tween(durationMillis = 220),
             label = "topLargeTitleAlpha"
         )
@@ -423,7 +427,7 @@ fun AppNavigation(
         }
 
         val topAvatarAlpha by animateFloatAsState(
-            targetValue = if (isMineTab) 0f else (1f - sinkProgress),
+            targetValue = if (hasCustomTopBar) 0f else (1f - sinkProgress),
             animationSpec = tween(durationMillis = 220),
             label = "topAvatarAlpha"
         )
@@ -435,7 +439,7 @@ fun AppNavigation(
                 showAccountSheet = true
                 onAvatarClick?.invoke()
             },
-            enabled = !isMineTab,
+            enabled = !hasCustomTopBar,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
@@ -1026,54 +1030,6 @@ private fun LargePageTitle(
         fontWeight = FontWeight.Black,
         modifier = modifier
     )
-}
-
-@Composable
-private fun UserAvatarButton(
-    avatarUrl: String?,
-    displayName: String?,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val hasDisplayName = !displayName.isNullOrBlank()
-    val hasAvatar = !avatarUrl.isNullOrBlank()
-    val isGuest = !hasAvatar && !hasDisplayName
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1f,
-        animationSpec = spring(stiffness = 760f, dampingRatio = 0.76f),
-        label = "avatarButtonScale"
-    )
-    val indication = LocalIndication.current
-
-    Box(
-        modifier = modifier
-            .size(46.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(CircleShape)
-            .indication(interactionSource = interactionSource, indication = indication)
-            .clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        UserAvatar(
-            avatarUrl = avatarUrl,
-            displayName = displayName,
-            size = 46.dp,
-            showBorder = !isGuest,
-            borderWidth = if (isGuest) 0.dp else 1.dp,
-            isGuest = isGuest
-        )
-    }
 }
 
 /**

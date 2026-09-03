@@ -2,22 +2,27 @@ package com.example.seteasecloudmusic.feature.home.presentation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -30,7 +35,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,13 +50,18 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
+import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
+import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 
 private val HomeBackground = Color.White
 private val HomePrimary = Color(0xFF111111)
@@ -65,6 +74,9 @@ private val PosterWallSurface = Color(0xFFF6F6F8)
 fun HomeRoute(
     topContentPadding: Dp,
     bottomContentPadding: Dp = 180.dp,
+    avatarUrl: String? = null,
+    displayName: String? = null,
+    onAvatarClick: (() -> Unit)? = null,
     onPosterWallClick: (tracks: List<Track>, posterBounds: Rect) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -74,6 +86,9 @@ fun HomeRoute(
         uiState = uiState,
         topContentPadding = topContentPadding,
         bottomContentPadding = bottomContentPadding,
+        avatarUrl = avatarUrl,
+        displayName = displayName,
+        onAvatarClick = onAvatarClick,
         onTrackClick = viewModel::onTrackClick,
         onRetryClick = viewModel::onRetryClick,
         onRefreshClick = viewModel::onRefreshClick,
@@ -86,71 +101,174 @@ private fun HomeScreenContent(
     uiState: HomeUiState,
     topContentPadding: Dp,
     bottomContentPadding: Dp,
+    avatarUrl: String? = null,
+    displayName: String? = null,
+    onAvatarClick: (() -> Unit)? = null,
     onTrackClick: (Track) -> Unit,
     onRetryClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onPosterWallClick: (tracks: List<Track>, posterBounds: Rect) -> Unit
 ) {
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val lazyListState = rememberLazyListState()
+    val collapseFraction by rememberAppleMusicCollapseFraction(
+        lazyListState = lazyListState,
+        collapseThresholdDp = 76.dp
+    )
     var posterWallBounds by remember { mutableStateOf(Rect.Zero) }
-    Column(
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(HomeBackground)
-            .padding(top = topContentPadding, bottom = bottomContentPadding)
     ) {
-        Spacer(modifier = Modifier.height(8.dp))
-
         when {
             uiState.isLoading && uiState.tracks.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarHeight + 8.dp)
                 ) {
-                    CircularProgressIndicator(color = HomeAccent, strokeWidth = 2.dp)
+                    AppleMusicLargeTitle(
+                        title = "首页",
+                        collapseFraction = 0f,
+                        trailingContent = {
+                            UserAvatarButton(
+                                avatarUrl = avatarUrl,
+                                displayName = displayName,
+                                onClick = { onAvatarClick?.invoke() }
+                            )
+                        }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = HomeAccent, strokeWidth = 2.dp)
+                    }
                 }
             }
 
             uiState.errorMessage != null && uiState.tracks.isEmpty() -> {
-                HomeErrorState(
-                    message = uiState.errorMessage,
-                    onRetryClick = onRetryClick,
-                    modifier = Modifier.fillMaxSize()
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarHeight + 8.dp)
+                ) {
+                    AppleMusicLargeTitle(
+                        title = "首页",
+                        collapseFraction = 0f,
+                        trailingContent = {
+                            UserAvatarButton(
+                                avatarUrl = avatarUrl,
+                                displayName = displayName,
+                                onClick = { onAvatarClick?.invoke() }
+                            )
+                        }
+                    )
+                    HomeErrorState(
+                        message = uiState.errorMessage,
+                        onRetryClick = onRetryClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                }
             }
 
             uiState.tracks.isEmpty() -> {
-                HomeEmptyState(
-                    onRefreshClick = onRefreshClick,
-                    modifier = Modifier.fillMaxSize()
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarHeight + 8.dp)
+                ) {
+                    AppleMusicLargeTitle(
+                        title = "首页",
+                        collapseFraction = 0f,
+                        trailingContent = {
+                            UserAvatarButton(
+                                avatarUrl = avatarUrl,
+                                displayName = displayName,
+                                onClick = { onAvatarClick?.invoke() }
+                            )
+                        }
+                    )
+                    HomeEmptyState(
+                        onRefreshClick = onRefreshClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                }
             }
 
             else -> {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = statusBarHeight + 8.dp,
+                        bottom = bottomContentPadding
+                    )
+                ) {
+                    item(key = "large_page_title") {
+                        AppleMusicLargeTitle(
+                            title = "首页",
+                            collapseFraction = collapseFraction,
+                            trailingContent = {
+                                UserAvatarButton(
+                                    avatarUrl = avatarUrl,
+                                    displayName = displayName,
+                                    onClick = { onAvatarClick?.invoke() }
+                                )
+                            }
+                        )
+                    }
+
                     if (!uiState.errorMessage.isNullOrBlank()) {
                         item {
                             Text(
                                 text = uiState.errorMessage,
                                 color = Color(0xFFB52438),
                                 fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                             )
                         }
                     }
 
-                    item {
+                    item(key = "daily_recommend_wall") {
                         DailyRecommendPosterWall(
                             tracks = uiState.tracks,
                             onClick = { onPosterWallClick(uiState.tracks, posterWallBounds) },
                             onBoundsChanged = { posterWallBounds = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                                .padding(horizontal = 20.dp, vertical = 10.dp)
                         )
                     }
                 }
             }
         }
+
+        // 覆盖在顶部的 Apple Music 风格折叠顶栏（含毛玻璃材质、底部分割线与居中小标题）
+        AppleMusicCollapsedTopBar(
+            title = "首页",
+            collapseFraction = collapseFraction,
+            statusBarHeight = statusBarHeight,
+            modifier = Modifier.align(Alignment.TopCenter),
+            surfaceColor = Color.White,
+            surfaceAlpha = 0.92f,
+            trailingContent = {
+                UserAvatarButton(
+                    avatarUrl = avatarUrl,
+                    displayName = displayName,
+                    size = 34.dp,
+                    onClick = { onAvatarClick?.invoke() }
+                )
+            }
+        )
     }
 }
 

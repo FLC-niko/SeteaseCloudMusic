@@ -84,7 +84,10 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
+import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -152,18 +155,10 @@ fun MineScreen(
         }
     }
 
-    val collapseFraction by remember {
-        derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex == 0) {
-                (lazyListState.firstVisibleItemScrollOffset.toFloat() / 200f).coerceIn(0f, 1f)
-            } else {
-                1f
-            }
-        }
-    }
-    val topTitleAlpha by remember {
-        derivedStateOf { ((collapseFraction - 0.40f) / 0.60f).coerceIn(0f, 1f) }
-    }
+    val collapseFraction by rememberAppleMusicCollapseFraction(
+        lazyListState = lazyListState,
+        collapseThresholdDp = 76.dp
+    )
 
     // 不要在 AppNavigation 的全局 layerBackdrop 中再次采样同一个 Backdrop。
     // “我的”页面只采集自己的静态氛围背景，玻璃卡片从这张局部纹理取景，
@@ -186,18 +181,34 @@ fun MineScreen(
         val isLoggedIn = session?.isLoggedIn == true && session.userId != null
 
         if (!isLoggedIn) {
-            MineLoggedOutView(
-                backdrop = mineBackdrop,
-                topPadding = topContentPadding,
-                bottomPadding = bottomContentPadding,
-                onLoginClick = onLoginClick
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = statusBarHeight + 8.dp, bottom = bottomContentPadding)
+            ) {
+                AppleMusicLargeTitle(
+                    title = "我的",
+                    collapseFraction = 0f
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    MineLoggedOutView(
+                        backdrop = mineBackdrop,
+                        onLoginClick = onLoginClick
+                    )
+                }
+            }
         } else {
             LazyColumn(
                 state = lazyListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    top = topContentPadding + 8.dp,
+                    top = statusBarHeight + 8.dp,
                     bottom = bottomContentPadding,
                     start = 20.dp,
                     end = 20.dp
@@ -205,20 +216,9 @@ fun MineScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 item(key = "large_page_title") {
-                    Text(
-                        text = "我的",
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Black,
-                        color = MineTextPrimary,
-                        letterSpacing = (-1).sp,
-                        modifier = Modifier
-                            .padding(top = 4.dp, bottom = 4.dp)
-                            .graphicsLayer {
-                                alpha = (1f - collapseFraction).coerceIn(0f, 1f)
-                                scaleX = 1f - collapseFraction * 0.18f
-                                scaleY = 1f - collapseFraction * 0.18f
-                                translationY = -collapseFraction * 20.dp.toPx()
-                            }
+                    AppleMusicLargeTitle(
+                        title = "我的",
+                        collapseFraction = collapseFraction
                     )
                 }
 
@@ -318,26 +318,15 @@ fun MineScreen(
                 }
             }
 
-            MineGlassSurface(
+            AppleMusicCollapsedTopBar(
+                title = "我的",
+                collapseFraction = collapseFraction,
+                statusBarHeight = statusBarHeight,
                 backdrop = mineBackdrop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(top = statusBarHeight)
-                    .height(60.dp)
-                    .graphicsLayer { alpha = topTitleAlpha },
-                cornerRadius = 0.dp,
-                surfaceAlpha = 0.46f,
-                borderWidth = 0.dp
-            ) {
-                Text(
-                    text = "我的",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MineTextPrimary,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 17.dp)
-                )
-            }
+                surfaceColor = Color.White,
+                surfaceAlpha = 0.52f,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
         if (showDirectoryDialog) {
@@ -684,14 +673,14 @@ private fun ProfileStatItem(title: String, value: String) {
 @Composable
 private fun MineLoggedOutView(
     backdrop: Backdrop,
-    topPadding: Dp,
-    bottomPadding: Dp,
-    onLoginClick: () -> Unit
+    onLoginClick: () -> Unit,
+    topPadding: Dp = 0.dp,
+    bottomPadding: Dp = 0.dp
 ) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(top = topPadding, bottom = bottomPadding, start = 24.dp, end = 24.dp),
+            .fillMaxWidth()
+            .padding(top = topPadding, bottom = bottomPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
