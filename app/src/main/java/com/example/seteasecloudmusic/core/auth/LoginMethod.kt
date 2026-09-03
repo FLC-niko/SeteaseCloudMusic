@@ -1,4 +1,4 @@
-package com.example.seteasecloudmusic.feature.auth.domain.model
+package com.example.seteasecloudmusic.core.auth
 
 enum class LoginMethod {
     PHONE,

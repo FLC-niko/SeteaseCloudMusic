@@ -5,6 +5,7 @@ import com.example.seteasecloudmusic.feature.auth.data.AuthService
 import com.example.seteasecloudmusic.feature.discover.data.DiscoverService
 import com.example.seteasecloudmusic.feature.home.data.DailyRecommendService
 import com.example.seteasecloudmusic.feature.mine.data.MineService
+import com.example.seteasecloudmusic.feature.player.data.LyricService
 import com.example.seteasecloudmusic.feature.search.data.NeteaseMusicService
 import dagger.Module
 import dagger.Provides
@@ -45,4 +46,9 @@ object NetworkServiceModule {
     @Singleton
     fun provideMineService(retrofit: Retrofit): MineService =
         retrofit.create(MineService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideLyricService(retrofit: Retrofit): LyricService =
+        retrofit.create(LyricService::class.java)
 }

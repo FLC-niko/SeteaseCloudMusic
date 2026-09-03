@@ -38,3 +38,18 @@ enum class LyricSource {
     LRC,
     NONE
 }
+
+/** 歌词领域模型，隔离网络响应 DTO，供播放器 UI 和用例使用。 */
+data class Lyrics(
+    val lrc: LyricContent? = null,
+    val klyric: LyricContent? = null,
+    val tlyric: LyricContent? = null,
+    val romalrc: LyricContent? = null,
+    val yrc: LyricContent? = null,
+    val code: Int = 0
+)
+
+data class LyricContent(
+    val version: Int = 0,
+    val lyric: String = ""
+)

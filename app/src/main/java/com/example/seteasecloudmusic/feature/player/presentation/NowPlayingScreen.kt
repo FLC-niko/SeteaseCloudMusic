@@ -8,27 +8,20 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.settings.PlayerStyle
 
 @Composable
 fun NowPlayingScreen(
-    playbackState: PlaybackState,
+    playerViewModel: PlayerViewModel,
     onClose: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onSeekTo: (Int) -> Unit
 ) {
-    val playerViewModel: PlayerViewModel = hiltViewModel()
-    val playerStyle by playerViewModel.playerSettingsManager.playerStyle.collectAsState()
+    val playerStyle by playerViewModel.playerSettingsManager.playerStyle.collectAsStateWithLifecycle()
 
     when (playerStyle) {
         PlayerStyle.AMLL_WEB -> {
@@ -38,6 +31,8 @@ fun NowPlayingScreen(
                     ttmlProvider = { songId ->
                         try {
                             playerViewModel.getLyricDataDirectly(songId.toLong())
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             null
                         }

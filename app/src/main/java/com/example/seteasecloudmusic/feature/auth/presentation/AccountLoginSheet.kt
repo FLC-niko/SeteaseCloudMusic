@@ -60,7 +60,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,7 +78,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.example.seteasecloudmusic.feature.main.components.UserAvatar
+import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -95,12 +95,12 @@ fun AccountLoginSheetContent(
     backdrop: Backdrop? = null,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val contentScrollState = rememberScrollState()
     var showPlayerStyleDialog by remember { mutableStateOf(false) }
-    val playerStyle by viewModel.playerSettingsManager.playerStyle.collectAsState()
+    val playerStyle by viewModel.playerSettingsManager.playerStyle.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel.snackbarMessage) {
         viewModel.snackbarMessage.collectLatest { message ->
@@ -1268,4 +1268,3 @@ private fun PlayerStyleSelectionDialog(
         containerColor = Color.White
     )
 }
-

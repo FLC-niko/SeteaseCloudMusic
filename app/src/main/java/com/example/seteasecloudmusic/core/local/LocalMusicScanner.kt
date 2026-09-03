@@ -10,7 +10,10 @@ import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -68,6 +71,7 @@ object LocalMusicScanner {
                 val albumIdCol = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID)
 
                 while (cursor.moveToNext()) {
+                    currentCoroutineContext().ensureActive()
                     val mediaId = cursor.getLong(idCol)
                     val rawTitle = cursor.getString(titleCol) ?: ""
                     val rawArtist = cursor.getString(artistCol) ?: ""
@@ -129,6 +133,8 @@ object LocalMusicScanner {
                     )
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -151,6 +157,7 @@ object LocalMusicScanner {
                     .toList()
 
                 for (file in audioFiles) {
+                    currentCoroutineContext().ensureActive()
                     try {
                         retriever.setDataSource(file.absolutePath)
                         val rawTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
@@ -194,6 +201,8 @@ object LocalMusicScanner {
                                 isPlayable = true
                             )
                         )
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         // 忽略单个文件解析异常
                     }

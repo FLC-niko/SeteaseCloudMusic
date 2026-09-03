@@ -1,7 +1,7 @@
 package com.example.seteasecloudmusic.feature.player.util
 
-import com.example.seteasecloudmusic.feature.player.data.LyricResponse
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
+import com.example.seteasecloudmusic.feature.player.domain.model.Lyrics
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricWord
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
@@ -14,7 +14,7 @@ object LyricParser {
     private val yrcLineRegex = Regex("\\[(\\d+),(\\d+)\\](.*)")
     private val yrcWordRegex = Regex("\\((\\d+),(\\d+),\\d+\\)([^(]*)")
 
-    fun parseLyricResponse(response: LyricResponse?): ParsedLyrics {
+    fun parseLyricResponse(response: Lyrics?): ParsedLyrics {
         if (response == null) return ParsedLyrics(emptyList(), false, LyricSource.NONE)
 
         // 1. 优先解析 YRC 逐字歌词

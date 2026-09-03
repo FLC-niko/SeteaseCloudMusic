@@ -8,6 +8,7 @@ import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlayl
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverToplist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverTrackPreview
 import com.example.seteasecloudmusic.feature.discover.domain.repository.DiscoverRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -34,6 +35,8 @@ class DiscoverRepositoryImpl @Inject constructor(
                     )
                 }
                 Result.success(playlists)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -51,6 +54,8 @@ class DiscoverRepositoryImpl @Inject constructor(
                     .mapNotNull { item -> item.song?.let { mapSongToTrack(it, item.picUrl) } }
                     .distinctBy { it.id }
                 Result.success(tracks)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -79,6 +84,8 @@ class DiscoverRepositoryImpl @Inject constructor(
                     )
                 }
                 Result.success(toplists)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -103,6 +110,8 @@ class DiscoverRepositoryImpl @Inject constructor(
                     )
                 }
                 Result.success(playlists)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,7 +30,7 @@ class HomeViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
 
     private var loadJob: Job? = null
-    private var playbackJob: Job? = null
+    private var loadRequestId = 0L
 
     init {
         // 1. 0ms 瞬间加载本地持久化推荐缓存，冷启动直接秒出封面与曲目，绝不转圈
@@ -43,12 +44,16 @@ class HomeViewModel @Inject constructor(
 
     fun refreshDailyRecommend(afresh: Boolean = false, silent: Boolean = false) {
         loadJob?.cancel()
+        val requestId = ++loadRequestId
         loadJob = viewModelScope.launch {
             if (!silent) {
                 _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             }
 
             val result = getDailyRecommendSongsUseCase(afresh)
+            if (!isActive || requestId != loadRequestId) {
+                return@launch
+            }
             result.fold(
                 onSuccess = { tracks ->
                     _uiState.update {

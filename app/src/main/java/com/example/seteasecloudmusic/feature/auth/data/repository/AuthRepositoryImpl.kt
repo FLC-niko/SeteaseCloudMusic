@@ -1,15 +1,17 @@
-package com.example.seteasecloudmusic.feature.auth.domain.repository
+package com.example.seteasecloudmusic.feature.auth.data.repository
 
 import android.content.Context
+import com.example.seteasecloudmusic.core.auth.AuthSession
+import com.example.seteasecloudmusic.core.auth.LoginMethod
+import com.example.seteasecloudmusic.core.common.runCatchingCancellable
 import com.example.seteasecloudmusic.feature.auth.data.AuthService
 import com.example.seteasecloudmusic.feature.auth.data.model.AccountResponse
 import com.example.seteasecloudmusic.feature.auth.data.model.LoginResponse
 import com.example.seteasecloudmusic.feature.auth.data.model.ProfileResponse
-import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
-import com.example.seteasecloudmusic.feature.auth.domain.model.LoginMethod
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrPollResult
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrStatus
+import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +33,7 @@ class AuthRepositoryImpl @Inject constructor(
     override fun observeAuthState(): StateFlow<AuthSession?> = _authState.asStateFlow()
 
     override suspend fun loginByPhone(phone: String, password: String): Result<AuthSession> {
-        return runCatching {
+        return runCatchingCancellable {
             val response = authService.loginWithPassword(phone, password)
             val session = parseLoginResponse(response, LoginMethod.PHONE)
             saveNetworkCookie(session.cookie)
@@ -46,7 +48,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun loginByCaptcha(phone: String, captcha: String): Result<AuthSession> {
-        return runCatching {
+        return runCatchingCancellable {
             val response = authService.loginWithCaptcha(phone, captcha)
             val session = parseLoginResponse(response, LoginMethod.CAPTCHA)
             saveNetworkCookie(session.cookie)
@@ -57,7 +59,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun startQrLogin(): Result<QrLoginStart> {
-        return runCatching {
+        return runCatchingCancellable {
             val keyResponse = authService.getQrKey(System.currentTimeMillis())
             if (!keyResponse.isSuccessful) {
                 throw Exception("获取 QR Key 失败: ${keyResponse.code()}")
@@ -83,7 +85,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun pollQrStatus(key: String): Result<QrPollResult> {
-        return runCatching {
+        return runCatchingCancellable {
             val response = authService.checkQrCodeStatus(key, System.currentTimeMillis())
             if (!response.isSuccessful) {
                 throw Exception("轮询 QR 状态失败: ${response.code()}")
@@ -119,11 +121,12 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun guestLogin(): Result<AuthSession> {
         clearSession()
+        clearNetworkCookie()
         return Result.success(AuthSession(loginMethod = LoginMethod.GUEST))
     }
 
     override suspend fun logout(): Result<Unit> {
-        val remoteLogoutResult = runCatching {
+        val remoteLogoutResult = runCatchingCancellable {
             val response = authService.logout(System.currentTimeMillis())
             if (!response.isSuccessful) {
                 throw Exception("退出登录失败: ${response.code()}")
@@ -146,7 +149,7 @@ class AuthRepositoryImpl @Inject constructor(
     override suspend fun refreshSessionIfNeeded(): Result<AuthSession> {
         val current = loadSessionFromPrefs()
         return if (current?.isLoggedIn == true) {
-            runCatching {
+            runCatchingCancellable {
                 saveNetworkCookie(current.cookie)
                 val enrichedSession = completeSessionProfileIfMissing(current)
                 if (enrichedSession != current) {
@@ -160,7 +163,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun sendCaptcha(phone: String): Result<Unit> {
-        return runCatching {
+        return runCatchingCancellable {
             val response = authService.sendCaptcha(phone)
             if (!response.isSuccessful) {
                 throw Exception("发送验证码失败: ${response.code()}")
@@ -237,6 +240,8 @@ class AuthRepositoryImpl @Inject constructor(
                     )
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("AuthRepositoryImpl", "Failed to fetch user account profile", e)
             null
@@ -327,7 +332,7 @@ class AuthRepositoryImpl @Inject constructor(
         context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(COOKIE_KEY, cookie)
-            .commit()
+            .apply()
     }
 
     private data class ProfileSnapshot(

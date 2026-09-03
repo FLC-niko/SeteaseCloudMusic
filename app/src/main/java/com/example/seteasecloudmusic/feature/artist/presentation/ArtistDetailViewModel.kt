@@ -20,6 +20,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -65,6 +66,7 @@ class ArtistDetailViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
 
     private var currentArtistId: Long? = null
+    private var artistRequestId = 0L
     private var initialLoadJob: Job? = null
     private var songsLoadMoreJob: Job? = null
     private var albumsLoadMoreJob: Job? = null
@@ -86,6 +88,7 @@ class ArtistDetailViewModel @Inject constructor(
             return
         }
 
+        val requestId = ++artistRequestId
         currentArtistId = artistId
         initialLoadJob?.cancel()
         songsLoadMoreJob?.cancel()
@@ -125,6 +128,10 @@ class ArtistDetailViewModel @Inject constructor(
             val albumsResult = albumsDeferred.await()
             val similarResult = similarDeferred.await()
 
+            if (!isActive || requestId != artistRequestId) {
+                return@launch
+            }
+
             val detail = detailResult.getOrNull()
             val description = descriptionResult.getOrNull()
             val songsPage = songsResult.getOrNull()
@@ -140,26 +147,30 @@ class ArtistDetailViewModel @Inject constructor(
             ).firstOrNull { !it.isNullOrBlank() }
 
             _uiState.update { prev ->
-                prev.copy(
-                    artistName = detail?.name ?: prev.artistName,
-                    artistCoverUrl = detail?.coverUrl ?: prev.artistCoverUrl,
-                    detail = detail,
-                    description = description,
-                    songs = songsPage?.items ?: emptyList(),
-                    songsOffset = songsPage?.nextOffset ?: 0,
-                    songsHasMore = songsPage?.hasMore ?: false,
-                    songsAllLoaded = !(songsPage?.hasMore ?: false),
-                    albums = albumsPage?.items ?: emptyList(),
-                    albumsOffset = albumsPage?.nextOffset ?: 0,
-                    albumsHasMore = albumsPage?.hasMore ?: false,
-                    albumsAllLoaded = !(albumsPage?.hasMore ?: false),
-                    // Similar artists API does not offer paging args.
-                    // Keep only preview items first; fetch full list on arrow click.
-                    similarArtists = similarArtists.take(PREVIEW_LIMIT),
-                    similarAllLoaded = similarArtists.size <= PREVIEW_LIMIT,
-                    isLoading = false,
-                    errorMessage = firstError
-                )
+                if (requestId != artistRequestId || prev.artistId != artistId) {
+                    prev
+                } else {
+                    prev.copy(
+                        artistName = detail?.name ?: prev.artistName,
+                        artistCoverUrl = detail?.coverUrl ?: prev.artistCoverUrl,
+                        detail = detail,
+                        description = description,
+                        songs = songsPage?.items ?: emptyList(),
+                        songsOffset = songsPage?.nextOffset ?: 0,
+                        songsHasMore = songsPage?.hasMore ?: false,
+                        songsAllLoaded = !(songsPage?.hasMore ?: false),
+                        albums = albumsPage?.items ?: emptyList(),
+                        albumsOffset = albumsPage?.nextOffset ?: 0,
+                        albumsHasMore = albumsPage?.hasMore ?: false,
+                        albumsAllLoaded = !(albumsPage?.hasMore ?: false),
+                        // Similar artists API does not offer paging args.
+                        // Keep only preview items first; fetch full list on arrow click.
+                        similarArtists = similarArtists.take(PREVIEW_LIMIT),
+                        similarAllLoaded = similarArtists.size <= PREVIEW_LIMIT,
+                        isLoading = false,
+                        errorMessage = firstError
+                    )
+                }
             }
         }
     }
@@ -176,6 +187,7 @@ class ArtistDetailViewModel @Inject constructor(
         }
 
         songsLoadMoreJob?.cancel()
+        val requestId = artistRequestId
         songsLoadMoreJob = viewModelScope.launch {
             _uiState.update { it.copy(isSongsLoadingMore = true) }
 
@@ -186,7 +198,12 @@ class ArtistDetailViewModel @Inject constructor(
                 offset = state.songsOffset
             )
 
+            if (!isActive || requestId != artistRequestId || _uiState.value.artistId != state.artistId) {
+                return@launch
+            }
+
             result.onSuccess { page ->
+                if (requestId != artistRequestId) return@onSuccess
                 _uiState.update { prev ->
                     val merged = (prev.songs + page.items).distinctBy { it.id }
                     prev.copy(
@@ -199,6 +216,7 @@ class ArtistDetailViewModel @Inject constructor(
                     )
                 }
             }.onFailure { throwable ->
+                if (requestId != artistRequestId) return@onFailure
                 _uiState.update {
                     it.copy(
                         isSongsLoadingMore = false,
@@ -221,6 +239,7 @@ class ArtistDetailViewModel @Inject constructor(
         }
 
         albumsLoadMoreJob?.cancel()
+        val requestId = artistRequestId
         albumsLoadMoreJob = viewModelScope.launch {
             _uiState.update { it.copy(isAlbumsLoadingMore = true) }
 
@@ -230,7 +249,12 @@ class ArtistDetailViewModel @Inject constructor(
                 offset = state.albumsOffset
             )
 
+            if (!isActive || requestId != artistRequestId || _uiState.value.artistId != state.artistId) {
+                return@launch
+            }
+
             result.onSuccess { page ->
+                if (requestId != artistRequestId) return@onSuccess
                 _uiState.update { prev ->
                     val merged = (prev.albums + page.items).distinctBy { it.id }
                     prev.copy(
@@ -243,6 +267,7 @@ class ArtistDetailViewModel @Inject constructor(
                     )
                 }
             }.onFailure { throwable ->
+                if (requestId != artistRequestId) return@onFailure
                 _uiState.update {
                     it.copy(
                         isAlbumsLoadingMore = false,
@@ -260,11 +285,16 @@ class ArtistDetailViewModel @Inject constructor(
         }
 
         similarLoadMoreJob?.cancel()
+        val requestId = artistRequestId
         similarLoadMoreJob = viewModelScope.launch {
             _uiState.update { it.copy(isSimilarLoadingMore = true) }
 
             val result = getSimilarArtistsUseCase(state.artistId)
+            if (!isActive || requestId != artistRequestId || _uiState.value.artistId != state.artistId) {
+                return@launch
+            }
             result.onSuccess { artists ->
+                if (requestId != artistRequestId) return@onSuccess
                 _uiState.update {
                     it.copy(
                         similarArtists = artists,
@@ -274,6 +304,7 @@ class ArtistDetailViewModel @Inject constructor(
                     )
                 }
             }.onFailure { throwable ->
+                if (requestId != artistRequestId) return@onFailure
                 _uiState.update {
                     it.copy(
                         isSimilarLoadingMore = false,
@@ -300,8 +331,6 @@ class ArtistDetailViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
-            musicPlayerController.replaceQueueAndPlay(tracks, index)
-        }
+        musicPlayerController.replaceQueueAndPlay(tracks, index)
     }
 }

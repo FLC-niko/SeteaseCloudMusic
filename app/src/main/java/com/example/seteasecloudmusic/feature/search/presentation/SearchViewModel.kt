@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -47,11 +48,8 @@ class SearchViewModel @Inject constructor(
     // 正式搜索和联想建议各自维护独立 Job，避免互相取消或状态覆盖。
     private var searchJob: Job? = null
     private var suggestionJob: Job? = null
-    private var playbackJob: Job? = null
-
-    init {
-        musicPlayerController.connect()
-    }
+    private var searchRequestId = 0L
+    private var suggestionRequestId = 0L
 
     companion object {
         // 输入联想不需要每次敲字都立刻请求，做一层轻量防抖更节省接口调用。
@@ -104,8 +102,10 @@ class SearchViewModel @Inject constructor(
 
         // 输入被清空时，不再请求建议，同时重置与当前输入绑定的可重试关键词。
         if (normalizedQuery.isEmpty()) {
+            searchRequestId += 1L
             suggestionJob?.cancel()
             suggestionJob = null
+            suggestionRequestId += 1L
             lastSubmittedQuery = null
             return
         }
@@ -179,10 +179,7 @@ class SearchViewModel @Inject constructor(
             return
         }
 
-        playbackJob?.cancel()
-        playbackJob = viewModelScope.launch {
-            musicPlayerController.replaceQueueAndPlay(snapshotTracks, clickedIndex)
-        }
+        musicPlayerController.replaceQueueAndPlay(snapshotTracks, clickedIndex)
     }
 
     /**
@@ -196,6 +193,7 @@ class SearchViewModel @Inject constructor(
     private fun search(query: String) {
         // 1) 先取消上一次搜索，避免“旧请求后返回”把新结果覆盖掉。
         searchJob?.cancel()
+        val requestId = ++searchRequestId
 
         searchJob = viewModelScope.launch {
             // 2) 发请求前先进入加载态，并清空旧错误。
@@ -209,24 +207,32 @@ class SearchViewModel @Inject constructor(
             // 3) 调用 UseCase。它会返回 Result<List<Track>>。
             val result = searchMusicUseCase(query)
 
+            if (!isActive || requestId != searchRequestId || uiState.value.query.trim() != query) {
+                return@launch
+            }
+
             // 4) 按成功/失败分别更新 UI 状态。
             result.fold(
                 onSuccess = { tracks ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            tracks = tracks,
-                            errorMessage = null
-                        )
+                    if (requestId == searchRequestId) {
+                        _uiState.update { state ->
+                            state.copy(
+                                isLoading = false,
+                                tracks = tracks,
+                                errorMessage = null
+                            )
+                        }
                     }
                 },
                 onFailure = { throwable ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            tracks = emptyList(),
-                            errorMessage = throwable.message ?: "搜索失败，请稍后重试"
-                        )
+                    if (requestId == searchRequestId) {
+                        _uiState.update { state ->
+                            state.copy(
+                                isLoading = false,
+                                tracks = emptyList(),
+                                errorMessage = throwable.message ?: "搜索失败，请稍后重试"
+                            )
+                        }
                     }
                 }
             )
@@ -275,8 +281,10 @@ class SearchViewModel @Inject constructor(
         // 1) 清空时先取消正在进行的请求，避免返回结果覆盖清空后的页面状态。
         searchJob?.cancel()
         searchJob = null
+        searchRequestId += 1L
         suggestionJob?.cancel()
         suggestionJob = null
+        suggestionRequestId += 1L
 
         // 2) 重置“可重试关键词”，确保后续重试行为与当前输入一致。
         lastSubmittedQuery = null
@@ -303,9 +311,14 @@ class SearchViewModel @Inject constructor(
      */
     private fun requestAutoSearch(query: String) {
         searchJob?.cancel()
+        val requestId = ++searchRequestId
 
         searchJob = viewModelScope.launch {
             delay(AUTO_SEARCH_DEBOUNCE_MS)
+
+            if (!isActive || requestId != searchRequestId || uiState.value.query.trim() != query) {
+                return@launch
+            }
 
             _uiState.update { state ->
                 state.copy(
@@ -316,26 +329,30 @@ class SearchViewModel @Inject constructor(
 
             val result = searchMusicUseCase(query)
 
-            if (uiState.value.query.trim() != query) {
+            if (!isActive || requestId != searchRequestId || uiState.value.query.trim() != query) {
                 return@launch
             }
 
             result.fold(
                 onSuccess = { tracks ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            tracks = tracks,
-                            errorMessage = null
-                        )
+                    if (requestId == searchRequestId) {
+                        _uiState.update { state ->
+                            state.copy(
+                                isLoading = false,
+                                tracks = tracks,
+                                errorMessage = null
+                            )
+                        }
                     }
                 },
                 onFailure = { throwable ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            errorMessage = throwable.message ?: "搜索失败，请稍后重试"
-                        )
+                    if (requestId == searchRequestId) {
+                        _uiState.update { state ->
+                            state.copy(
+                                isLoading = false,
+                                errorMessage = throwable.message ?: "搜索失败，请稍后重试"
+                            )
+                        }
                     }
                 }
             )
@@ -353,6 +370,7 @@ class SearchViewModel @Inject constructor(
     private fun requestSearchSuggestions(query: String) {
         // 用户继续输入时，旧的联想请求已经失效，直接取消即可。
         suggestionJob?.cancel()
+        val requestId = ++suggestionRequestId
 
         suggestionJob = viewModelScope.launch {
             // 对输入做轻量防抖，减少每次敲字都直连接口。
@@ -368,27 +386,31 @@ class SearchViewModel @Inject constructor(
             val result = getSearchSuggestionsUseCase(query = query, type = "mobile")
 
             // 用户已经继续输入时，丢弃旧建议，避免列表与输入框内容不一致。
-            if (uiState.value.query.trim() != query) {
+            if (!isActive || requestId != suggestionRequestId || uiState.value.query.trim() != query) {
                 return@launch
             }
 
             result.fold(
                 onSuccess = { suggestions ->
-                    _uiState.update { state ->
-                        state.copy(
-                            suggestions = suggestions,
-                            isSuggestionLoading = false,
-                            suggestionErrorMessage = null
-                        )
+                    if (requestId == suggestionRequestId) {
+                        _uiState.update { state ->
+                            state.copy(
+                                suggestions = suggestions,
+                                isSuggestionLoading = false,
+                                suggestionErrorMessage = null
+                            )
+                        }
                     }
                 },
                 onFailure = { throwable ->
-                    _uiState.update { state ->
-                        state.copy(
-                            suggestions = SearchSuggestions(),
-                            isSuggestionLoading = false,
-                            suggestionErrorMessage = throwable.message ?: "搜索建议加载失败，请稍后重试"
-                        )
+                    if (requestId == suggestionRequestId) {
+                        _uiState.update { state ->
+                            state.copy(
+                                suggestions = SearchSuggestions(),
+                                isSuggestionLoading = false,
+                                suggestionErrorMessage = throwable.message ?: "搜索建议加载失败，请稍后重试"
+                            )
+                        }
                     }
                 }
             )
@@ -403,6 +425,7 @@ class SearchViewModel @Inject constructor(
     private fun clearSearchSuggestions() {
         suggestionJob?.cancel()
         suggestionJob = null
+        suggestionRequestId += 1L
         _uiState.update { state ->
             state.copy(
                 suggestions = SearchSuggestions(),
@@ -434,7 +457,8 @@ class SearchViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        playbackJob?.cancel()
+        searchJob?.cancel()
+        suggestionJob?.cancel()
         super.onCleared()
     }
 }

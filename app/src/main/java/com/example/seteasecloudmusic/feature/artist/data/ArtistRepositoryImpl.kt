@@ -12,6 +12,7 @@ import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSongOrder
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
 import com.example.seteasecloudmusic.feature.artist.domain.model.PagedResult
 import com.example.seteasecloudmusic.feature.artist.domain.repository.ArtistRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -38,6 +39,8 @@ class ArtistRepositoryImpl @Inject constructor(
                     mvCount = profile?.mvSize
                 )
                 Result.success(detail)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -71,6 +74,8 @@ class ArtistRepositoryImpl @Inject constructor(
                         sections = sections
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -106,6 +111,8 @@ class ArtistRepositoryImpl @Inject constructor(
                     hasMore = hasMore
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -139,6 +146,8 @@ class ArtistRepositoryImpl @Inject constructor(
                     hasMore = hasMore
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -163,6 +172,8 @@ class ArtistRepositoryImpl @Inject constructor(
                     .distinctBy { it.id }
 
                 Result.success(artists)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }

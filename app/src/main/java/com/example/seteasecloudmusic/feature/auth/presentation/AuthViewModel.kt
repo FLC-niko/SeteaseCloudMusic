@@ -2,7 +2,7 @@ package com.example.seteasecloudmusic.feature.auth.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
+import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrStatus
 import com.example.seteasecloudmusic.feature.auth.usecase.LogoutUseCase
@@ -80,7 +80,9 @@ class AuthViewModel @Inject constructor(
     private val _dismissSheet = MutableSharedFlow<Unit>()
     val dismissSheet: SharedFlow<Unit> = _dismissSheet.asSharedFlow()
 
+    private var qrStartJob: Job? = null
     private var qrPollJob: Job? = null
+    private var qrRequestId = 0L
     private var isRefreshingSessionProfile = false
 
     init {
@@ -112,6 +114,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onCaptchaPanelOpened() {
+        stopQrLoginFlow()
         _uiState.update {
             it.copy(
                 panel = AuthPanel.CAPTCHA,
@@ -126,6 +129,7 @@ class AuthViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 panel = AuthPanel.QR,
+                qrLoginStart = null,
                 qrHint = "等待扫码登录",
                 errorMessage = null,
                 showLogoutConfirmDialog = false
@@ -140,7 +144,7 @@ class AuthViewModel @Inject constructor(
 
     fun onAccountDetailsOpened() {
         if (!_uiState.value.isLoggedIn) return
-        stopQrPolling()
+        stopQrLoginFlow()
         _uiState.update {
             it.copy(
                 panel = AuthPanel.ACCOUNT_DETAILS,
@@ -186,8 +190,8 @@ class AuthViewModel @Inject constructor(
     fun onConfirmLogout() {
         if (_uiState.value.isLoading) return
 
+        stopQrLoginFlow()
         viewModelScope.launch {
-            stopQrPolling()
             _uiState.update { it.copy(isLoading = true, showLogoutConfirmDialog = false) }
 
             val result = logoutUseCase()
@@ -219,7 +223,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onBackToMethods() {
-        stopQrPolling()
+        stopQrLoginFlow()
         _uiState.update {
             it.copy(
                 panel = AuthPanel.METHODS,
@@ -227,7 +231,8 @@ class AuthViewModel @Inject constructor(
                 qrHint = "等待扫码登录",
                 errorMessage = null,
                 accountDetailsDestination = null,
-                showLogoutConfirmDialog = false
+                showLogoutConfirmDialog = false,
+                isLoading = false
             )
         }
     }
@@ -284,21 +289,34 @@ class AuthViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        stopQrLoginFlow()
         super.onCleared()
-        stopQrPolling()
     }
 
     private fun startQrLogin() {
-        viewModelScope.launch {
+        stopQrLoginFlow()
+        val requestId = qrRequestId
+        qrStartJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val result = startQrLoginUseCase()
+
+            if (!isActive || requestId != qrRequestId || _uiState.value.panel != AuthPanel.QR) {
+                return@launch
+            }
+
             _uiState.update { it.copy(isLoading = false) }
             result.fold(
                 onSuccess = { qrLoginStart ->
+                    if (!isActive || requestId != qrRequestId || _uiState.value.panel != AuthPanel.QR) {
+                        return@fold
+                    }
                     _uiState.update { it.copy(qrLoginStart = qrLoginStart) }
-                    startQrPolling(qrLoginStart.key)
+                    startQrPolling(qrLoginStart.key, requestId)
                 },
                 onFailure = { error ->
+                    if (!isActive || requestId != qrRequestId || _uiState.value.panel != AuthPanel.QR) {
+                        return@fold
+                    }
                     val msg = error.message ?: "获取二维码失败"
                     _uiState.update { it.copy(qrHint = msg) }
                     _snackbarMessage.emit(msg)
@@ -307,12 +325,15 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    private fun startQrPolling(key: String) {
+    private fun startQrPolling(key: String, requestId: Long) {
         stopQrPolling()
         qrPollJob = viewModelScope.launch {
             while (isActive) {
                 delay(2000L)
                 val result = pollQrStatusUseCase(key)
+                if (!isActive || requestId != qrRequestId || _uiState.value.panel != AuthPanel.QR) {
+                    return@launch
+                }
                 result.fold(
                     onSuccess = { pollResult ->
                         when (pollResult.state) {
@@ -355,6 +376,13 @@ class AuthViewModel @Inject constructor(
     private fun stopQrPolling() {
         qrPollJob?.cancel()
         qrPollJob = null
+    }
+
+    private fun stopQrLoginFlow() {
+        qrRequestId += 1L
+        qrStartJob?.cancel()
+        qrStartJob = null
+        stopQrPolling()
     }
 
     private fun maybeRefreshProfileIfNeeded(session: AuthSession?) {

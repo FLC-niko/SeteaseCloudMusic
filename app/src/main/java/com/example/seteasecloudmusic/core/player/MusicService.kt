@@ -6,12 +6,14 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.annotation.OptIn
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.util.BitmapLoader
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
@@ -35,6 +37,7 @@ import javax.inject.Inject
  * 1. 命中 Coil 200MB 磁盘缓存与内存缓存，0ms 极速提取封面
  * 2. 避免 Media3 默认 SimpleBitmapLoader 因纯原生 HttpURLConnection 导致的超时卡死与系统通知栏不同步
  */
+@OptIn(UnstableApi::class)
 class CoilBitmapLoader(private val context: Context) : BitmapLoader {
     override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> {
         val future = SettableFuture.create<Bitmap>()
@@ -91,6 +94,7 @@ class CoilBitmapLoader(private val context: Context) : BitmapLoader {
  * 3. 接入 ForwardingPlayer 将上一曲、下一曲等系统媒体命令路由至 MusicPlayerController 播放队列
  */
 @AndroidEntryPoint
+@OptIn(UnstableApi::class)
 class MusicService : MediaSessionService() {
 
     @Inject
@@ -276,6 +280,8 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        val shouldReconnect = player?.playWhenReady == true && player?.mediaItemCount != 0
+        musicPlayerController.onServiceDestroyed(shouldReconnect)
         isForegroundServiceStarted = false
         serviceScope.cancel()
         mediaSession?.release()

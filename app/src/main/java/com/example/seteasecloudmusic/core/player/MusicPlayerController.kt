@@ -9,9 +9,11 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.example.seteasecloudmusic.core.common.runCatchingCancellable
 import com.example.seteasecloudmusic.core.cache.PlaybackCacheManager
 import com.example.seteasecloudmusic.core.cache.SavedPlaybackState
 import com.example.seteasecloudmusic.core.model.Track
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -61,11 +63,14 @@ class MusicPlayerController @Inject constructor(
 
     // Media3 控制端（连接到 MusicService 的 MediaSession）
     private var controller: MediaController? = null
+    private var connectionFuture: ListenableFuture<MediaController>? = null
+    private var reconnectJob: Job? = null
 
     // 进度轮询任务：每 500ms 同步一次 position/duration 到 UI
     private var progressJob: Job? = null
     private var playJob: Job? = null
     private var prefetchJob: Job? = null
+    private var prefetchRequestId: Long = 0L
     private var latestPlayRequestId: Long = 0L
     private var lastPersistTimeMs: Long = 0L
 
@@ -73,6 +78,7 @@ class MusicPlayerController @Inject constructor(
     private val playbackHistory = ArrayDeque<Int>()
     private var pendingPlayItem: Pair<MediaItem, Int>? = null
     private var isConnecting: Boolean = false
+    private var reconnectRequested = false
 
     // 听歌打卡与时长统计（/scrobble 对应底层 /api/feedback/weblog，计入年度报告与听歌排行）
     private var listenStartTimeMs: Long = 0L
@@ -100,8 +106,7 @@ class MusicPlayerController @Inject constructor(
             }
         }
 
-        // 2. 启动时后台即刻建立到 MusicService 的 MediaController 管道，保证冷启动起播 0ms 秒响应
-        connect()
+        // 2. 连接由 PlayerViewModel 或实际播放命令触发，避免 MusicService 注入控制器时递归启动自身。
     }
 
     /**
@@ -258,40 +263,158 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
+    private val mediaControllerListener = object : MediaController.Listener {
+        override fun onDisconnected(disconnectedController: MediaController) {
+            handleControllerDisconnected(disconnectedController)
+        }
+    }
+
     /** 建立到 MusicService 的连接 */
     fun connect() {
-        if (controller != null || isConnecting) return
+        if (!scope.isActive || isConnecting) return
+        if (controller?.isConnected == true) return
+
+        controller?.let { detachController(it) }
         isConnecting = true
         val token = SessionToken(context, ComponentName(context, MusicService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token)
+            .setListener(mediaControllerListener)
+            .buildAsync()
+        connectionFuture = future
 
         future.addListener(
             {
+                // 旧连接被替换或释放后，旧 Future 的回调不能再接管当前控制器。
+                if (connectionFuture !== future) return@addListener
+
+                connectionFuture = null
                 isConnecting = false
-                runCatching { future.get() }
-                    .onSuccess { c ->
-                        controller = c
-                        c.addListener(playerListener)
-                        // 若有在连接建立前触发的待播放项目，连接就绪瞬间立即起播！
-                        pendingPlayItem?.let { (item, seekMs) ->
-                            if (seekMs > 0) {
-                                c.setMediaItem(item, seekMs.toLong())
-                            } else {
-                                c.setMediaItem(item)
-                            }
-                            c.prepare()
-                            c.play()
-                            pendingPlayItem = null
-                        }
+
+                var connectedController: MediaController? = null
+                var failure: Throwable? = null
+                try {
+                    connectedController = future.get()
+                } catch (e: Throwable) {
+                    failure = e
+                }
+
+                if (!scope.isActive) {
+                    connectedController?.release()
+                } else if (connectedController != null && connectedController.isConnected) {
+                    attachController(connectedController)
+                } else {
+                    _playbackState.update {
+                        it.copy(
+                            status = PlayerStatus.ERROR,
+                            errorMessage = failure?.message ?: "播放器服务连接失败"
+                        )
                     }
-                    .onFailure { e ->
-                        _playbackState.update {
-                            it.copy(status = PlayerStatus.ERROR, errorMessage = e.message)
-                        }
-                    }
+                    scheduleReconnectIfNeeded()
+                }
             },
             context.mainExecutor
         )
+    }
+
+    /**
+     * MusicService 被系统销毁后，由服务显式通知控制器。
+     * Controller 是应用级单例，不能随着某一次 Service 实例一起失效。
+     */
+    fun onServiceDestroyed(shouldReconnect: Boolean) {
+        if (!scope.isActive) return
+
+        reconnectJob?.cancel()
+        reconnectJob = null
+        connectionFuture?.let { MediaController.releaseFuture(it) }
+        connectionFuture = null
+        isConnecting = false
+
+        val state = _playbackState.value
+        reconnectRequested = shouldReconnect
+        if (shouldReconnect) {
+            val track = state.currentTrack
+            val url = track?.playableUrl
+            pendingPlayItem = if (track != null && !url.isNullOrBlank()) {
+                buildMediaItem(track, url) to state.currentPositionMs
+            } else {
+                null
+            }
+            _playbackState.update { it.copy(status = PlayerStatus.PAUSED) }
+        } else {
+            pendingPlayItem = null
+        }
+
+        controller?.let { detachController(it) }
+        stopProgressTicker()
+        scheduleReconnectIfNeeded()
+    }
+
+    private fun attachController(connectedController: MediaController) {
+        if (!scope.isActive || controller != null) {
+            connectedController.release()
+            return
+        }
+
+        controller = connectedController
+        connectedController.addListener(playerListener)
+
+        // 若有在连接建立前触发的待播放项目，连接就绪瞬间立即起播。
+        val pendingItem = pendingPlayItem
+        if (pendingItem != null) {
+            val (item, seekMs) = pendingItem
+            if (seekMs > 0) {
+                connectedController.setMediaItem(item, seekMs.toLong())
+            } else {
+                connectedController.setMediaItem(item)
+            }
+            connectedController.prepare()
+            connectedController.play()
+            pendingPlayItem = null
+            reconnectRequested = false
+        } else if (reconnectRequested) {
+            reconnectRequested = false
+            val state = _playbackState.value
+            if (state.currentQueueIndex in state.queueTracks.indices) {
+                playQueueIndex(state.currentQueueIndex, state.currentPositionMs)
+            }
+        }
+    }
+
+    private fun handleControllerDisconnected(disconnectedController: MediaController) {
+        if (controller !== disconnectedController) return
+
+        val state = _playbackState.value
+        val shouldReconnect = state.currentTrack != null &&
+            state.status in setOf(PlayerStatus.PLAYING, PlayerStatus.BUFFERING)
+        reconnectRequested = shouldReconnect
+        persistCurrentState()
+        detachController(disconnectedController)
+        stopProgressTicker()
+
+        if (shouldReconnect) {
+            _playbackState.update { it.copy(status = PlayerStatus.PAUSED) }
+            scheduleReconnectIfNeeded()
+        }
+    }
+
+    private fun detachController(controllerToDetach: MediaController) {
+        if (controller === controllerToDetach) {
+            controller = null
+        }
+        controllerToDetach.removeListener(playerListener)
+        controllerToDetach.release()
+    }
+
+    private fun scheduleReconnectIfNeeded() {
+        if (!reconnectRequested || !scope.isActive) return
+
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            delay(SERVICE_RECONNECT_DELAY_MS)
+            if (reconnectRequested && controller == null && !isConnecting) {
+                connect()
+            }
+        }
     }
 
     fun replaceQueueAndPlay(tracks: List<Track>, startIndex: Int = 0) {
@@ -462,9 +585,16 @@ class MusicPlayerController @Inject constructor(
                             }
                             c.prepare()
                             c.play()
+                        } else {
+                            pendingPlayItem = item to pos
+                            reconnectRequested = true
+                            connect()
                         }
                         _playbackState.update {
-                            it.copy(currentTrack = newTrack, status = PlayerStatus.PLAYING)
+                            it.copy(
+                                currentTrack = newTrack,
+                                status = if (c != null) PlayerStatus.PLAYING else PlayerStatus.BUFFERING
+                            )
                         }
                     }
                 },
@@ -486,11 +616,15 @@ class MusicPlayerController @Inject constructor(
         stopProgressTicker()
         playJob?.cancel()
         playJob = null
-        prefetchJob?.cancel()
-        prefetchJob = null
-        controller?.removeListener(playerListener)
-        controller?.release()
-        controller = null
+        invalidatePrefetch()
+        reconnectRequested = false
+        reconnectJob?.cancel()
+        reconnectJob = null
+        connectionFuture?.let { MediaController.releaseFuture(it) }
+        connectionFuture = null
+        isConnecting = false
+        controller?.let { detachController(it) }
+        pendingPlayItem = null
         scope.cancel()
     }
 
@@ -533,6 +667,7 @@ class MusicPlayerController @Inject constructor(
         }
 
         val track = queue[index]
+        invalidatePrefetch()
         playJob?.cancel()
         val requestId = nextPlayRequestId()
 
@@ -652,7 +787,8 @@ class MusicPlayerController @Inject constructor(
      * 智能预加载相邻曲目播放直链到内存缓存（实现秒切 0ms 核心）
      */
     private fun prefetchNeighbors(currentIndex: Int) {
-        prefetchJob?.cancel()
+        invalidatePrefetch()
+        val requestId = prefetchRequestId
         prefetchJob = scope.launch(ioDispatcher) {
             val state = _playbackState.value
             val queue = state.queueTracks
@@ -662,8 +798,9 @@ class MusicPlayerController @Inject constructor(
                 PlaybackMode.SEQUENTIAL -> {
                     // 优先预加载下一首
                     val nextIndex = (currentIndex + 1) % queue.size
-                    val nextPrep = runCatching { trackPlaybackPreparer(queue[nextIndex]) }.getOrNull()
+                    val nextPrep = runCatchingCancellable { trackPlaybackPreparer(queue[nextIndex]) }.getOrNull()
                     nextPrep?.onSuccess { nextTrack ->
+                        if (!isActive || requestId != prefetchRequestId) return@onSuccess
                         _playbackState.update { current ->
                             val q = current.queueTracks.toMutableList()
                             if (nextIndex in q.indices) {
@@ -675,8 +812,9 @@ class MusicPlayerController @Inject constructor(
 
                     // 预加载上一首
                     val prevIndex = if (currentIndex - 1 < 0) queue.size - 1 else currentIndex - 1
-                    val prevPrep = runCatching { trackPlaybackPreparer(queue[prevIndex]) }.getOrNull()
+                    val prevPrep = runCatchingCancellable { trackPlaybackPreparer(queue[prevIndex]) }.getOrNull()
                     prevPrep?.onSuccess { prevTrack ->
+                        if (!isActive || requestId != prefetchRequestId) return@onSuccess
                         _playbackState.update { current ->
                             val q = current.queueTracks.toMutableList()
                             if (prevIndex in q.indices) {
@@ -690,8 +828,9 @@ class MusicPlayerController @Inject constructor(
                     if (queue.size > 1) {
                         val candidates = queue.indices.filter { it != currentIndex }
                         val nextRandom = candidates.random()
-                        val randPrep = runCatching { trackPlaybackPreparer(queue[nextRandom]) }.getOrNull()
+                        val randPrep = runCatchingCancellable { trackPlaybackPreparer(queue[nextRandom]) }.getOrNull()
                         randPrep?.onSuccess { randTrack ->
+                            if (!isActive || requestId != prefetchRequestId) return@onSuccess
                             _playbackState.update { current ->
                                 val q = current.queueTracks.toMutableList()
                                 if (nextRandom in q.indices) {
@@ -704,8 +843,9 @@ class MusicPlayerController @Inject constructor(
                     if (playbackHistory.isNotEmpty()) {
                         val lastHistoryIndex = playbackHistory.last()
                         if (lastHistoryIndex in queue.indices) {
-                            val histPrep = runCatching { trackPlaybackPreparer(queue[lastHistoryIndex]) }.getOrNull()
+                            val histPrep = runCatchingCancellable { trackPlaybackPreparer(queue[lastHistoryIndex]) }.getOrNull()
                             histPrep?.onSuccess { histTrack ->
+                                if (!isActive || requestId != prefetchRequestId) return@onSuccess
                                 _playbackState.update { current ->
                                     val q = current.queueTracks.toMutableList()
                                     if (lastHistoryIndex in q.indices) {
@@ -828,5 +968,15 @@ class MusicPlayerController @Inject constructor(
     private fun stopProgressTicker() {
         progressJob?.cancel()
         progressJob = null
+    }
+
+    private fun invalidatePrefetch() {
+        prefetchRequestId += 1L
+        prefetchJob?.cancel()
+        prefetchJob = null
+    }
+
+    companion object {
+        private const val SERVICE_RECONNECT_DELAY_MS = 500L
     }
 }

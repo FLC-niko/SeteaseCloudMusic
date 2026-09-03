@@ -1,6 +1,6 @@
 package com.example.seteasecloudmusic.feature.mine.data
 
-import com.example.seteasecloudmusic.core.cache.DataCacheManager
+import com.example.seteasecloudmusic.core.common.runCatchingCancellable
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
@@ -14,24 +14,24 @@ import javax.inject.Inject
 
 class MineRepositoryImpl @Inject constructor(
     private val mineService: MineService,
-    private val dataCacheManager: DataCacheManager
+    private val mineCacheManager: MineCacheManager
 ) : MineRepository {
 
     override fun getCachedUserPlaylists(userId: Long): UserPlaylistsGroup? {
-        return dataCacheManager.getUserPlaylists(userId)
+        return mineCacheManager.getUserPlaylists(userId)
     }
 
     override fun getCachedPlaylistDetailPreview(playlistId: Long): PlaylistDetail? {
-        return dataCacheManager.getPlaylistDetailPreview(playlistId)
+        return mineCacheManager.getPlaylistDetailPreview(playlistId)
     }
 
     override suspend fun getUserPlaylists(userId: Long): Result<UserPlaylistsGroup> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val response = mineService.getUserPlaylists(uid = userId)
             if ((response.code ?: 0) != 200) {
                 // 异常时若有缓存则优先返回缓存
-                val cached = dataCacheManager.getUserPlaylists(userId)
-                if (cached != null) return@runCatching cached
+                val cached = mineCacheManager.getUserPlaylists(userId)
+                if (cached != null) return@runCatchingCancellable cached
                 throw Exception("获取用户歌单失败: code=${response.code}")
             }
 
@@ -92,21 +92,21 @@ class MineRepositoryImpl @Inject constructor(
             )
 
             // 持久化到本地缓存
-            dataCacheManager.saveUserPlaylists(userId, group)
+            mineCacheManager.saveUserPlaylists(userId, group)
 
             group
         }.recoverCatching { err ->
-            val cached = dataCacheManager.getUserPlaylists(userId)
+            val cached = mineCacheManager.getUserPlaylists(userId)
             cached ?: throw err
         }
     }
 
     override suspend fun getPlaylistDetail(playlistId: Long): Result<PlaylistDetail> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val response = mineService.getPlaylistDetail(id = playlistId)
             if ((response.code ?: 0) != 200) {
-                val cached = dataCacheManager.getPlaylistDetailPreview(playlistId)
-                if (cached != null) return@runCatching cached
+                val cached = mineCacheManager.getPlaylistDetailPreview(playlistId)
+                if (cached != null) return@runCatchingCancellable cached
                 throw Exception("获取歌单详情失败: code=${response.code}")
             }
 
@@ -147,11 +147,11 @@ class MineRepositoryImpl @Inject constructor(
             )
 
             // 轻量持久化歌单首屏曲目（前20首）
-            dataCacheManager.savePlaylistDetailPreview(detail)
+            mineCacheManager.savePlaylistDetailPreview(detail)
 
             detail
         }.recoverCatching { err ->
-            val cached = dataCacheManager.getPlaylistDetailPreview(playlistId)
+            val cached = mineCacheManager.getPlaylistDetailPreview(playlistId)
             cached ?: throw err
         }
     }

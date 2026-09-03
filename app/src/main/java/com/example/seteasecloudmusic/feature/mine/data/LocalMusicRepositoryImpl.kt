@@ -6,12 +6,16 @@ import android.os.Environment
 import android.util.Log
 import com.example.seteasecloudmusic.core.local.LocalMusicScanner
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
+import com.example.seteasecloudmusic.core.local.LocalMusicRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
@@ -31,6 +35,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
     override val localTracksFlow: StateFlow<List<Track>> = _localTracksFlow.asStateFlow()
 
     private var hasScanned = false
+    private val scanMutex = Mutex()
 
     override fun getCustomDirectoryPath(): String? {
         val saved = prefs.getString(KEY_CUSTOM_DIR, null)
@@ -45,63 +50,70 @@ class LocalMusicRepositoryImpl @Inject constructor(
         prefs.edit().putString(KEY_CUSTOM_DIR, path).apply()
     }
 
-    override suspend fun scanDirectory(directoryPath: String): List<Track> = withContext(Dispatchers.IO) {
-        setCustomDirectoryPath(directoryPath)
-        val combinedTracks = mutableListOf<Track>()
+    override suspend fun scanDirectory(directoryPath: String): List<Track> = scanMutex.withLock {
+        withContext(Dispatchers.IO) {
+            setCustomDirectoryPath(directoryPath)
+            val combinedTracks = mutableListOf<Track>()
 
         // 1. 扫描系统 MediaStore
-        val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
-        combinedTracks.addAll(mediaStoreTracks)
+            val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
+            combinedTracks.addAll(mediaStoreTracks)
 
         // 2. 扫描指定目录
-        val dir = File(directoryPath)
-        if (dir.exists() && dir.isDirectory) {
-            val dirTracks = LocalMusicScanner.scanDirectory(context, dir)
-            combinedTracks.addAll(dirTracks)
-        }
-
-        val deduplicated = deduplicateTracks(combinedTracks)
-        _localTracksFlow.value = deduplicated
-        hasScanned = true
-        Log.d("LocalMusicRepo", "scanDirectory [$directoryPath] completed, total found: ${deduplicated.size}")
-        deduplicated
-    }
-
-    override suspend fun getLocalTracks(forceRefresh: Boolean): List<Track> = withContext(Dispatchers.IO) {
-        if (!forceRefresh && _localTracksFlow.value.isNotEmpty()) {
-            return@withContext _localTracksFlow.value
-        }
-
-        val combinedTracks = mutableListOf<Track>()
-
-        // 1. 优先扫描系统 MediaStore
-        val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
-        combinedTracks.addAll(mediaStoreTracks)
-
-        // 2. 扫描常用音频目录
-        val targetDirs = mutableListOf<File>()
-        val customPath = getCustomDirectoryPath()
-        if (!customPath.isNullOrBlank()) {
-            targetDirs.add(File(customPath))
-        }
-        targetDirs.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC))
-        targetDirs.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS))
-        targetDirs.add(File("/storage/emulated/0/Music"))
-        targetDirs.add(File("/storage/emulated/0/Download"))
-        targetDirs.add(File("/storage/emulated/0/netease/cloudmusic/Music"))
-
-        for (dir in targetDirs.distinctBy { it.absolutePath }) {
+            val dir = File(directoryPath)
             if (dir.exists() && dir.isDirectory) {
                 val dirTracks = LocalMusicScanner.scanDirectory(context, dir)
                 combinedTracks.addAll(dirTracks)
             }
-        }
 
-        val deduplicated = deduplicateTracks(combinedTracks)
-        _localTracksFlow.value = deduplicated
-        hasScanned = true
-        Log.d("LocalMusicRepo", "getLocalTracks completed, total found: ${deduplicated.size}")
-        deduplicated
+            currentCoroutineContext().ensureActive()
+            val deduplicated = deduplicateTracks(combinedTracks)
+            _localTracksFlow.value = deduplicated
+            hasScanned = true
+            Log.d("LocalMusicRepo", "scanDirectory [$directoryPath] completed, total found: ${deduplicated.size}")
+            deduplicated
+        }
+    }
+
+    override suspend fun getLocalTracks(forceRefresh: Boolean): List<Track> = scanMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (!forceRefresh && _localTracksFlow.value.isNotEmpty()) {
+                return@withContext _localTracksFlow.value
+            }
+
+            val combinedTracks = mutableListOf<Track>()
+
+        // 1. 优先扫描系统 MediaStore
+            val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
+            combinedTracks.addAll(mediaStoreTracks)
+
+        // 2. 扫描常用音频目录
+            val targetDirs = mutableListOf<File>()
+            val customPath = getCustomDirectoryPath()
+            if (!customPath.isNullOrBlank()) {
+                targetDirs.add(File(customPath))
+            }
+            targetDirs.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC))
+            targetDirs.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS))
+            targetDirs.add(File("/storage/emulated/0/Music"))
+            targetDirs.add(File("/storage/emulated/0/Download"))
+            targetDirs.add(File("/storage/emulated/0/netease/cloudmusic/Music"))
+
+            for (dir in targetDirs.distinctBy { it.absolutePath }) {
+                currentCoroutineContext().ensureActive()
+                if (dir.exists() && dir.isDirectory) {
+                    val dirTracks = LocalMusicScanner.scanDirectory(context, dir)
+                    combinedTracks.addAll(dirTracks)
+                }
+            }
+
+            currentCoroutineContext().ensureActive()
+            val deduplicated = deduplicateTracks(combinedTracks)
+            _localTracksFlow.value = deduplicated
+            hasScanned = true
+            Log.d("LocalMusicRepo", "getLocalTracks completed, total found: ${deduplicated.size}")
+            deduplicated
+        }
     }
 
     private fun deduplicateTracks(tracks: List<Track>): List<Track> {

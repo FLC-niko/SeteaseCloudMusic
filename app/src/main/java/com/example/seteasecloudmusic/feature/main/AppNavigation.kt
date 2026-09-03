@@ -62,10 +62,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.auth.presentation.AccountLoginSheetContent
-import com.example.seteasecloudmusic.feature.main.components.UserAvatar
 import com.example.seteasecloudmusic.feature.auth.presentation.AuthViewModel
 import com.example.seteasecloudmusic.feature.artist.presentation.ArtistDetailRoute
 import com.example.seteasecloudmusic.feature.home.presentation.DailyRecommendDetailRoute
@@ -257,9 +258,9 @@ fun AppNavigation(
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
 
-    val searchUiState by searchViewModel.uiState.collectAsState()
-    val playbackState by playerViewModel.playbackState.collectAsState()
-    val authUiState by authViewModel.uiState.collectAsState()
+    val searchUiState by searchViewModel.uiState.collectAsStateWithLifecycle()
+    val playbackState by playerViewModel.playbackState.collectAsStateWithLifecycle()
+    val authUiState by authViewModel.uiState.collectAsStateWithLifecycle()
 
     var showNowPlaying by remember { mutableStateOf(false) }
     var showAccountSheet by remember { mutableStateOf(false) }
@@ -844,12 +845,8 @@ fun AppNavigation(
 
         if (showNowPlaying) {
             NowPlayingScreen(
-                playbackState = playbackState,
+                playerViewModel = playerViewModel,
                 onClose = { showNowPlaying = false },
-                onPlayPause = { playerViewModel.onPlayPause() },
-                onNext = { playerViewModel.onNext() },
-                onPrevious = { /* TODO */ },
-                onSeekTo = { /* TODO */ }
             )
         }
 

@@ -44,10 +44,6 @@ android {
         buildConfig = true
     }
     
-    composeOptions {
-        kotlinCompilerExtensionVersion = "2.1.0"
-    }
-
     packaging {
         jniLibs {
             // 解决 16KB 页面对齐警告
@@ -64,6 +60,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.foundation.layout)
     testImplementation(libs.junit)
@@ -71,22 +68,21 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     
     // Retrofit 核心库（它会自动引入其依赖的 OkHttp 和 Okio 库）
-    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation(libs.retrofit)
     // Retrofit 的 GSON 转换器，用于 JSON 数据的序列化和反序列化
-    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
+    implementation(libs.retrofit.converter.gson)
     
     // 实现协程相关依赖
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
     
     // Liquid glass 实现相关库
     implementation("io.github.kyant0:backdrop:1.0.6")
     implementation("io.github.kyant0:shapes:1.2.0")
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2026.02.01")
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
+    implementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(platform(libs.androidx.compose.bom))
 
     // Compose 核心依赖
     implementation("androidx.compose.runtime:runtime")
@@ -96,14 +92,12 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     
-    // Compose Activity
-    implementation("androidx.activity:activity-compose:1.9.0")
-    
-    // Navigation - 这是缺失的关键依赖
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-    
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+
     // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Android Studio Preview support
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -113,31 +107,19 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // Optional - Add window size utils
-    implementation("androidx.compose.material3.adaptive:adaptive")
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.ui)
 
-    // Optional - Integration with activities
-    implementation("androidx.activity:activity-compose:1.12.4")
-    // Optional - Integration with ViewModels
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
-    // Optional - Integration with LiveData
-    implementation("androidx.compose.runtime:runtime-livedata")
-    // Optional - Integration with RxJava
-    implementation("androidx.compose.runtime:runtime-rxjava2")
-
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-session:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
-
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation(libs.coil.compose)
 
     // Palette API for extracting dominant colors from album artwork
     implementation("androidx.palette:palette-ktx:1.0.0")
 
     //hilt依赖注入框架
-    implementation("com.google.dagger:hilt-android:2.59.2")
-    ksp("com.google.dagger:hilt-android-compiler:2.59.2")
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
 
     // Hilt 与 Compose Navigation 集成（提供 hiltViewModel()）
-    implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
+    implementation(libs.androidx.hilt.navigation.compose)
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.seteasecloudmusic.core.common.runCatchingCancellable
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 
@@ -38,7 +39,7 @@ fun LyricsColumn(
     // 自动滚动到当前歌词行
     LaunchedEffect(activeLineIndex) {
         if (activeLineIndex in lyrics.lines.indices) {
-            runCatching {
+            runCatchingCancellable {
                 listState.animateScrollToItem(
                     index = activeLineIndex,
                     scrollOffset = -180

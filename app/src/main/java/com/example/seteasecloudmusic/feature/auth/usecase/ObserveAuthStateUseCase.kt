@@ -1,6 +1,6 @@
 package com.example.seteasecloudmusic.feature.auth.usecase
 
-import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
+import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.Flow
 

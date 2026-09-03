@@ -84,7 +84,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.feature.main.components.UserAvatar
+import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop

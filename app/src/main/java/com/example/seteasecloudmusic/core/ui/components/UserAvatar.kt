@@ -1,4 +1,4 @@
-package com.example.seteasecloudmusic.feature.main.components
+package com.example.seteasecloudmusic.core.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

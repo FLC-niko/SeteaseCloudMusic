@@ -1,6 +1,6 @@
 package com.example.seteasecloudmusic.feature.auth.domain.model
 
-import com.example.seteasecloudmusic.feature.auth.domain.model.QrStatus
+import com.example.seteasecloudmusic.core.auth.AuthSession
 
 data class QrPollResult(
     val state: QrStatus,

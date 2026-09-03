@@ -30,7 +30,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,9 +61,9 @@ fun NativePlayerScreen(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val playbackState by playerViewModel.playbackState.collectAsState()
-    val lyricResponseResult by playerViewModel.lyricState.collectAsState()
-    val currentAudioQuality by playerViewModel.currentAudioQuality.collectAsState()
+    val playbackState by playerViewModel.playbackState.collectAsStateWithLifecycle()
+    val lyricResponseResult by playerViewModel.lyricState.collectAsStateWithLifecycle()
+    val currentAudioQuality by playerViewModel.currentAudioQuality.collectAsStateWithLifecycle()
 
     val currentPosition = playbackState.currentPositionMs
     val isPlaying = playbackState.status == PlayerStatus.PLAYING

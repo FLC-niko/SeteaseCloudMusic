@@ -1,25 +1,25 @@
 package com.example.seteasecloudmusic.feature.home.data
 
 import android.content.Context
-import com.example.seteasecloudmusic.core.cache.DataCacheManager
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.home.domain.repository.HomeRecommendRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class HomeRecommendRepositoryImpl @Inject constructor(
     private val dailyRecommendService: DailyRecommendService,
-    private val dataCacheManager: DataCacheManager,
+    private val homeRecommendCache: HomeRecommendCache,
     @param:ApplicationContext private val context: Context
 ) : HomeRecommendRepository {
 
     override fun getCachedDailyRecommendSongs(): List<Track>? {
-        return dataCacheManager.getDailyRecommend()
+        return homeRecommendCache.getDailyRecommend()
     }
 
     override suspend fun getDailyRecommendSongs(afresh: Boolean): Result<List<Track>> =
@@ -27,7 +27,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
             try {
                 if (!hasLoginCookie()) {
                     // 若未登录但本地有历史缓存，先降级返回历史缓存
-                    val cached = dataCacheManager.getDailyRecommend()
+                    val cached = homeRecommendCache.getDailyRecommend()
                     if (!cached.isNullOrEmpty()) {
                         return@withContext Result.success(cached)
                     }
@@ -36,7 +36,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
 
                 val response = dailyRecommendService.getDailyRecommendSongs(afresh)
                 if (response.code != 200) {
-                    val cached = dataCacheManager.getDailyRecommend()
+                    val cached = homeRecommendCache.getDailyRecommend()
                     if (!cached.isNullOrEmpty()) {
                         return@withContext Result.success(cached)
                     }
@@ -52,12 +52,14 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                     .distinctBy { it.id }
 
                 if (tracks.isNotEmpty()) {
-                    dataCacheManager.saveDailyRecommend(tracks)
+                    homeRecommendCache.saveDailyRecommend(tracks)
                 }
 
                 Result.success(tracks)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                val cached = dataCacheManager.getDailyRecommend()
+                val cached = homeRecommendCache.getDailyRecommend()
                 if (!cached.isNullOrEmpty()) {
                     Result.success(cached)
                 } else {

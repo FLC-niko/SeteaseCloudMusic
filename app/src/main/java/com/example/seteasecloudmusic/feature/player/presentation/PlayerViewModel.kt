@@ -1,14 +1,13 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
-import com.example.seteasecloudmusic.feature.player.data.LyricResponse
 import com.example.seteasecloudmusic.feature.player.domain.usecase.GetLyricUseCase
+import com.example.seteasecloudmusic.feature.player.domain.model.Lyrics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -16,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import javax.inject.Inject
 
 /**
@@ -36,18 +36,26 @@ class PlayerViewModel @Inject constructor(
     // 直接复用 Controller 内部的状态流
     val playbackState: StateFlow<PlaybackState> = controller.playbackState
 
-    private val _lyricState = MutableStateFlow<Result<LyricResponse>?>(null)
-    val lyricState: StateFlow<Result<LyricResponse>?> = _lyricState.asStateFlow()
+    private val _lyricState = MutableStateFlow<Result<Lyrics>?>(null)
+    val lyricState: StateFlow<Result<Lyrics>?> = _lyricState.asStateFlow()
 
     private var currentLyricTrackId: Long? = null
+    private var lyricRequestId = 0L
 
     init {
         viewModelScope.launch {
             controller.playbackState.collect { state ->
                 val trackId = state.currentTrack?.id
-                if (trackId != null && trackId != currentLyricTrackId) {
+                if (trackId != currentLyricTrackId) {
                     currentLyricTrackId = trackId
-                    fetchLyric(trackId)
+                    if (trackId == null) {
+                        lyricRequestId += 1L
+                        lyricJob?.cancel()
+                        lyricJob = null
+                        _lyricState.value = null
+                    } else {
+                        fetchLyric(trackId)
+                    }
                 }
             }
         }
@@ -63,13 +71,20 @@ class PlayerViewModel @Inject constructor(
 
     private var lyricJob: Job? = null
 
+    init {
+        controller.connect()
+    }
+
     private fun fetchLyric(songId: Long) {
         lyricJob?.cancel()
+        val requestId = ++lyricRequestId
         _lyricState.value = null
         lyricJob = viewModelScope.launch {
             delay(100L) // 快速连续切歌防抖，避免高频发包与 UI 线程重绘卡顿
             val res = getLyricUseCase(songId)
-            _lyricState.value = res
+            if (isActive && requestId == lyricRequestId && controller.playbackState.value.currentTrack?.id == songId) {
+                _lyricState.value = res
+            }
         }
     }
 

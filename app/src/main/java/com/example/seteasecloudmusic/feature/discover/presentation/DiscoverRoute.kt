@@ -1,7 +1,7 @@
 package com.example.seteasecloudmusic.feature.discover.presentation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -13,7 +13,7 @@ fun DiscoverRoute(
     bottomContentPadding: Dp = 180.dp,
     viewModel: DiscoverViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     DiscoverScreen(
         uiState = uiState,

@@ -1,11 +1,12 @@
 package com.example.seteasecloudmusic.feature.auth.domain.repository
 
-import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
+import com.example.seteasecloudmusic.core.auth.AuthSession
+import com.example.seteasecloudmusic.core.auth.AuthStateProvider
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrPollResult
 import kotlinx.coroutines.flow.Flow
 
-interface AuthRepository{
+interface AuthRepository : AuthStateProvider {
 
     suspend fun loginByPhone(
         phone: String,
@@ -43,5 +44,5 @@ interface AuthRepository{
     suspend fun sendCaptcha(phone: String): Result<Unit>
 
     //订阅当前登录态；null 代表未登录。
-    fun observeAuthState(): Flow<AuthSession?>
+    override fun observeAuthState(): Flow<AuthSession?>
 }

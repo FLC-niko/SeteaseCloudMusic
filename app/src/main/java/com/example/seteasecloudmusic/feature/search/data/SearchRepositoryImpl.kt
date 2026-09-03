@@ -4,13 +4,14 @@ import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.local.LocalMusicRepository
 import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
-import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -49,6 +50,8 @@ class SearchRepositoryImpl @Inject constructor(
             } else {
                 Result.failure(Exception("API Error with code: ${response.code}"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -79,6 +82,8 @@ class SearchRepositoryImpl @Inject constructor(
             } else {
                 Result.failure(Exception("No playable URL available for track $trackId at level $level"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -148,6 +153,8 @@ class SearchRepositoryImpl @Inject constructor(
         try {
             val response = musicService.scrobble(id = trackId, sourceId = sid, time = durationSeconds)
             android.util.Log.d("Scrobble", ">>> Server /scrobble response code: ${response.code}")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.w("Scrobble", ">>> Server /scrobble warning: ${e.message}")
         }
@@ -176,6 +183,8 @@ class SearchRepositoryImpl @Inject constructor(
                 android.util.Log.d("Scrobble", ">>> Resolved local track '$title - $artist' to online NetEase ID: $onlineId")
             }
             onlineId
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }
@@ -201,6 +210,8 @@ class SearchRepositoryImpl @Inject constructor(
             } else {
                 Result.failure(Exception("API Error with code: ${response.code}"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

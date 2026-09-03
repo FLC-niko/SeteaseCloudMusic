@@ -4,18 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
-import com.example.seteasecloudmusic.feature.auth.domain.model.AuthSession
-import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
+import com.example.seteasecloudmusic.core.local.LocalMusicRepository
+import com.example.seteasecloudmusic.core.auth.AuthSession
+import com.example.seteasecloudmusic.core.auth.AuthStateProvider
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
-import com.example.seteasecloudmusic.feature.mine.domain.repository.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetPlaylistDetailUseCase
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetUserPlaylistsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -57,7 +63,7 @@ data class MineUiState(
 
 @HiltViewModel
 class MineViewModel @Inject constructor(
-    private val authRepository: AuthRepository,
+    private val authStateProvider: AuthStateProvider,
     private val getUserPlaylistsUseCase: GetUserPlaylistsUseCase,
     private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
     private val localMusicRepository: LocalMusicRepository,
@@ -69,12 +75,44 @@ class MineViewModel @Inject constructor(
 
     // 内存高速缓存：二次点击秒开（0ms 延迟）
     private val playlistDetailCache = mutableMapOf<Long, PlaylistDetail>()
+    private var localScanJob: Job? = null
+    private var localScanRequestId = 0L
+    private var playlistRefreshJob: Job? = null
+    private var playlistRequestId = 0L
+    private var playlistDetailJob: Job? = null
+    private var playlistDetailRequestId = 0L
 
     init {
         // 1. 监听账号登录状态与云端歌单
         viewModelScope.launch {
-            authRepository.observeAuthState().collect { session ->
-                _uiState.update { it.copy(authSession = session) }
+            authStateProvider.observeAuthState().collectLatest { session ->
+                val previousSession = _uiState.value.authSession
+                val userChanged = previousSession?.userId != session?.userId ||
+                    previousSession?.isLoggedIn != session?.isLoggedIn
+                val loadRequestId = ++playlistRequestId
+                playlistRefreshJob?.cancel()
+
+                if (userChanged) {
+                    playlistDetailJob?.cancel()
+                    playlistDetailJob = null
+                    playlistDetailRequestId += 1L
+                    playlistDetailCache.clear()
+                }
+
+                _uiState.update {
+                    it.copy(
+                        authSession = session,
+                        likedPlaylist = if (userChanged) null else it.likedPlaylist,
+                        createdPlaylists = if (userChanged) emptyList() else it.createdPlaylists,
+                        favoritedPlaylists = if (userChanged) emptyList() else it.favoritedPlaylists,
+                        activePlaylistDetail = if (userChanged) null else it.activePlaylistDetail,
+                        isLoading = session?.isLoggedIn == true && session.userId != null,
+                        isRefreshing = false,
+                        isLoadingDetail = if (userChanged) false else it.isLoadingDetail,
+                        errorMessage = if (userChanged) null else it.errorMessage
+                    )
+                }
+
                 if (session?.isLoggedIn == true && session.userId != null) {
                     val cachedGroup = getUserPlaylistsUseCase.getCached(session.userId)
                     if (cachedGroup != null) {
@@ -87,14 +125,20 @@ class MineViewModel @Inject constructor(
                             )
                         }
                     }
-                    loadUserPlaylists(session.userId, silent = (cachedGroup != null))
+                    loadUserPlaylists(
+                        userId = session.userId,
+                        silent = cachedGroup != null,
+                        requestId = loadRequestId
+                    )
                 } else {
                     _uiState.update {
                         it.copy(
                             likedPlaylist = null,
                             createdPlaylists = emptyList(),
                             favoritedPlaylists = emptyList(),
-                            isLoading = false
+                            activePlaylistDetail = null,
+                            isLoading = false,
+                            isLoadingDetail = false
                         )
                     }
                 }
@@ -120,7 +164,7 @@ class MineViewModel @Inject constructor(
         }
 
         // 3. 初始后台加载本地音乐目录及索引（供在线匹配与本地展示）
-        viewModelScope.launch {
+        localScanJob = viewModelScope.launch {
             val dirPath = localMusicRepository.getCustomDirectoryPath()
             _uiState.update { it.copy(localDirectoryPath = dirPath) }
             localMusicRepository.getLocalTracks(forceRefresh = false)
@@ -130,10 +174,21 @@ class MineViewModel @Inject constructor(
     fun refresh() {
         val session = _uiState.value.authSession
         if (session?.isLoggedIn == true && session.userId != null) {
-            viewModelScope.launch {
+            val requestId = ++playlistRequestId
+            playlistRefreshJob?.cancel()
+            playlistRefreshJob = viewModelScope.launch {
                 _uiState.update { it.copy(isRefreshing = true) }
-                loadUserPlaylists(session.userId, silent = false)
-                _uiState.update { it.copy(isRefreshing = false) }
+                try {
+                    loadUserPlaylists(
+                        userId = session.userId,
+                        silent = false,
+                        requestId = requestId
+                    )
+                } finally {
+                    if (isActive && requestId == playlistRequestId) {
+                        _uiState.update { it.copy(isRefreshing = false) }
+                    }
+                }
             }
         }
         if (_uiState.value.selectedTab == MinePlaylistTab.LOCAL) {
@@ -145,20 +200,37 @@ class MineViewModel @Inject constructor(
      * 扫描本地音乐（指定目录或系统媒体库）
      */
     fun scanLocalMusic(customDirectory: String? = null) {
-        viewModelScope.launch {
+        localScanJob?.cancel()
+        val requestId = ++localScanRequestId
+        val dir = customDirectory ?: _uiState.value.localDirectoryPath
+        localScanJob = viewModelScope.launch {
             _uiState.update { it.copy(isScanningLocal = true) }
-            val dir = customDirectory ?: _uiState.value.localDirectoryPath
-            val songs = if (!dir.isNullOrBlank()) {
-                localMusicRepository.scanDirectory(dir)
-            } else {
-                localMusicRepository.getLocalTracks(forceRefresh = true)
-            }
-            _uiState.update {
-                it.copy(
-                    localSongs = songs,
-                    localDirectoryPath = localMusicRepository.getCustomDirectoryPath(),
-                    isScanningLocal = false
-                )
+            try {
+                val songs = if (!dir.isNullOrBlank()) {
+                    localMusicRepository.scanDirectory(dir)
+                } else {
+                    localMusicRepository.getLocalTracks(forceRefresh = true)
+                }
+                currentCoroutineContext().ensureActive()
+                if (requestId != localScanRequestId) return@launch
+
+                _uiState.update {
+                    it.copy(
+                        localSongs = songs,
+                        localDirectoryPath = localMusicRepository.getCustomDirectoryPath(),
+                        errorMessage = null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (requestId == localScanRequestId) {
+                    _uiState.update { it.copy(errorMessage = e.message ?: "扫描本地音乐失败") }
+                }
+            } finally {
+                if (requestId == localScanRequestId && currentCoroutineContext().isActive) {
+                    _uiState.update { it.copy(isScanningLocal = false) }
+                }
             }
         }
     }
@@ -172,13 +244,24 @@ class MineViewModel @Inject constructor(
         scanLocalMusic(path)
     }
 
-    private suspend fun loadUserPlaylists(userId: Long, silent: Boolean = false) {
+    private suspend fun loadUserPlaylists(
+        userId: Long,
+        silent: Boolean = false,
+        requestId: Long
+    ) {
+        if (!currentCoroutineContext().isActive || requestId != playlistRequestId || !isCurrentLoggedInUser(userId)) {
+            return
+        }
         if (!silent) {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         }
         val result = getUserPlaylistsUseCase(userId)
+        if (!currentCoroutineContext().isActive || requestId != playlistRequestId || !isCurrentLoggedInUser(userId)) {
+            return
+        }
         result.fold(
             onSuccess = { group ->
+                if (requestId != playlistRequestId || !isCurrentLoggedInUser(userId)) return@fold
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -190,6 +273,7 @@ class MineViewModel @Inject constructor(
                 }
             },
             onFailure = { err ->
+                if (requestId != playlistRequestId || !isCurrentLoggedInUser(userId)) return@fold
                 _uiState.update { current ->
                     current.copy(
                         isLoading = false,
@@ -200,6 +284,11 @@ class MineViewModel @Inject constructor(
                 }
             }
         )
+    }
+
+    private fun isCurrentLoggedInUser(userId: Long): Boolean {
+        val session = _uiState.value.authSession
+        return session?.isLoggedIn == true && session.userId == userId
     }
 
     fun selectTab(tab: MinePlaylistTab) {
@@ -213,6 +302,10 @@ class MineViewModel @Inject constructor(
      * 极速打开歌单（0ms 秒级弹出，统一在线歌单与本地歌单）
      */
     fun openPlaylist(playlist: UserPlaylist) {
+        playlistDetailJob?.cancel()
+        playlistDetailJob = null
+        val requestId = ++playlistDetailRequestId
+
         // 1. 本地音乐歌单统一秒开逻辑
         if (playlist.id == LOCAL_PLAYLIST_ID) {
             val songs = _uiState.value.localSongs
@@ -270,13 +363,15 @@ class MineViewModel @Inject constructor(
         }
 
         // 异步请求/刷新完整曲目列表
-        viewModelScope.launch {
+        playlistDetailJob = viewModelScope.launch {
             val result = getPlaylistDetailUseCase(playlist.id)
+            if (!isActive || requestId != playlistDetailRequestId) return@launch
             result.fold(
                 onSuccess = { detail ->
+                    if (requestId != playlistDetailRequestId) return@fold
                     playlistDetailCache[playlist.id] = detail
                     _uiState.update { current ->
-                        if (current.activePlaylistDetail?.id == playlist.id) {
+                        if (requestId == playlistDetailRequestId && current.activePlaylistDetail?.id == playlist.id) {
                             current.copy(
                                 activePlaylistDetail = detail,
                                 isLoadingDetail = false
@@ -287,8 +382,9 @@ class MineViewModel @Inject constructor(
                     }
                 },
                 onFailure = { err ->
+                    if (requestId != playlistDetailRequestId) return@fold
                     _uiState.update { current ->
-                        if (current.activePlaylistDetail?.id == playlist.id) {
+                        if (requestId == playlistDetailRequestId && current.activePlaylistDetail?.id == playlist.id) {
                             current.copy(
                                 isLoadingDetail = false,
                                 errorMessage = if (current.activePlaylistDetail?.tracks.isNullOrEmpty()) {
@@ -305,7 +401,15 @@ class MineViewModel @Inject constructor(
     }
 
     fun closePlaylistDetail() {
-        _uiState.update { it.copy(activePlaylistDetail = null) }
+        playlistDetailJob?.cancel()
+        playlistDetailJob = null
+        playlistDetailRequestId += 1L
+        _uiState.update {
+            it.copy(
+                activePlaylistDetail = null,
+                isLoadingDetail = false
+            )
+        }
     }
 
     fun playTrack(track: Track, trackList: List<Track>) {

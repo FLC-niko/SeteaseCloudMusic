@@ -172,9 +172,9 @@ class NetworkModule {
      */
     @Provides
     @Singleton
-    fun provideRetrofit(client: OkHttpClient): Retrofit {
+    fun provideRetrofit(baseUrl: String, client: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl(provideBaseUrl())
+            .baseUrl(baseUrl)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
