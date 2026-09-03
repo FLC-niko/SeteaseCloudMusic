@@ -32,6 +32,12 @@ class PlayerSettingsManager @Inject constructor(
     private val _audioQuality = MutableStateFlow(loadSavedAudioQuality())
     val audioQuality: StateFlow<OnlineAudioQuality> = _audioQuality.asStateFlow()
 
+    private val _bluetoothLyricsEnabled = MutableStateFlow(loadSavedBluetoothLyrics())
+    val bluetoothLyricsEnabled: StateFlow<Boolean> = _bluetoothLyricsEnabled.asStateFlow()
+
+    private val _superLyricApiEnabled = MutableStateFlow(loadSavedSuperLyricApi())
+    val superLyricApiEnabled: StateFlow<Boolean> = _superLyricApiEnabled.asStateFlow()
+
     fun setPlayerStyle(style: PlayerStyle) {
         _playerStyle.value = style
         prefs.edit().putString(KEY_PLAYER_STYLE, style.name).apply()
@@ -40,6 +46,16 @@ class PlayerSettingsManager @Inject constructor(
     fun setAudioQuality(quality: OnlineAudioQuality) {
         _audioQuality.value = quality
         prefs.edit().putString(KEY_AUDIO_QUALITY, quality.name).apply()
+    }
+
+    fun setBluetoothLyricsEnabled(enabled: Boolean) {
+        _bluetoothLyricsEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_BLUETOOTH_LYRICS, enabled).apply()
+    }
+
+    fun setSuperLyricApiEnabled(enabled: Boolean) {
+        _superLyricApiEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_SUPER_LYRIC_API, enabled).apply()
     }
 
     private fun loadSavedStyle(): PlayerStyle {
@@ -60,9 +76,19 @@ class PlayerSettingsManager @Inject constructor(
         }
     }
 
+    private fun loadSavedBluetoothLyrics(): Boolean {
+        return prefs.getBoolean(KEY_BLUETOOTH_LYRICS, true)
+    }
+
+    private fun loadSavedSuperLyricApi(): Boolean {
+        return prefs.getBoolean(KEY_SUPER_LYRIC_API, true)
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_PLAYER_STYLE = "player_style_mode"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
+        private const val KEY_BLUETOOTH_LYRICS = "player_bluetooth_lyrics"
+        private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"
     }
 }

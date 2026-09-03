@@ -39,6 +39,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
+import com.hchen.superlyricapi.SuperLyricData
+import com.hchen.superlyricapi.SuperLyricHelper
+import com.hchen.superlyricapi.SuperLyricLine
+import com.hchen.superlyricapi.SuperLyricWord
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -124,6 +129,9 @@ class MusicService : MediaSessionService() {
     @Inject
     lateinit var getLyricsUseCase: GetLyricsUseCase
 
+    @Inject
+    lateinit var playerSettingsManager: PlayerSettingsManager
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // 播放器实例：真正负责音频播放
@@ -177,12 +185,17 @@ class MusicService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)  // 保持 CPU 和网络锁，防止挂后台被系统挂起冻结
             .build()
 
+        // 注册 SuperLyric 歌词发行商
+        SuperLyricHelper.registerPublisher()
+
         exoPlayer.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
+                    SuperLyricHelper.registerPublisher()
                     startLyricTicker()
                 } else {
                     stopLyricTicker()
+                    SuperLyricHelper.sendStop()
                 }
             }
         })
@@ -307,6 +320,7 @@ class MusicService : MediaSessionService() {
                     if (trackChanged) {
                         currentLyricJob?.cancel()
                         stopLyricTicker()
+                        SuperLyricHelper.sendStop()
                         currentLyricLines = emptyList()
                         lastBroadcastLyric = ""
                         fetchLyricsForTrack(track.id)
@@ -347,6 +361,7 @@ class MusicService : MediaSessionService() {
                         lastBroadcastLyric = text
                         updateMetadataAndNotification(track, text)
                         broadcastLyric(track, text, pos.toLong(), p.duration)
+                        sendSuperLyric(track, currentLine)
                     }
                 }
                 delay(250)
@@ -362,9 +377,12 @@ class MusicService : MediaSessionService() {
     private fun updateMetadataAndNotification(track: com.example.seteasecloudmusic.core.model.Track, lyric: String) {
         val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
         val displaySubtitle = lyric.ifBlank { artist }
+        val isBluetoothLyrics = playerSettingsManager.bluetoothLyricsEnabled.value
+        val displayTitle = if (isBluetoothLyrics && lyric.isNotBlank()) lyric else track.title
+
         val metadata = MediaMetadata.Builder()
-            .setTitle(track.title)
-            .setDisplayTitle(track.title)
+            .setTitle(displayTitle)
+            .setDisplayTitle(displayTitle)
             .setArtist(artist)
             .setSubtitle(displaySubtitle)
             .setDescription(displaySubtitle)
@@ -375,6 +393,41 @@ class MusicService : MediaSessionService() {
             .build()
 
         player?.playlistMetadata = metadata
+    }
+
+    private fun sendSuperLyric(
+        track: com.example.seteasecloudmusic.core.model.Track,
+        line: LyricLine?
+    ) {
+        if (!playerSettingsManager.superLyricApiEnabled.value) return
+        if (line == null) return
+
+        val text = line.words.joinToString("") { it.word }.trim()
+        if (text.isBlank()) return
+
+        val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
+        val words = if (line.words.isNotEmpty()) {
+            line.words.map {
+                SuperLyricWord(it.word, it.startTime.toLong(), it.endTime.toLong())
+            }.toTypedArray()
+        } else null
+
+        val lyricLine = SuperLyricLine(text, words, line.startTime.toLong(), line.endTime.toLong())
+        val data = SuperLyricData()
+            .setTitle(track.title)
+            .setArtist(artist)
+            .setAlbum(track.album?.title ?: track.title)
+            .setLyric(lyricLine)
+
+        if (line.translatedLyric.isNotBlank()) {
+            data.translation = SuperLyricLine(
+                line.translatedLyric.trim(),
+                line.startTime.toLong(),
+                line.endTime.toLong()
+            )
+        }
+
+        SuperLyricHelper.sendLyric(data)
     }
 
     private fun broadcastLyric(track: com.example.seteasecloudmusic.core.model.Track, lyric: String, position: Long, duration: Long) {
@@ -455,6 +508,8 @@ class MusicService : MediaSessionService() {
         musicPlayerController.onServiceDestroyed(shouldReconnect)
         isForegroundServiceStarted = false
         stopLyricTicker()
+        SuperLyricHelper.sendStop()
+        SuperLyricHelper.unregisterPublisher()
         currentLyricJob?.cancel()
         currentLyricLines = emptyList()
         serviceScope.cancel()

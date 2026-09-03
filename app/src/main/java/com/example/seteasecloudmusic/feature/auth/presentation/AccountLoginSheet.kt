@@ -101,6 +101,8 @@ fun AccountLoginSheetContent(
     val contentScrollState = rememberScrollState()
     var showPlayerStyleDialog by remember { mutableStateOf(false) }
     val playerStyle by viewModel.playerSettingsManager.playerStyle.collectAsStateWithLifecycle()
+    val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
+    val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel.snackbarMessage) {
         viewModel.snackbarMessage.collectLatest { message ->
@@ -238,6 +240,10 @@ fun AccountLoginSheetContent(
                             },
                             playerStyle = playerStyle,
                             onPlayerStyleClick = { showPlayerStyleDialog = true },
+                            bluetoothLyricsEnabled = bluetoothLyricsEnabled,
+                            onBluetoothLyricsChange = { viewModel.playerSettingsManager.setBluetoothLyricsEnabled(it) },
+                            superLyricApiEnabled = superLyricApiEnabled,
+                            onSuperLyricApiChange = { viewModel.playerSettingsManager.setSuperLyricApiEnabled(it) },
                             onLogoutClick = { viewModel.onRequestLogout() }
                         )
                     }
@@ -407,6 +413,10 @@ private fun AccountDetailsPanel(
     onPersonalizedRecommendationChange: (Boolean) -> Unit,
     playerStyle: PlayerStyle,
     onPlayerStyleClick: () -> Unit,
+    bluetoothLyricsEnabled: Boolean,
+    onBluetoothLyricsChange: (Boolean) -> Unit,
+    superLyricApiEnabled: Boolean,
+    onSuperLyricApiChange: (Boolean) -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val secondary = Color(0xFF8D8D93)
@@ -461,6 +471,36 @@ private fun AccountDetailsPanel(
                 onClick = onPlayerStyleClick
             )
         }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        SettingsSectionCard {
+            SettingsToggleRow(
+                title = "车载蓝牙歌词",
+                checked = bluetoothLyricsEnabled,
+                onCheckedChange = onBluetoothLyricsChange,
+                backdrop = backdrop
+            )
+            SettingsDivider(dividerColor)
+            SettingsToggleRow(
+                title = "灵动岛与状态栏歌词 (SuperLyric)",
+                checked = superLyricApiEnabled,
+                onCheckedChange = onSuperLyricApiChange,
+                backdrop = backdrop
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "开启后，将通过系统底层服务向 HyperLyric / SuperLyric 实时广播逐字动效歌词，车载蓝牙屏幕将同步更新滚动歌词。",
+            color = secondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 

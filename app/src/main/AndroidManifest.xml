@@ -45,6 +45,17 @@
             </intent-filter>
         </service>
 
+        <!-- SuperLyric API 支持声明，供 HyperLyric / SuperLyric 识别为原生 API 歌词源 -->
+        <meta-data
+            android:name="superlyricapi"
+            android:value="true" />
+        <meta-data
+            android:name="superlyricapi_version_name"
+            android:value="3.4" />
+        <meta-data
+            android:name="superlyricapi_version_code"
+            android:value="34" />
+
     </application>
 
 </manifest>
