@@ -1,11 +1,15 @@
 package com.example.seteasecloudmusic.core.player
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import androidx.annotation.OptIn
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.AudioAttributes
@@ -20,14 +24,20 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import coil.imageLoader
 import coil.request.ImageRequest
+import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.feature.player.domain.GetLyricsUseCase
+import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import androidx.core.net.toUri
 import androidx.media3.common.MediaMetadata
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -35,16 +45,24 @@ import javax.inject.Inject
 /**
  * 基于 Coil 深度定制的 Media3 BitmapLoader：
  * 1. 命中 Coil 200MB 磁盘缓存与内存缓存，0ms 极速提取封面
- * 2. 避免 Media3 默认 SimpleBitmapLoader 因纯原生 HttpURLConnection 导致的超时卡死与系统通知栏不同步
+ * 2. 强制使用 CPU 内存 ARGB_8888 软件位图（禁用 GPU HARDWARE 纹理），确保 Binder 跨进程安全传输至小米副屏与锁屏，杜绝崩溃
  */
 @OptIn(UnstableApi::class)
 class CoilBitmapLoader(private val context: Context) : BitmapLoader {
     override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> {
         val future = SettableFuture.create<Bitmap>()
         try {
-            val bitmap = BitmapFactory.decodeByteArray(data, 0, data.size)
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val bitmap = BitmapFactory.decodeByteArray(data, 0, data.size, options)
             if (bitmap != null) {
-                future.set(bitmap)
+                val softwareBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
+                    bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                } else {
+                    bitmap
+                }
+                future.set(softwareBitmap)
             } else {
                 future.setException(IllegalArgumentException("Failed to decode bitmap"))
             }
@@ -59,9 +77,12 @@ class CoilBitmapLoader(private val context: Context) : BitmapLoader {
         val request = ImageRequest.Builder(context)
             .data(uri.toString())
             .size(512, 512)
+            .allowHardware(false) // 关键：禁止硬件加速纹理位图，必须使用 CPU 内存位图以支持 Binder 跨进程传输至副屏与锁屏
+            .bitmapConfig(Bitmap.Config.ARGB_8888)
             .target(
                 onSuccess = { drawable ->
-                    future.set(drawable.toBitmap())
+                    val bitmap = drawable.toBitmap(config = Bitmap.Config.ARGB_8888)
+                    future.set(bitmap)
                 },
                 onError = {
                     future.setException(IllegalStateException("Failed to load image from $uri"))
@@ -100,6 +121,9 @@ class MusicService : MediaSessionService() {
     @Inject
     lateinit var musicPlayerController: MusicPlayerController
 
+    @Inject
+    lateinit var getLyricsUseCase: GetLyricsUseCase
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // 播放器实例：真正负责音频播放
@@ -107,6 +131,35 @@ class MusicService : MediaSessionService() {
 
     // 媒体会话：向系统暴露播放控制能力
     private var mediaSession: MediaSession? = null
+
+    // 实时歌词同步引擎状态
+    private var currentLyricLines: List<LyricLine> = emptyList()
+    private var currentLyricJob: Job? = null
+    private var lyricTickerJob: Job? = null
+    private var lastBroadcastLyric: String = ""
+    private var currentTrackId: Long? = null
+
+    companion object {
+        const val CHANNEL_ID = "playback_channel_id"
+        const val NOTIFICATION_ID = 1001
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = getString(R.string.playback_notification_channel_name)
+            val descriptionText = getString(R.string.playback_notification_channel_desc)
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC // 关键：公开锁屏与副屏可见性，避免小米系统隐私拦截
+                setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -124,38 +177,65 @@ class MusicService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)  // 保持 CPU 和网络锁，防止挂后台被系统挂起冻结
             .build()
 
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    startLyricTicker()
+                } else {
+                    stopLyricTicker()
+                }
+            }
+        })
+
         this.player = exoPlayer
 
         // 3. 设置点击通知栏时的跳转意图
-        val launchIntent = requireNotNull(packageManager.getLaunchIntentForPackage(packageName))
+        val launchIntent = requireNotNull(packageManager.getLaunchIntentForPackage(packageName)).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val sessionActivity = PendingIntent.getActivity(
             this,
             0,
             launchIntent,
-            PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // 4. 使用 ForwardingPlayer 将系统通知栏与锁屏的上一首/下一首控制暴露并路由到播放队列
+        // 4. 使用 ForwardingPlayer 将系统通知栏、锁屏及副屏的播控操作（播放/暂停/上一曲/下一曲/拖拽）路由到播放器与队列
         val forwardingPlayer = object : ForwardingPlayer(exoPlayer) {
             override fun getAvailableCommands(): Player.Commands {
                 return super.getAvailableCommands().buildUpon()
+                    .add(Player.COMMAND_PLAY_PAUSE)
                     .add(Player.COMMAND_SEEK_TO_NEXT)
                     .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                     .add(Player.COMMAND_SEEK_TO_PREVIOUS)
                     .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                     .build()
             }
 
             override fun isCommandAvailable(command: Int): Boolean {
                 return when (command) {
+                    Player.COMMAND_PLAY_PAUSE,
                     Player.COMMAND_SEEK_TO_NEXT,
-                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> true
-
+                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
                     Player.COMMAND_SEEK_TO_PREVIOUS,
-                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> true
+                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                    Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM -> true
 
                     else -> super.isCommandAvailable(command)
                 }
+            }
+
+            override fun play() {
+                if (exoPlayer.mediaItemCount == 0) {
+                    musicPlayerController.resume()
+                } else {
+                    super.play()
+                }
+            }
+
+            override fun pause() {
+                super.pause()
             }
 
             override fun seekToNext() {
@@ -175,14 +255,18 @@ class MusicService : MediaSessionService() {
             }
         }
 
-        // 5. 创建定制的 CoilBitmapLoader 并配置 MediaNotificationProvider，确保通知栏毫秒级刷新
+        // 5. 创建公开通知渠道，配置 CoilBitmapLoader 与 DefaultMediaNotificationProvider，并绑定纯白单色通知图标
+        createNotificationChannel()
         val bitmapLoader = CoilBitmapLoader(this)
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this)
-                .build()
-        )
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setNotificationId(NOTIFICATION_ID)
+            .setChannelId(CHANNEL_ID)
+            .setChannelName(R.string.playback_notification_channel_name)
+            .build()
+        notificationProvider.setSmallIcon(R.drawable.ic_notification_music)
+        setMediaNotificationProvider(notificationProvider)
 
-        // 6. 创建 MediaSession 并配置可用指令集与 BitmapLoader
+        // 6. 创建 MediaSession 并配置副屏/系统播控可用指令集与 BitmapLoader
         mediaSession = MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)
             .setBitmapLoader(bitmapLoader)
@@ -193,10 +277,12 @@ class MusicService : MediaSessionService() {
                 ): MediaSession.ConnectionResult {
                     val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon().build()
                     val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                        .add(Player.COMMAND_PLAY_PAUSE)
                         .add(Player.COMMAND_SEEK_TO_NEXT)
                         .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                         .add(Player.COMMAND_SEEK_TO_PREVIOUS)
                         .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                        .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                         .add(Player.COMMAND_SET_MEDIA_ITEM)
                         .add(Player.COMMAND_CHANGE_MEDIA_ITEMS)
                         .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
@@ -210,26 +296,111 @@ class MusicService : MediaSessionService() {
             })
             .build()
 
-        // 7. 实时监听 MusicPlayerController 的曲目变化，直接向 ExoPlayer 与 MediaSession 推送最新媒体元数据，保证通知栏 0ms 同步
+        // 7. 实时监听 MusicPlayerController 曲目变化，加载歌词并触发元数据与通知同步
         serviceScope.launch {
             musicPlayerController.playbackState.collect { state ->
                 val track = state.currentTrack
                 if (track != null) {
-                    val metadata = MediaMetadata.Builder()
-                        .setTitle(track.title)
-                        .setDisplayTitle(track.title)
-                        .setArtist(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" })
-                        .setSubtitle(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" })
-                        .setAlbumTitle(track.album?.title ?: track.title)
-                        .setArtworkUri(track.coverUrl?.toUri())
-                        .setIsPlayable(true)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                        .build()
+                    val trackChanged = track.id != currentTrackId
+                    currentTrackId = track.id
 
-                    exoPlayer.playlistMetadata = metadata
+                    if (trackChanged) {
+                        currentLyricJob?.cancel()
+                        stopLyricTicker()
+                        currentLyricLines = emptyList()
+                        lastBroadcastLyric = ""
+                        fetchLyricsForTrack(track.id)
+                    }
+
+                    updateMetadataAndNotification(track, lastBroadcastLyric)
                 }
             }
         }
+    }
+
+    private fun fetchLyricsForTrack(trackId: Long) {
+        currentLyricJob = serviceScope.launch {
+            val result = runCatching { getLyricsUseCase(trackId) }.getOrNull()
+            val parsed = result?.getOrNull()
+            if (isActive && parsed != null && currentTrackId == trackId) {
+                currentLyricLines = parsed.lines
+                if (player?.isPlaying == true) {
+                    startLyricTicker()
+                }
+            }
+        }
+    }
+
+    private fun startLyricTicker() {
+        if (lyricTickerJob?.isActive == true) return
+        lyricTickerJob = serviceScope.launch {
+            while (isActive) {
+                val p = player
+                val track = musicPlayerController.playbackState.value.currentTrack
+                if (p != null && p.isPlaying && track != null && currentLyricLines.isNotEmpty()) {
+                    val pos = p.currentPosition.toInt()
+                    val currentLine = currentLyricLines.lastOrNull { line ->
+                        line.startTime <= pos && (line.endTime <= 0 || pos <= line.endTime + 1500)
+                    }
+                    val text = currentLine?.words?.joinToString("") { it.word }?.trim().orEmpty()
+                    if (text != lastBroadcastLyric) {
+                        lastBroadcastLyric = text
+                        updateMetadataAndNotification(track, text)
+                        broadcastLyric(track, text, pos.toLong(), p.duration)
+                    }
+                }
+                delay(250)
+            }
+        }
+    }
+
+    private fun stopLyricTicker() {
+        lyricTickerJob?.cancel()
+        lyricTickerJob = null
+    }
+
+    private fun updateMetadataAndNotification(track: com.example.seteasecloudmusic.core.model.Track, lyric: String) {
+        val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
+        val displaySubtitle = lyric.ifBlank { artist }
+        val metadata = MediaMetadata.Builder()
+            .setTitle(track.title)
+            .setDisplayTitle(track.title)
+            .setArtist(artist)
+            .setSubtitle(displaySubtitle)
+            .setDescription(displaySubtitle)
+            .setAlbumTitle(track.album?.title ?: track.title)
+            .setArtworkUri(track.coverUrl?.toUri())
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+            .build()
+
+        player?.playlistMetadata = metadata
+    }
+
+    private fun broadcastLyric(track: com.example.seteasecloudmusic.core.model.Track, lyric: String, position: Long, duration: Long) {
+        val artist = track.artists.joinToString(" / ") { it.name }
+        // 1. 发送网易云音乐与通用音乐歌词广播（供第三方歌词插件/状态栏抓取）
+        val intent = Intent("com.netease.cloudmusic.lyrics").apply {
+            putExtra("track", track.title)
+            putExtra("artist", artist)
+            putExtra("lyric", lyric)
+            putExtra("position", position)
+            putExtra("duration", duration)
+            putExtra("is_playing", true)
+        }
+        sendBroadcast(intent)
+
+        // 2. 兼容系统及常见状态栏歌词模块广播 (com.android.music.metachanged)
+        val metaIntent = Intent("com.android.music.metachanged").apply {
+            putExtra("track", track.title)
+            putExtra("artist", artist)
+            putExtra("album", track.album?.title ?: track.title)
+            putExtra("lyric", lyric)
+            putExtra("position", position)
+            putExtra("duration", duration)
+            putExtra("playing", true)
+        }
+        sendBroadcast(metaIntent)
     }
 
     private var isForegroundServiceStarted = false
@@ -283,6 +454,9 @@ class MusicService : MediaSessionService() {
         val shouldReconnect = player?.playWhenReady == true && player?.mediaItemCount != 0
         musicPlayerController.onServiceDestroyed(shouldReconnect)
         isForegroundServiceStarted = false
+        stopLyricTicker()
+        currentLyricJob?.cancel()
+        currentLyricLines = emptyList()
         serviceScope.cancel()
         mediaSession?.release()
         player?.release()

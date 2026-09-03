@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">SeteaseCloudMusic</string>
+    <string name="playback_notification_channel_name">音乐播放控制</string>
+    <string name="playback_notification_channel_desc">用于在系统通知栏、锁屏、超级岛及副屏/背屏上显示音乐播放信息与快捷控制</string>
 </resources>

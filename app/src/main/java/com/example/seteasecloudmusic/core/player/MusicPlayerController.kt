@@ -864,15 +864,16 @@ class MusicPlayerController @Inject constructor(
     private fun persistCurrentState() {
         val state = _playbackState.value
         if (state.queueTracks.isNotEmpty() && state.currentQueueIndex in state.queueTracks.indices) {
-            playbackCacheManager.savePlaybackState(
-                SavedPlaybackState(
-                    queueTracks = state.queueTracks,
-                    currentQueueIndex = state.currentQueueIndex,
-                    currentPositionMs = state.currentPositionMs,
-                    durationMs = state.durationMs,
-                    playbackMode = state.playbackMode
-                )
+            val snapshot = SavedPlaybackState(
+                queueTracks = state.queueTracks,
+                currentQueueIndex = state.currentQueueIndex,
+                currentPositionMs = state.currentPositionMs,
+                durationMs = state.durationMs,
+                playbackMode = state.playbackMode
             )
+            scope.launch(ioDispatcher) {
+                playbackCacheManager.savePlaybackState(snapshot)
+            }
         }
     }
 
