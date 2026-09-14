@@ -98,6 +98,7 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
@@ -811,7 +812,7 @@ private fun LikedSongsHeroCard(
             ) {
                 if (!playlist?.coverUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = playlist?.coverUrl,
+                        model = playlist?.coverUrl.toCoverThumbnailUrl(180),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -1130,7 +1131,7 @@ private fun PlaylistRowItem(
         ) {
             if (!playlist.coverUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = playlist.coverUrl,
+                    model = playlist.coverUrl.toCoverThumbnailUrl(140),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop

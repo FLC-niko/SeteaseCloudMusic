@@ -49,13 +49,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistAlbum
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private val ArtistPageBg = Color(0xFFF8F8F9)
 private val ArtistPrimaryText = Color(0xFF111111)
@@ -109,15 +108,10 @@ fun ArtistDetailScreen(
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val lazyListState = rememberLazyListState()
-    val collapseFraction by rememberAppleMusicCollapseFraction(
+    val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 200.dp
     )
-
-    val artistBackdrop = rememberLayerBackdrop {
-        drawRect(ArtistPageBg)
-        drawContent()
-    }
 
     Box(
         modifier = Modifier
@@ -132,39 +126,34 @@ fun ArtistDetailScreen(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(artistBackdrop)
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 120.dp)
         ) {
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 120.dp)
-            ) {
+            item {
+                ArtistHeroSection(
+                    artistName = uiState.artistName,
+                    artistCoverUrl = uiState.artistCoverUrl,
+                    onPlayFirstSong = onPlayFirstSong
+                )
+            }
+
+            if (!uiState.errorMessage.isNullOrBlank()) {
                 item {
-                    ArtistHeroSection(
-                        artistName = uiState.artistName,
-                        artistCoverUrl = uiState.artistCoverUrl,
-                        onPlayFirstSong = onPlayFirstSong
+                    Text(
+                        text = uiState.errorMessage,
+                        color = Color(0xFFB52438),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
                     )
                 }
+            }
 
-                if (!uiState.errorMessage.isNullOrBlank()) {
-                    item {
-                        Text(
-                            text = uiState.errorMessage,
-                            color = Color(0xFFB52438),
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-
-                item {
-                    SectionHeader(
-                        title = "歌曲",
-                        isLoadingMore = uiState.isSongsLoadingMore,
+            item {
+                SectionHeader(
+                    title = "歌曲",
+                    isLoadingMore = uiState.isSongsLoadingMore,
                     onMoreClick = onMoreSongsClick
                 )
             }
@@ -234,14 +223,12 @@ fun ArtistDetailScreen(
             }
         }
 
-        }
-
-        // 统一的 Apple Music 风格渐变模糊返回顶栏
+        // 统一的 Apple Music 风格渐变磨砂返回顶栏
         AppleMusicCollapsedTopBar(
             title = uiState.artistName,
-            collapseFraction = collapseFraction,
+            collapseFraction = collapseFractionState.value,
             statusBarHeight = statusBarHeight,
-            backdrop = artistBackdrop,
+            backdrop = null,
             showBackButton = true,
             onBackClick = onClose,
             modifier = Modifier.align(Alignment.TopCenter)
@@ -571,7 +558,7 @@ private fun ArtworkCard(
             .background(Color(0xFFE7E7EC))
     ) {
         AsyncImage(
-            model = imageUrl,
+            model = imageUrl.toCoverThumbnailUrl(240),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             alpha = alpha,
@@ -589,7 +576,7 @@ private fun CircleArtworkCard(imageUrl: String?) {
             .background(Color(0xFFE7E7EC))
     ) {
         AsyncImage(
-            model = imageUrl,
+            model = imageUrl.toCoverThumbnailUrl(160),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()

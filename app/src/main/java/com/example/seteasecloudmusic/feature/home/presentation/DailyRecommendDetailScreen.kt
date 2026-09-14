@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,16 +49,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
 
 private val DetailPageBg = Color.White
 private val DetailPrimary = Color(0xFF111111)
@@ -92,15 +87,10 @@ fun DailyRecommendDetailScreen(
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val lazyListState = rememberLazyListState()
-    val collapseFraction by rememberAppleMusicCollapseFraction(
+    val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 220.dp
     )
-
-    val heroBackdrop = rememberLayerBackdrop {
-        drawRect(Color.Transparent)
-        drawContent()
-    }
 
     Box(
         modifier = Modifier
@@ -113,9 +103,7 @@ fun DailyRecommendDetailScreen(
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             item {
-                Box(modifier = Modifier.layerBackdrop(heroBackdrop)) {
-                    DetailHeroSection(tracks = tracks, title = title)
-                }
+                DetailHeroSection(tracks = tracks, title = title)
             }
 
             item {
@@ -140,29 +128,18 @@ fun DailyRecommendDetailScreen(
             }
         }
 
-        // 未折叠时的悬浮玻璃关闭按钮
+        // 未折叠时的悬浮轻质玻璃关闭按钮
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = statusBarHeight + 8.dp, end = 20.dp)
                 .size(40.dp)
                 .graphicsLayer {
-                    alpha = (1f - collapseFraction).coerceIn(0f, 1f)
+                    alpha = (1f - collapseFractionState.value).coerceIn(0f, 1f)
                 }
-                .drawBackdrop(
-                    backdrop = heroBackdrop,
-                    shape = { RoundedRectangle(20.dp) },
-                    effects = {
-                        vibrancy()
-                        blur(2f.dp.toPx())
-                        lens(
-                            refractionHeight = 16f.dp.toPx(),
-                            refractionAmount = 32f.dp.toPx(),
-                            chromaticAberration = true
-                        )
-                    },
-                    onDrawSurface = { drawRect(Color.White.copy(alpha = 0.50f)) }
-                )
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.65f))
+                .border(0.5.dp, Color.White.copy(alpha = 0.85f), CircleShape)
                 .clickable(onClick = onClose),
             contentAlignment = Alignment.Center
         ) {
@@ -174,20 +151,20 @@ fun DailyRecommendDetailScreen(
             )
         }
 
-        // 折叠时的统一 Apple Music 渐变模糊导航条
+        // 折叠时的统一 Apple Music 渐变磨砂顶栏
         AppleMusicCollapsedTopBar(
             title = title,
-            collapseFraction = collapseFraction,
+            collapseFraction = collapseFractionState.value,
             statusBarHeight = statusBarHeight,
-            backdrop = heroBackdrop,
+            backdrop = null,
             modifier = Modifier.align(Alignment.TopCenter),
             trailingContent = {
                 Box(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.42f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.65f), CircleShape)
+                        .background(Color.White.copy(alpha = 0.60f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.85f), CircleShape)
                         .clickable(onClick = onClose),
                     contentAlignment = Alignment.Center
                 ) {
@@ -268,30 +245,29 @@ private fun DetailPosterCoverGrid(
     modifier: Modifier = Modifier
 ) {
     val slotCount = 20
-    val displayItems = List(slotCount) { index -> covers.getOrNull(index) }
+    val displayItems = remember(covers) {
+        List(slotCount) { index -> covers.getOrNull(index).toCoverThumbnailUrl(180) }
+    }
 
-    BoxWithConstraints(modifier = modifier) {
-        val gap = 1.dp
-        val columns = 4
-        val rows = 5
-        val cellSize = (maxWidth - gap * (columns - 1)) / columns
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(gap),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            repeat(rows) { rowIndex ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    repeat(columns) { colIndex ->
-                        val itemIndex = rowIndex * columns + colIndex
-                        DetailPosterGridCell(
-                            imageUrl = displayItems[itemIndex],
-                            size = cellSize
-                        )
-                    }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+        modifier = modifier.fillMaxSize()
+    ) {
+        repeat(5) { rowIndex ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                repeat(4) { colIndex ->
+                    val itemIndex = rowIndex * 4 + colIndex
+                    DetailPosterGridCell(
+                        imageUrl = displayItems[itemIndex],
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
                 }
             }
         }
@@ -301,11 +277,10 @@ private fun DetailPosterCoverGrid(
 @Composable
 private fun DetailPosterGridCell(
     imageUrl: String?,
-    size: androidx.compose.ui.unit.Dp
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
-            .size(size)
+        modifier = modifier
             .background(Color(0xFFDCDDE2))
     ) {
         if (!imageUrl.isNullOrBlank()) {
@@ -340,7 +315,7 @@ private fun DetailTrackRow(
         ) {
             if (!track.coverUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = track.coverUrl,
+                    model = track.coverUrl.toCoverThumbnailUrl(140),
                     contentDescription = "歌曲封面",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

@@ -49,16 +49,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
 
 private val PlaylistPageBg = Color(0xFFF7F7FA)
 private val PlaylistTextPrimary = Color(0xFF111111)
@@ -80,7 +76,7 @@ fun PlaylistDetailScreen(
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val lazyListState = rememberLazyListState()
-    val collapseFraction by rememberAppleMusicCollapseFraction(
+    val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 140.dp
     )
@@ -117,7 +113,6 @@ fun PlaylistDetailScreen(
                 item(key = "playlist_hero") {
                     PlaylistHeroSection(
                         detail = detail,
-                        backdrop = backdrop,
                         onPlayAll = onPlayAll
                     )
                 }
@@ -183,12 +178,12 @@ fun PlaylistDetailScreen(
                 }
             }
 
-            // 顶部 Apple Music 风格渐变模糊导航栏（取消硬边遮罩与状态栏空隙，使用 Backdrop 渐变模糊）
+            // 顶部 Apple Music 风格渐变模糊导航栏（使用轻量级磨砂玻璃，滑动与弹出 0 卡顿）
             AppleMusicCollapsedTopBar(
                 title = detail.name,
-                collapseFraction = collapseFraction,
+                collapseFraction = collapseFractionState.value,
                 statusBarHeight = statusBarHeight,
-                backdrop = backdrop,
+                backdrop = null,
                 showBackButton = true,
                 onBackClick = onClose,
                 modifier = Modifier.align(Alignment.TopCenter)
@@ -203,31 +198,21 @@ fun PlaylistDetailScreen(
 @Composable
 private fun PlaylistHeroSection(
     detail: PlaylistDetail,
-    backdrop: Backdrop,
     onPlayAll: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { RoundedRectangle(24.dp) },
-                effects = {
-                    vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(16f.dp.toPx(), 32f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.42f)) }
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.62f), RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.65f))
+            .border(1.dp, Color.White.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 封面图或默认图标
         if (!detail.coverUrl.isNullOrBlank()) {
             AsyncImage(
-                model = detail.coverUrl,
+                model = detail.coverUrl.toCoverThumbnailUrl(300),
                 contentDescription = null,
                 modifier = Modifier
                     .size(136.dp)
@@ -352,7 +337,7 @@ private fun PlaylistDetailTrackRow(
         ) {
             if (!track.coverUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = track.coverUrl,
+                    model = track.coverUrl.toCoverThumbnailUrl(140),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop

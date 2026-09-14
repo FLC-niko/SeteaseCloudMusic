@@ -167,37 +167,53 @@ fun AppleMusicCollapsedTopBar(
             .fillMaxWidth()
             .height(barHeight)
     ) {
-        // 纯透明渐变模糊层：无任何白色泛白背景，仅靠 Backdrop 真实高斯模糊，底部柔和衰减至完全透明
-        if (blurAlpha > 0f && backdrop != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = blurAlpha
-                        compositingStrategy = CompositingStrategy.Offscreen
-                    }
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0.0f to Color.Black,
-                                0.60f to Color.Black.copy(alpha = 0.90f),
-                                0.85f to Color.Black.copy(alpha = 0.35f),
-                                1.0f to Color.Transparent
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    }
-            ) {
+        // 顶栏背景过渡层：若提供了 backdrop 则应用实时液态模糊；若未提供（如为了顶级滑动性能），采用轻量级半透明磨砂渐变遮罩
+        if (blurAlpha > 0f) {
+            if (backdrop != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .drawPlainBackdrop(
-                            backdrop = backdrop,
-                            shape = { RectangleShape },
-                            effects = {
-                                blur(16f.dp.toPx())
-                            }
+                        .graphicsLayer {
+                            alpha = blurAlpha
+                            compositingStrategy = CompositingStrategy.Offscreen
+                        }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0.0f to Color.Black,
+                                    0.60f to Color.Black.copy(alpha = 0.90f),
+                                    0.85f to Color.Black.copy(alpha = 0.35f),
+                                    1.0f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawPlainBackdrop(
+                                backdrop = backdrop,
+                                shape = { RectangleShape },
+                                effects = {
+                                    blur(16f.dp.toPx())
+                                }
+                            )
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = blurAlpha }
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to Color.White.copy(alpha = 0.96f),
+                                0.65f to Color.White.copy(alpha = 0.90f),
+                                0.88f to Color.White.copy(alpha = 0.45f),
+                                1.0f to Color.Transparent
+                            )
                         )
                 )
             }

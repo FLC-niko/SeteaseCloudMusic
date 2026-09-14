@@ -69,12 +69,11 @@ import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private val HomeBackground = Color.White
 private val HomePrimary = Color(0xFF111111)
@@ -137,170 +136,178 @@ private fun HomeScreenContent(
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val lazyListState = rememberLazyListState()
-    val collapseFraction by rememberAppleMusicCollapseFraction(
+    val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
     )
     var posterWallBounds by remember { mutableStateOf(Rect.Zero) }
     var radarCardBounds by remember { mutableStateOf(Rect.Zero) }
 
-    val homeBackdrop = rememberLayerBackdrop {
-        drawRect(HomeBackground)
-        drawContent()
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(HomeBackground)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(homeBackdrop)
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                top = statusBarHeight + 8.dp,
+                bottom = bottomContentPadding
+            )
         ) {
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = statusBarHeight + 8.dp,
-                    bottom = bottomContentPadding
+            item(key = "large_page_title") {
+                AppleMusicLargeTitle(
+                    title = "首页",
+                    collapseFraction = collapseFractionState.value,
+                    trailingContent = {
+                        UserAvatarButton(
+                            avatarUrl = avatarUrl,
+                            displayName = displayName,
+                            onClick = { onAvatarClick?.invoke() }
+                        )
+                    }
                 )
-            ) {
-                item(key = "large_page_title") {
-                    AppleMusicLargeTitle(
-                        title = "首页",
-                        collapseFraction = collapseFraction,
-                        trailingContent = {
-                            UserAvatarButton(
-                                avatarUrl = avatarUrl,
-                                displayName = displayName,
-                                onClick = { onAvatarClick?.invoke() }
-                            )
-                        }
-                    )
-                }
+            }
 
-                if (uiState.isLoading && uiState.tracks.isEmpty()) {
-                    item(key = "home_top_loading") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = HomeAccent,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
+            if (uiState.isLoading && uiState.tracks.isEmpty()) {
+                item(key = "home_top_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = HomeAccent,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
+            }
 
-                if (!uiState.errorMessage.isNullOrBlank()) {
-                    item(key = "home_error_message") {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 8.dp)
+            if (!uiState.errorMessage.isNullOrBlank()) {
+                item(key = "home_error_message") {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.WarningAmber,
-                                    contentDescription = null,
-                                    tint = Color(0xFFE53935),
-                                    modifier = Modifier.size(20.dp)
+                            Icon(
+                                imageVector = Icons.Filled.WarningAmber,
+                                contentDescription = null,
+                                tint = Color(0xFFE53935),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = uiState.errorMessage,
+                                    color = Color(0xFFD32F2F),
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp
                                 )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = uiState.errorMessage,
-                                        color = Color(0xFFD32F2F),
-                                        fontSize = 13.sp,
-                                        lineHeight = 18.sp
-                                    )
-                                    Text(
-                                        text = "提示：可轻触页面上方刷新按钮重新获取",
-                                        color = Color(0xFF8E8E93),
-                                        fontSize = 11.sp
-                                    )
-                                }
+                                Text(
+                                    text = "提示：可轻触页面上方刷新按钮重新获取",
+                                    color = Color(0xFF8E8E93),
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                item(key = "daily_recommend_wall") {
-                    DailyRecommendPosterWall(
-                        tracks = uiState.tracks,
-                        onClick = { onPosterWallClick(uiState.tracks, posterWallBounds, "每日推荐") },
-                        onBoundsChanged = { posterWallBounds = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
-                    )
-                }
+            item(key = "daily_recommend_wall") {
+                DailyRecommendPosterWall(
+                    tracks = uiState.tracks,
+                    onClick = { onPosterWallClick(uiState.tracks, posterWallBounds, "每日推荐") },
+                    onBoundsChanged = { posterWallBounds = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                )
+            }
 
-                // 1. 中间区域：「根据你喜爱的歌曲推荐」—— 始终展示
-                item(key = "favorite_recommended_songs_section") {
-                    FavoriteRecommendedSongsSection(
-                        title = uiState.favoriteSectionTitle,
-                        tracks = uiState.favoriteTracks,
-                        onTrackClick = onFavoriteTrackClick,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 18.dp)
-                    )
-                }
+            // 1. 中间区域：「根据你喜爱的歌曲推荐」—— 始终展示
+            item(key = "favorite_recommended_songs_section") {
+                FavoriteRecommendedSongsSection(
+                    title = uiState.favoriteSectionTitle,
+                    tracks = uiState.favoriteTracks,
+                    onTrackClick = onFavoriteTrackClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp)
+                )
+            }
 
-                // 2. 最下面区域：「推荐歌单」—— 始终展示
-                item(key = "big_card_playlists_section") {
-                    BigCardPlaylistsSection(
-                        tracks = uiState.tracks,
-                        favoriteTracks = uiState.favoriteTracks,
-                        radarTracks = uiState.radarTracks,
-                        radarPlaylist = uiState.radarPlaylist,
-                        likedCoverUrl = uiState.likedMusicCoverUrl,
-                        privateDjCoverUrl = uiState.privateDjCoverUrl,
-                        onCardClick = { card ->
-                            when (card.type) {
-                                BigCardType.RADAR_PLAYLIST -> onPosterWallClick(uiState.radarTracks, radarCardBounds, "雷达歌单")
-                                else -> onCardPlayClick(card)
-                            }
-                        },
-                        onCardPlayClick = onCardPlayClick,
-                        onRadarCardPositioned = { radarCardBounds = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 28.dp, bottom = 16.dp)
-                    )
-                }
+            // 2. 最下面区域：「推荐歌单」—— 始终展示
+            item(key = "big_card_playlists_section") {
+                BigCardPlaylistsSection(
+                    tracks = uiState.tracks,
+                    favoriteTracks = uiState.favoriteTracks,
+                    radarTracks = uiState.radarTracks,
+                    radarPlaylist = uiState.radarPlaylist,
+                    likedCoverUrl = uiState.likedMusicCoverUrl,
+                    privateDjCoverUrl = uiState.privateDjCoverUrl,
+                    onCardClick = { card ->
+                        when (card.type) {
+                            BigCardType.RADAR_PLAYLIST -> onPosterWallClick(uiState.radarTracks, radarCardBounds, "雷达歌单")
+                            else -> onCardPlayClick(card)
+                        }
+                    },
+                    onCardPlayClick = onCardPlayClick,
+                    onRadarCardPositioned = { radarCardBounds = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 28.dp, bottom = 16.dp)
+                )
             }
         }
 
-        // 覆盖在顶部的 Apple Music 风格渐变模糊导航栏（基于 Backdrop 实时采样，无纯色硬遮罩）
-        AppleMusicCollapsedTopBar(
-            title = "首页",
-            collapseFraction = collapseFraction,
+        // 覆盖在顶部的 Apple Music 风格渐变模糊导航栏（轻量级磨砂玻璃，滑动零开销）
+        HomeCollapsedTopBar(
+            collapseFractionProvider = { collapseFractionState.value },
             statusBarHeight = statusBarHeight,
-            backdrop = homeBackdrop,
-            modifier = Modifier.align(Alignment.TopCenter),
-            trailingContent = {
-                UserAvatarButton(
-                    avatarUrl = avatarUrl,
-                    displayName = displayName,
-                    size = 34.dp,
-                    onClick = { onAvatarClick?.invoke() }
-                )
-            }
+            avatarUrl = avatarUrl,
+            displayName = displayName,
+            onAvatarClick = onAvatarClick,
+            modifier = Modifier.align(Alignment.TopCenter)
         )
     }
+}
+
+@Composable
+private fun HomeCollapsedTopBar(
+    collapseFractionProvider: () -> Float,
+    statusBarHeight: Dp,
+    avatarUrl: String?,
+    displayName: String?,
+    onAvatarClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    AppleMusicCollapsedTopBar(
+        title = "首页",
+        collapseFraction = collapseFractionProvider(),
+        statusBarHeight = statusBarHeight,
+        backdrop = null,
+        modifier = modifier,
+        trailingContent = {
+            UserAvatarButton(
+                avatarUrl = avatarUrl,
+                displayName = displayName,
+                size = 34.dp,
+                onClick = { onAvatarClick?.invoke() }
+            )
+        }
+    )
 }
 
 @Composable
@@ -310,7 +317,9 @@ private fun DailyRecommendPosterWall(
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val wallCovers = tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
+    val wallCovers = remember(tracks) {
+        tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
+    }
 
     Column(
         modifier = modifier
@@ -389,30 +398,29 @@ private fun PosterCoverGrid(
     modifier: Modifier = Modifier
 ) {
     val slotCount = 20
-    val displayItems = List(slotCount) { index -> covers.getOrNull(index) }
+    val displayItems = remember(covers) {
+        List(slotCount) { index -> covers.getOrNull(index).toCoverThumbnailUrl(180) }
+    }
 
-    BoxWithConstraints(modifier = modifier) {
-        val gap = 1.dp
-        val columns = 4
-        val rows = 5
-        val cellSize = (maxWidth - gap * (columns - 1)) / columns
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(gap),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            repeat(rows) { rowIndex ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    repeat(columns) { colIndex ->
-                        val itemIndex = rowIndex * columns + colIndex
-                        PosterGridCell(
-                            imageUrl = displayItems[itemIndex],
-                            size = cellSize
-                        )
-                    }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+        modifier = modifier.fillMaxSize()
+    ) {
+        repeat(5) { rowIndex ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                repeat(4) { colIndex ->
+                    val itemIndex = rowIndex * 4 + colIndex
+                    PosterGridCell(
+                        imageUrl = displayItems[itemIndex],
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
                 }
             }
         }
@@ -422,11 +430,10 @@ private fun PosterCoverGrid(
 @Composable
 private fun PosterGridCell(
     imageUrl: String?,
-    size: Dp
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
-            .size(size)
+        modifier = modifier
             .background(Color(0xFFDCDDE2))
     ) {
         if (!imageUrl.isNullOrBlank()) {
@@ -675,7 +682,7 @@ private fun SongRecommendRowItem(
         ) {
             if (!track.coverUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = track.coverUrl,
+                    model = track.coverUrl.toCoverThumbnailUrl(140),
                     contentDescription = "歌曲封面",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -914,7 +921,7 @@ private fun BigCardPlaylistItem(
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
-                        model = card.coverUrl,
+                        model = card.coverUrl.toCoverThumbnailUrl(200),
                         contentDescription = card.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -925,7 +932,7 @@ private fun BigCardPlaylistItem(
             }
         } else if (!card.coverUrl.isNullOrBlank()) {
             AsyncImage(
-                model = card.coverUrl,
+                model = card.coverUrl.toCoverThumbnailUrl(360),
                 contentDescription = card.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

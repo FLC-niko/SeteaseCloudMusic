@@ -11,6 +11,7 @@ import com.example.seteasecloudmusic.feature.home.domain.usecase.GetDailyRecomme
 import com.example.seteasecloudmusic.feature.home.domain.usecase.GetFavoriteRecommendSongsUseCase
 import com.example.seteasecloudmusic.feature.home.domain.usecase.GetRadarPlaylistUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,20 +50,22 @@ class HomeViewModel @Inject constructor(
     private var loadRequestId = 0L
 
     init {
-        // 1. 0ms 瞬间加载本地持久化推荐、喜好推荐与雷达缓存，冷启动直接秒出封面与曲目
-        val cached = getDailyRecommendSongsUseCase.getCached()
-        val cachedFav = getFavoriteRecommendSongsUseCase.getCached()
-        val cachedRadar = getRadarPlaylistUseCase.getCached()
-        if (!cached.isNullOrEmpty() || cachedFav != null || cachedRadar != null) {
-            _uiState.update {
-                it.copy(
-                    tracks = cached ?: emptyList(),
-                    favoriteSectionTitle = cachedFav?.title ?: "根据你喜爱的歌曲推荐",
-                    favoriteTracks = cachedFav?.tracks ?: emptyList(),
-                    radarTracks = cachedRadar?.tracks ?: emptyList(),
-                    radarPlaylist = cachedRadar,
-                    isLoading = false
-                )
+        // 1. 异步在 IO 调度器加载本地持久化推荐、喜好推荐与雷达缓存，避免在主线程执行反射与 SharedPreferences 阻塞首帧绘制
+        viewModelScope.launch(Dispatchers.IO) {
+            val cached = getDailyRecommendSongsUseCase.getCached()
+            val cachedFav = getFavoriteRecommendSongsUseCase.getCached()
+            val cachedRadar = getRadarPlaylistUseCase.getCached()
+            if (!cached.isNullOrEmpty() || cachedFav != null || cachedRadar != null) {
+                _uiState.update {
+                    it.copy(
+                        tracks = cached ?: it.tracks,
+                        favoriteSectionTitle = cachedFav?.title ?: it.favoriteSectionTitle,
+                        favoriteTracks = cachedFav?.tracks ?: it.favoriteTracks,
+                        radarTracks = cachedRadar?.tracks ?: it.radarTracks,
+                        radarPlaylist = cachedRadar ?: it.radarPlaylist,
+                        isLoading = false
+                    )
+                }
             }
         }
         // 2. 监听播放器状态：仅当当前播放为私人 DJ 时更新其封面，播放其他歌单时私人 DJ 封面保持不变
@@ -77,9 +80,9 @@ class HomeViewModel @Inject constructor(
             }
         }
         // 3. 后台静默拉取今日最新推荐、喜好推荐、雷达歌单与用户红心封面
-        refreshDailyRecommend(afresh = false, silent = !cached.isNullOrEmpty())
-        refreshFavoriteRecommend(afresh = false, silent = cachedFav != null)
-        refreshRadarPlaylist(silent = cachedRadar != null)
+        refreshDailyRecommend(afresh = false, silent = true)
+        refreshFavoriteRecommend(afresh = false, silent = true)
+        refreshRadarPlaylist(silent = true)
         fetchLikedMusicCover()
     }
 

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlaylist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverToplist
@@ -222,7 +223,7 @@ private fun DiscoverChipCard(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
-                    model = playlist.coverUrl,
+                    model = playlist.coverUrl.toCoverThumbnailUrl(200),
                     contentDescription = playlist.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -302,7 +303,7 @@ private fun DiscoverToplistCard(
                     .background(DiscoverSurface)
             ) {
                 AsyncImage(
-                    model = toplist.coverUrl,
+                    model = toplist.coverUrl.toCoverThumbnailUrl(320),
                     contentDescription = toplist.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -431,7 +432,7 @@ private fun DiscoverSongRow(
             modifier = Modifier.size(56.dp)
         ) {
             AsyncImage(
-                model = track.coverUrl,
+                model = track.coverUrl.toCoverThumbnailUrl(140),
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -508,7 +509,7 @@ private fun DiscoverPlaylistRow(
             modifier = Modifier.size(72.dp)
         ) {
             AsyncImage(
-                model = playlist.coverUrl,
+                model = playlist.coverUrl.toCoverThumbnailUrl(160),
                 contentDescription = playlist.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
