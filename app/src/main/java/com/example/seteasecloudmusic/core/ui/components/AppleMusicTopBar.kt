@@ -109,7 +109,7 @@ fun AppleMusicLargeTitle(
                 transformOrigin = TransformOrigin(0f, 0.5f)
             }
         )
-        if (trailingContent != null) {
+        if (trailingContent != null && titleAlpha > 0.05f) {
             Box(
                 modifier = Modifier.graphicsLayer {
                     alpha = titleAlpha
@@ -269,7 +269,7 @@ fun AppleMusicCollapsedTopBar(
             }
 
             // 右侧操作项（如头像）
-            if (trailingContent != null) {
+            if (trailingContent != null && titleAlpha > 0.05f) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)

@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.main
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,6 +26,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // 启用最高屏幕刷新率（如 120Hz / 90Hz），避免被系统节流至 60Hz
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            }
+            val modes = currentDisplay?.supportedModes
+            val maxMode = modes?.maxByOrNull { it.refreshRate }
+            if (maxMode != null) {
+                val params = window.attributes
+                params.preferredDisplayModeId = maxMode.modeId
+                window.attributes = params
+            }
+        }
+
         setContent {
             AppNavigation()
         }

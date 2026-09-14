@@ -12,6 +12,7 @@ import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetPlaylistDetailUseCase
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetUserPlaylistsUseCase
+import com.example.seteasecloudmusic.core.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -68,7 +69,8 @@ class MineViewModel @Inject constructor(
     private val getUserPlaylistsUseCase: GetUserPlaylistsUseCase,
     private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
     private val localMusicRepository: LocalMusicRepository,
-    private val musicPlayerController: MusicPlayerController
+    private val musicPlayerController: MusicPlayerController,
+    private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MineUiState())
@@ -169,6 +171,17 @@ class MineViewModel @Inject constructor(
             val dirPath = localMusicRepository.getCustomDirectoryPath()
             _uiState.update { it.copy(localDirectoryPath = dirPath) }
             localMusicRepository.getLocalTracks(forceRefresh = false)
+        }
+
+        // 4. 监听全局断网重试事件
+        viewModelScope.launch {
+            networkMonitor.retryTrigger.collect {
+                val session = _uiState.value.authSession
+                if (session?.isLoggedIn == true && session.userId != null) {
+                    val reqId = ++playlistRequestId
+                    loadUserPlaylists(session.userId, silent = false, requestId = reqId)
+                }
+            }
         }
     }
 
@@ -281,6 +294,12 @@ class MineViewModel @Inject constructor(
                         errorMessage = if (current.createdPlaylists.isEmpty() && current.likedPlaylist == null) {
                             err.toUserFriendlyMessage("加载歌单")
                         } else null
+                    )
+                }
+                if (!networkMonitor.checkOnlineStatus() || (_uiState.value.createdPlaylists.isEmpty() && _uiState.value.likedPlaylist == null)) {
+                    networkMonitor.requestOfflineDialog(
+                        title = "网络连接已断开",
+                        description = "歌单加载失败，请检查网络设置后重试。"
                     )
                 }
             }

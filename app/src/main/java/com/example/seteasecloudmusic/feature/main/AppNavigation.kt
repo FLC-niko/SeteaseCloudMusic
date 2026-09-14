@@ -78,6 +78,7 @@ import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
 import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
+import com.example.seteasecloudmusic.core.ui.components.Ios26NetworkOfflineDialog
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -259,10 +260,15 @@ fun AppNavigation(
     val searchViewModel: SearchViewModel = hiltViewModel()
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
+    val mainViewModel: MainViewModel = hiltViewModel()
 
     val searchUiState by searchViewModel.uiState.collectAsStateWithLifecycle()
     val playbackState by playerViewModel.playbackState.collectAsStateWithLifecycle()
     val authUiState by authViewModel.uiState.collectAsStateWithLifecycle()
+    val showOfflineDialog by mainViewModel.showOfflineDialog.collectAsStateWithLifecycle()
+    val isRetrying by mainViewModel.isRetrying.collectAsStateWithLifecycle()
+    val dialogTitle by mainViewModel.dialogTitle.collectAsStateWithLifecycle()
+    val dialogDescription by mainViewModel.dialogDescription.collectAsStateWithLifecycle()
 
     var showNowPlaying by remember { mutableStateOf(false) }
     var showAccountSheet by remember { mutableStateOf(false) }
@@ -405,48 +411,43 @@ fun AppNavigation(
         }
 
         val hasCustomTopBar = selectedIndex == 0 || selectedIndex == 2
-        val topLargeTitleAlpha by animateFloatAsState(
-            targetValue = if (hasCustomTopBar) 0f else (1f - sinkProgress),
-            animationSpec = tween(durationMillis = 220),
-            label = "topLargeTitleAlpha"
-        )
+        if (!hasCustomTopBar) {
+            val topLargeTitleAlpha by animateFloatAsState(
+                targetValue = 1f - sinkProgress,
+                animationSpec = tween(durationMillis = 220),
+                label = "topLargeTitleAlpha"
+            )
 
-        AnimatedContent(
-            targetState = pageTitle,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 30)) togetherWith
-                    fadeOut(animationSpec = tween(durationMillis = 140))
-            },
-            label = "pageTitleTransition",
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 24.dp, top = 16.dp)
-                .graphicsLayer { alpha = topLargeTitleAlpha }
-        ) { animatedTitle ->
-            LargePageTitle(title = animatedTitle)
+            AnimatedContent(
+                targetState = pageTitle,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 30)) togetherWith
+                        fadeOut(animationSpec = tween(durationMillis = 140))
+                },
+                label = "pageTitleTransition",
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(start = 20.dp, top = 14.dp)
+                    .graphicsLayer { alpha = topLargeTitleAlpha }
+            ) { animatedTitle ->
+                LargePageTitle(title = animatedTitle)
+            }
+
+            UserAvatarButton(
+                avatarUrl = authUiState.authSession?.avatarUrl,
+                displayName = authUiState.authSession?.nickname,
+                onClick = {
+                    showAccountSheet = true
+                    onAvatarClick?.invoke()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(end = 20.dp, top = 14.dp)
+                    .graphicsLayer { alpha = 1f - sinkProgress }
+            )
         }
-
-        val topAvatarAlpha by animateFloatAsState(
-            targetValue = if (hasCustomTopBar) 0f else (1f - sinkProgress),
-            animationSpec = tween(durationMillis = 220),
-            label = "topAvatarAlpha"
-        )
-
-        UserAvatarButton(
-            avatarUrl = authUiState.authSession?.avatarUrl,
-            displayName = authUiState.authSession?.nickname,
-            onClick = {
-                showAccountSheet = true
-                onAvatarClick?.invoke()
-            },
-            enabled = !hasCustomTopBar,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(end = 24.dp, top = 12.dp)
-                .graphicsLayer { alpha = topAvatarAlpha }
-        )
 
         // --- 顶层悬浮导航栏及独立搜索按钮 ---
         BoxWithConstraints(
@@ -533,17 +534,8 @@ fun AppNavigation(
                             awaitEachGesture {
                                 val down = awaitFirstDown()
                                 var currentX = down.position.x
+                                // 按下时只让玻璃滑块跟随手指，不立即切换页面，避免拖动过程中整页被高频重组。
                                 dragOffsetX = currentX
-
-                                val updateSelection = { x: Float ->
-                                    val slotWidthPx = if (mainNavItems.isNotEmpty()) size.width.toFloat() / mainNavItems.size.toFloat() else 0f
-                                    if (slotWidthPx > 0f) {
-                                        val newIndex = (x / slotWidthPx).toInt().coerceIn(0, mainNavItems.size - 1)
-                                        selectedIndex = newIndex
-                                    }
-                                }
-                                // 第一次按下时立即响应切换选中状态
-                                updateSelection(currentX)
 
                                 mainBarAnimationScope.launch { mainBarProgressAnimation.animateTo(1f, animationSpec) }
                                 
@@ -553,14 +545,23 @@ fun AppNavigation(
                                     val dragEvent = event.changes.firstOrNull()
                                     if (dragEvent != null && dragEvent.pressed) {
                                         currentX = dragEvent.position.x
+                                        // 拖动中只记录手指位置用于滑块视觉跟随，页面切换留到松手时统一处理
                                         dragOffsetX = currentX
-                                        updateSelection(currentX) // 拖拽时动态更新选中项
                                         dragEvent.consume() // 消耗事件防止底层组件响应
                                     } else {
                                         inGesture = false
                                     }
                                 }
                                 
+                                // ⚡ 松手后才根据最终停留的位置切换页面：
+                                // 整个拖动过程只更新滑块的视觉位置，页面只在手势结束时切换一次，
+                                // 避免“滑到哪里就立刻切到哪个页面”带来的高频重组与性能开销。
+                                val slotWidthPx = if (mainNavItems.isNotEmpty()) size.width.toFloat() / mainNavItems.size.toFloat() else 0f
+                                if (slotWidthPx > 0f) {
+                                    val settledIndex = (currentX / slotWidthPx).toInt().coerceIn(0, mainNavItems.size - 1)
+                                    selectedIndex = settledIndex
+                                }
+
                                 dragOffsetX = null
                                 mainBarAnimationScope.launch { mainBarProgressAnimation.animateTo(0f, animationSpec) }
                             }
@@ -874,6 +875,17 @@ fun AppNavigation(
                 onClose = { selectedArtist = null }
             )
         }
+
+        // 依据 iOS 26 解析图复刻的液态玻璃断网重试小弹窗（物理采样底层真实的动态 Backdrop）
+        Ios26NetworkOfflineDialog(
+            isVisible = showOfflineDialog,
+            backdrop = backdrop,
+            isRetrying = isRetrying,
+            title = dialogTitle,
+            description = dialogDescription,
+            onRetry = { mainViewModel.retry() },
+            onDismiss = { mainViewModel.dismissOfflineDialog() }
+        )
     }
 }
 
@@ -900,10 +912,9 @@ private fun AccountFullScreenOverlay(
 
         val settledDragOffsetPx by animateFloatAsState(
             targetValue = if (isDragging || !visible) dragOffsetPx else 0f,
-            animationSpec = spring(stiffness = 550f, dampingRatio = 0.82f),
+            animationSpec = spring(stiffness = 550f, dampingRatio = 0.84f),
             label = "accountPanelDragOffset"
         )
-        val effectiveDragOffsetPx = if (isDragging) dragOffsetPx else settledDragOffsetPx
         val panelDragState = rememberDraggableState { delta ->
             if (delta > 0f || dragOffsetPx > 0f) {
                 dragOffsetPx = (dragOffsetPx + delta).coerceIn(0f, hiddenOffsetPx)
@@ -915,23 +926,20 @@ private fun AccountFullScreenOverlay(
                 dragOffsetPx = 0f
                 panelOffsetFraction.animateTo(
                     targetValue = 0f,
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f)
+                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 550f)
                 )
             } else {
                 panelOffsetFraction.animateTo(
                     targetValue = 1f,
-                    animationSpec = spring(dampingRatio = 0.88f, stiffness = 460f)
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = 500f)
                 )
                 onDismissed()
             }
         }
 
-        val openProgress = (1f - panelOffsetFraction.value).coerceIn(0f, 1f)
-        val dragProgress = (effectiveDragOffsetPx / panelHeightPx).coerceIn(0f, 1f)
-        val visualProgress = (openProgress * (1f - dragProgress * 0.35f)).coerceIn(0f, 1f)
-        val panelOffsetY = panelOffsetFraction.value * hiddenOffsetPx + effectiveDragOffsetPx
         val panelShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
 
+        // 遮罩层：模糊 + 压暗只在绘制阶段计算，Animatable 每帧只让 RenderNode 失效，不触发重组。
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -943,9 +951,16 @@ private fun AccountFullScreenOverlay(
                         vibrancy()
                     },
                     onDrawSurface = {
-                        drawRect(Color.Black.copy(alpha = 0.32f * visualProgress))
+                        drawRect(Color.Black.copy(alpha = 0.32f))
                     }
                 )
+                .graphicsLayer {
+                    // 下拉拖动时遮罩同步变淡：状态全部在 draw 阶段读取
+                    val openProgress = (1f - panelOffsetFraction.value).coerceIn(0f, 1f)
+                    val effectiveDragOffset = if (isDragging) dragOffsetPx else settledDragOffsetPx
+                    val dragProgress = (effectiveDragOffset / panelHeightPx).coerceIn(0f, 1f)
+                    alpha = (openProgress * (1f - dragProgress * 0.35f)).coerceIn(0f, 1f)
+                }
                 .clickable(
                     enabled = visible,
                     interactionSource = scrimInteractionSource,
@@ -954,17 +969,22 @@ private fun AccountFullScreenOverlay(
                 )
         )
 
+        // 主抽屉卡片：位移在 layout 阶段、缩放在 draw 阶段读取状态，均不触发每帧重组。
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.95f)
-                .offset { IntOffset(0, panelOffsetY.roundToInt()) }
+                .offset {
+                    val offsetFraction = panelOffsetFraction.value
+                    val effectiveDragOffset = if (isDragging) dragOffsetPx else settledDragOffsetPx
+                    IntOffset(0, (offsetFraction * hiddenOffsetPx + effectiveDragOffset).roundToInt())
+                }
                 .graphicsLayer {
-                    val scaleXTarget = 1f - dragProgress * 0.018f
-                    val scaleYTarget = 1f - dragProgress * 0.03f
-                    scaleX = scaleXTarget
-                    scaleY = scaleYTarget
+                    val effectiveDragOffset = if (isDragging) dragOffsetPx else settledDragOffsetPx
+                    val dragProgress = (effectiveDragOffset / panelHeightPx).coerceIn(0f, 1f)
+                    scaleX = 1f - dragProgress * 0.018f
+                    scaleY = 1f - dragProgress * 0.03f
                 }
                 .shadow(
                     elevation = 28.dp,
@@ -1025,11 +1045,11 @@ private fun LargePageTitle(
 ) {
     Text(
         text = title,
-        color = Color.Black,
-        fontSize = 40.sp,
+        fontSize = 34.sp,
         lineHeight = 44.sp,
-        letterSpacing = (-1).sp,
-        fontWeight = FontWeight.Black,
+        letterSpacing = (-0.8).sp,
+        fontWeight = FontWeight.Bold,
+        color = Color(0xFF111111),
         modifier = modifier
     )
 }

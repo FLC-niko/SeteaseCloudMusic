@@ -10,6 +10,7 @@ import com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylis
 import com.example.seteasecloudmusic.feature.home.domain.usecase.GetDailyRecommendSongsUseCase
 import com.example.seteasecloudmusic.feature.home.domain.usecase.GetFavoriteRecommendSongsUseCase
 import com.example.seteasecloudmusic.feature.home.domain.usecase.GetRadarPlaylistUseCase
+import com.example.seteasecloudmusic.core.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,7 +39,8 @@ class HomeViewModel @Inject constructor(
     private val getFavoriteRecommendSongsUseCase: GetFavoriteRecommendSongsUseCase,
     private val getRadarPlaylistUseCase: GetRadarPlaylistUseCase,
     private val homeRecommendRepository: HomeRecommendRepository,
-    private val musicPlayerController: MusicPlayerController
+    private val musicPlayerController: MusicPlayerController,
+    private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -84,6 +86,16 @@ class HomeViewModel @Inject constructor(
         refreshFavoriteRecommend(afresh = false, silent = true)
         refreshRadarPlaylist(silent = true)
         fetchLikedMusicCover()
+
+        // 4. 监听全局断网重试事件
+        viewModelScope.launch {
+            networkMonitor.retryTrigger.collect {
+                refreshDailyRecommend(afresh = true, silent = false)
+                refreshFavoriteRecommend(afresh = true, silent = false)
+                refreshRadarPlaylist(silent = false)
+                fetchLikedMusicCover()
+            }
+        }
     }
 
     fun refreshDailyRecommend(afresh: Boolean = false, silent: Boolean = false) {
@@ -114,6 +126,12 @@ class HomeViewModel @Inject constructor(
                         state.copy(
                             isLoading = false,
                             errorMessage = if (state.tracks.isEmpty()) throwable.toUserFriendlyMessage("获取每日推荐") else null
+                        )
+                    }
+                    if (!networkMonitor.checkOnlineStatus() || _uiState.value.tracks.isEmpty()) {
+                        networkMonitor.requestOfflineDialog(
+                            title = "网络连接已断开",
+                            description = "获取每日推荐失败，请检查网络设置后重试。"
                         )
                     }
                 }

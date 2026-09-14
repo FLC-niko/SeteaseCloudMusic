@@ -160,11 +160,16 @@ fun UserAvatarButton(
             }
             .clip(CircleShape)
             .indication(interactionSource = interactionSource, indication = indication)
-            .clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
+            .then(
+                if (enabled) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick
+                    )
+                } else {
+                    Modifier
+                }
             ),
         contentAlignment = Alignment.Center
     ) {
