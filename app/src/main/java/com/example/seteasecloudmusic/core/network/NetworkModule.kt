@@ -116,33 +116,22 @@ class NetworkModule {
 
         val smartDns = object : okhttp3.Dns {
             override fun lookup(hostname: String): List<java.net.InetAddress> {
-                try {
-                    val res = okhttp3.Dns.SYSTEM.lookup(hostname)
-                    if (res.isNotEmpty()) return res
-                } catch (e: Exception) {
-                    Log.w("NetworkModule", "System DNS failed for $hostname: ${e.message}")
-                }
+                // 系统 DNS 优先；失败时再按域名走网易云固定节点兜底
+                SmartDns.systemLookupOrNull(hostname, "NetworkModule")?.let { return it }
 
                 if (hostname.contains("clientlog") || hostname.contains("163.com") || hostname.contains("netease")) {
-                    try {
-                        val fallbackIps = when {
-                            hostname.contains("clientlog3") -> listOf(
-                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(220.toByte(), 197.toByte(), 30.toByte(), 68.toByte())),
-                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 60.toByte())),
-                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 38.toByte()))
-                            )
-                            hostname.contains("clientlog") -> listOf(
-                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(220.toByte(), 197.toByte(), 30.toByte(), 68.toByte())),
-                                java.net.InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 60.toByte()))
-                            )
-                            else -> emptyList()
-                        }
-                        if (fallbackIps.isNotEmpty()) {
-                            Log.d("NetworkModule", "Using SmartDNS fallback for $hostname -> ${fallbackIps.map { it.hostAddress }}")
-                            return fallbackIps
-                        }
-                    } catch (e: Exception) {
-                        Log.e("NetworkModule", "Fallback DNS resolution failed for $hostname", e)
+                    val fallbackCount = when {
+                        hostname.contains("clientlog3") -> SmartDns.fallbackNodeCount
+                        hostname.contains("clientlog") -> 2
+                        else -> 0
+                    }
+                    if (fallbackCount > 0) {
+                        val fallbackIps = SmartDns.addressesFor(hostname, fallbackCount)
+                        Log.d(
+                            "NetworkModule",
+                            "Using SmartDNS fallback for $hostname -> ${fallbackIps.map { it.hostAddress }}"
+                        )
+                        return fallbackIps
                     }
                 }
                 return okhttp3.Dns.SYSTEM.lookup(hostname)

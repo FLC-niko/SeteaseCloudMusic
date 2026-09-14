@@ -296,7 +296,9 @@ class MineViewModel @Inject constructor(
                         } else null
                     )
                 }
-                if (!networkMonitor.checkOnlineStatus() || (_uiState.value.createdPlaylists.isEmpty() && _uiState.value.likedPlaylist == null)) {
+                // 仅当设备确实离线时才提示“网络连接已断开”。
+                // 在线但歌单为空（新账号、服务端异常）时会走上面的 errorMessage 提示，不应误报为断网。
+                if (!networkMonitor.checkOnlineStatus()) {
                     networkMonitor.requestOfflineDialog(
                         title = "网络连接已断开",
                         description = "歌单加载失败，请检查网络设置后重试。"
@@ -407,7 +409,7 @@ class MineViewModel @Inject constructor(
                         if (requestId == playlistDetailRequestId && current.activePlaylistDetail?.id == playlist.id) {
                             current.copy(
                                 isLoadingDetail = false,
-                                errorMessage = if (current.activePlaylistDetail?.tracks.isNullOrEmpty()) {
+                                errorMessage = if (current.activePlaylistDetail.tracks.isEmpty()) {
                                     err.toUserFriendlyMessage("加载歌单曲目")
                                 } else null
                             )

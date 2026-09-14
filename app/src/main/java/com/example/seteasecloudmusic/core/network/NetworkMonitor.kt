@@ -4,10 +4,10 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -60,8 +60,30 @@ class NetworkMonitor @Inject constructor(
 
     private var activeCustomRetryAction: (() -> Unit)? = null
 
+    // 断网判定防抖 Job。
+    // 网络切换（例如 WiFi → 蜂窝）时系统会先回调旧网络的 onLost，紧接着回调新网络的 onAvailable，
+    // 若在 onLost 里立即弹窗，会出现“弹出来又立刻消失”的误报，因此延迟一小段时间后重查真实联网状态再决定。
+    private var offlineCheckJob: Job? = null
+
+    /**
+     * 延迟重查真实联网状态，只有确认仍然离线才拉起断网弹窗。
+     */
+    private fun scheduleOfflineCheck(delayMillis: Long = 600L) {
+        offlineCheckJob?.cancel()
+        offlineCheckJob = scope.launch {
+            delay(delayMillis)
+            val online = checkOnlineStatus()
+            _isOnline.value = online
+            if (!online) {
+                _showOfflineDialog.value = true
+            }
+        }
+    }
+
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            // 新网络已可用：取消待定中的断网判定，避免网络切换时误报
+            offlineCheckJob?.cancel()
             val wasOffline = !_isOnline.value
             val online = checkOnlineStatus()
             android.util.Log.d("NetworkMonitor", "onAvailable: online=$online, wasOffline=$wasOffline")
@@ -77,9 +99,8 @@ class NetworkMonitor @Inject constructor(
 
         override fun onLost(network: Network) {
             android.util.Log.d("NetworkMonitor", "onLost: network disconnected")
-            _isOnline.value = false
-            // 网络掉线时，自动拉起重试弹窗提示用户
-            _showOfflineDialog.value = true
+            // 不在此处直接弹窗：先防抖重查，避免网络切换瞬间的误报
+            scheduleOfflineCheck()
         }
 
         override fun onCapabilitiesChanged(
@@ -92,7 +113,8 @@ class NetworkMonitor @Inject constructor(
             android.util.Log.d("NetworkMonitor", "onCapabilitiesChanged: hasInternet=$hasInternet, validated=$validated")
             _isOnline.value = online
             if (!hasInternet) {
-                _showOfflineDialog.value = true
+                // 同样走防抖路径，与 onLost 保持一致的判定口径
+                scheduleOfflineCheck()
             }
         }
     }
@@ -139,6 +161,9 @@ class NetworkMonitor @Inject constructor(
      * 关闭弹窗
      */
     fun dismissOfflineDialog() {
+        // 用户已明确选择“稍后”：取消待定中的断网判定，
+        // 否则防抖回调可能在几百毫秒后把弹窗又弹回来。
+        offlineCheckJob?.cancel()
         _showOfflineDialog.value = false
         _isRetrying.value = false
         activeCustomRetryAction = null

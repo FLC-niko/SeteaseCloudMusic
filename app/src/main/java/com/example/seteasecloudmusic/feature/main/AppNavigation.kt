@@ -10,18 +10,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
@@ -53,17 +48,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
@@ -79,19 +71,21 @@ import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
 import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
 import com.example.seteasecloudmusic.core.ui.components.Ios26NetworkOfflineDialog
+import com.example.seteasecloudmusic.core.ui.components.GlassDefaults
+import com.example.seteasecloudmusic.core.ui.components.GlassThumb
+import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.liquidGlass
+import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.RoundedRectangle
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
-import kotlin.math.absoluteValue
-import kotlin.math.roundToInt
 
 
 
@@ -134,9 +128,12 @@ fun GlassSlider(
     contentBackdrop: Backdrop,
     mainItemCount: Int,
     selectedIndex: Int,
-    dragOffsetX: Float?, // 新增加：拖拽时的横坐标 (px)
+    // 拖拽横坐标（px）以 State 形式下传：指针移动只让本组件内部的读取作用域失效，
+    // 不会再向上重组整个 AppNavigation 组件树。
+    dragOffsetX: State<Float?>,
     navBarHeight: Dp,
-    mainBarProgress: Float,
+    // 同理，按压放大进度也在 draw 阶段按需读取。
+    mainBarProgress: State<Float>,
     horizontalPadding: Dp,
     mainSearchGap: Dp,
     searchButtonWidth: Dp,
@@ -156,83 +153,34 @@ fun GlassSlider(
                 .weight(1f)
                 .fillMaxHeight()
                 .graphicsLayer {
-                    // 让滑块在点击状态下的放大程度增大
+                    // 让滑块在点击状态下的放大程度增大。
+                    // 在 draw 阶段读取进度 State：按压动画每帧只触发重绘，不触发重组。
                     val maxScale = (size.width + 32f.dp.toPx()) / size.width
-                    val scale = lerp(1f, maxScale, mainBarProgress)
+                    val scale = lerp(1f, maxScale, mainBarProgress.value)
                     scaleX = scale
                     scaleY = scale
                 },
             contentAlignment = Alignment.CenterStart
         ) {
-            val slotWidth = if (mainItemCount > 0) maxWidth / mainItemCount.toFloat() else 0.dp
-            val activeMainIndex = selectedIndex.takeIf { it in 0 until mainItemCount } ?: 0
-            // 设置内边距，使滑块不会产生锯齿或溢出。这里使用 0.dp 让滑块与父容器圆角完全重合并填满分段，不产生突出。
-            // 也可改为 2.dp / 4.dp 来实现具有内陷感的嵌套分段控件。
-            val thumbPadding = 4.dp // <-- 刚刚要求改成 4.dp
-            val targetThumbWidth = (slotWidth - thumbPadding * 2).coerceAtLeast(0.dp)
-            val baseOffsetX = slotWidth * activeMainIndex + thumbPadding
-            
-            val density = LocalDensity.current
-            val targetThumbOffsetX = if (dragOffsetX != null) {
-                // 如果正在拖拽，滑块中心跟随手指 X 坐标
-                val fingerXDp = with(density) { dragOffsetX.toDp() }
-                val halfThumb = targetThumbWidth / 2
-                (fingerXDp - halfThumb).coerceIn(thumbPadding, maxWidth - targetThumbWidth - thumbPadding)
-            } else {
-                baseOffsetX
-            }
-
-            val tracking = dragOffsetX != null
-            val animatedThumbWidth by animateDpAsState(
-                targetValue = targetThumbWidth,
-                // 根据是否在拖拽，切换弹簧参数实现更顺手的跟随效果
-                animationSpec = if (tracking) spring(stiffness = 800f, dampingRatio = 0.8f) else spring(stiffness = 300f, dampingRatio = 0.6f),
-                label = "glassThumbWidth"
-            )
-            val animatedThumbOffsetX by animateDpAsState(
-                targetValue = targetThumbOffsetX,
-                animationSpec = if (tracking) spring(stiffness = 800f, dampingRatio = 0.8f) else spring(stiffness = 300f, dampingRatio = 0.6f),
-                label = "glassThumbOffset"
+            // 滑块几何与 Gooey 拉伸统一由 core 的共用实现计算，避免与「我的」页各写一套
+            val geometry = rememberGlassThumbGeometry(
+                containerWidth = maxWidth,
+                itemCount = mainItemCount,
+                selectedIndex = selectedIndex,
+                dragOffsetX = dragOffsetX.value,
+                barHeight = navBarHeight,
+                cornerRadius = cornerRadius
             )
             val thumbAlpha by animateFloatAsState(
                 targetValue = if (selectedIndex in 0 until mainItemCount) 1f else 0f,
                 animationSpec = spring(stiffness = 500f, dampingRatio = 0.9f),
                 label = "glassThumbAlpha"
             )
-            // 增加苹果风格的滑动拖拽弹性（Gooey Stretch Effect）
-            // 根据目标与实际的当前动画差值，动态增加滑块的宽度，使其在运动时产生“拉丝”或加速度拉长的效果。
-            val offsetDiff = targetThumbOffsetX - animatedThumbOffsetX
-            val stretchFactor = 0.35f // 弹性强度
-            
-            val renderedOffsetX = if (offsetDiff.value < 0f) {
-                // 如果是往左边滑，真正的视觉起点应该提前向左探出
-                animatedThumbOffsetX + offsetDiff * stretchFactor
-            } else {
-                // 如果是往右边滑，起点不变，右侧宽度增加即可
-                animatedThumbOffsetX
-            }
-            // 宽度在原有基础上叠加差距的绝对值比例
-            val renderedWidth = animatedThumbWidth + offsetDiff.value.absoluteValue.dp * stretchFactor
 
-            val thumbHeight = navBarHeight - thumbPadding * 2
-            val innerCornerRadius = cornerRadius - thumbPadding
-
-            Box(
-                Modifier
-                    .graphicsLayer { alpha = thumbAlpha }
-                    .offset(x = renderedOffsetX)
-                    .drawBackdrop(
-                        backdrop = rememberCombinedBackdrop(backdrop, contentBackdrop),
-                        shape = { RoundedRectangle(innerCornerRadius) },
-                        effects = {
-                            lens(
-                                refractionHeight = 6f.dp.toPx(),
-                                refractionAmount = 12f.dp.toPx(),
-                                chromaticAberration = true
-                            )
-                        }
-                    )
-                    .size(animatedThumbWidth, thumbHeight)
+            GlassThumb(
+                backdrop = rememberCombinedBackdrop(backdrop, contentBackdrop),
+                geometry = geometry,
+                alpha = thumbAlpha
             )
         }
 
@@ -316,8 +264,10 @@ fun AppNavigation(
     }
     val navBarContentBackdrop = rememberLayerBackdrop()
 
-    // 记录当前手指 X 坐标准备拖拽交互
-    var dragOffsetX by remember { mutableStateOf<Float?>(null) }
+    // 记录当前手指 X 坐标准备拖拽交互。
+    // 刻意保留 State 对象本体、不用 by 解构：解构会在 AppNavigation 作用域读取 .value，
+    // 导致每次指针移动都重组整个导航外壳；改由 GlassSlider 内部按需读取。
+    val dragOffsetXState = remember { mutableStateOf<Float?>(null) }
 
     // 记录当前选中的导航项：
     // 0~2 对应左侧主导航条，3 对应右侧搜索按钮。
@@ -503,23 +453,17 @@ fun AppNavigation(
                             scaleX = scale
                             scaleY = scale
                         }
-                        .drawBackdrop(
+                        .liquidGlass(
                             backdrop = backdrop,
-                            shape = { RoundedRectangle(cornerRadius) },
-                            effects = {
-                                vibrancy()
-                                blur(2f.dp.toPx())
-                                lens(16f.dp.toPx(), 32f.dp.toPx())
-                            },
+                            cornerRadius = cornerRadius,
+                            // 按下放大时同步缩放被采样的内容层，避免折射采样与组件本体错位
                             layerBlock = {
                                 val progress = mainBarProgressAnimation.value
                                 val maxScale = (size.width + 8f.dp.toPx()) / size.width
                                 val scale = lerp(1f, maxScale, progress)
                                 scaleX = scale
                                 scaleY = scale
-                            },
-                            // 半透明白色表面让底层色块在模糊后保留一点“磨砂感”。
-                            onDrawSurface = { drawRect(Color.White.copy(alpha = 0.5f)) },
+                            }
                         )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -529,43 +473,18 @@ fun AppNavigation(
                                 selectedIndex = 0
                             }
                         }
-                        .pointerInput(mainBarAnimationScope, isSearchExpanded, mainNavItems.size) {
-                            if (isSearchExpanded) return@pointerInput // 当搜索展开时，直接通过 clickable 重置，不响应滑动切换
-                            awaitEachGesture {
-                                val down = awaitFirstDown()
-                                var currentX = down.position.x
-                                // 按下时只让玻璃滑块跟随手指，不立即切换页面，避免拖动过程中整页被高频重组。
-                                dragOffsetX = currentX
-
-                                mainBarAnimationScope.launch { mainBarProgressAnimation.animateTo(1f, animationSpec) }
-                                
-                                var inGesture = true
-                                while (inGesture) {
-                                    val event = awaitPointerEvent()
-                                    val dragEvent = event.changes.firstOrNull()
-                                    if (dragEvent != null && dragEvent.pressed) {
-                                        currentX = dragEvent.position.x
-                                        // 拖动中只记录手指位置用于滑块视觉跟随，页面切换留到松手时统一处理
-                                        dragOffsetX = currentX
-                                        dragEvent.consume() // 消耗事件防止底层组件响应
-                                    } else {
-                                        inGesture = false
-                                    }
+                        .glassSegmentDrag(
+                            itemCount = mainNavItems.size,
+                            onDragOffsetChange = { dragOffsetXState.value = it },
+                            onSettle = { selectedIndex = it },
+                            onPressChanged = { pressed ->
+                                mainBarAnimationScope.launch {
+                                    mainBarProgressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
                                 }
-                                
-                                // ⚡ 松手后才根据最终停留的位置切换页面：
-                                // 整个拖动过程只更新滑块的视觉位置，页面只在手势结束时切换一次，
-                                // 避免“滑到哪里就立刻切到哪个页面”带来的高频重组与性能开销。
-                                val slotWidthPx = if (mainNavItems.isNotEmpty()) size.width.toFloat() / mainNavItems.size.toFloat() else 0f
-                                if (slotWidthPx > 0f) {
-                                    val settledIndex = (currentX / slotWidthPx).toInt().coerceIn(0, mainNavItems.size - 1)
-                                    selectedIndex = settledIndex
-                                }
-
-                                dragOffsetX = null
-                                mainBarAnimationScope.launch { mainBarProgressAnimation.animateTo(0f, animationSpec) }
-                            }
-                        }
+                            },
+                            // 搜索展开时底栏交给 clickable 处理（点击复位到首页），不响应滑动切换
+                            enabled = !isSearchExpanded
+                        )
                 ) {
                     // 主导航栏内部负责均分三个一级入口。
                     // 容器缩小时（圆按钮）不显示导航图标，避免挤压
@@ -646,15 +565,10 @@ fun AppNavigation(
                                     scaleX = scale
                                     scaleY = scale
                                 }
-                                .drawBackdrop(
+                                .liquidGlass(
                                     backdrop = backdrop,
-                                    shape = { RoundedRectangle(cornerRadius) },
-                                    effects = {
-                                        vibrancy()
-                                        blur(2f.dp.toPx())
-                                        lens(16f.dp.toPx(), 32f.dp.toPx())
-                                    },
-                                    onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
+                                    cornerRadius = cornerRadius,
+                                    surfaceAlpha = GlassDefaults.SurfaceAlphaBright
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -709,15 +623,10 @@ fun AppNavigation(
                         Box(
                             modifier = Modifier
                                 .size(navBarHeight)
-                                .drawBackdrop(
+                                .liquidGlass(
                                     backdrop = backdrop,
-                                    shape = { RoundedRectangle(cornerRadius) },
-                                    effects = {
-                                        vibrancy()
-                                        blur(2f.dp.toPx())
-                                        lens(16f.dp.toPx(), 32f.dp.toPx())
-                                    },
-                                    onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
+                                    cornerRadius = cornerRadius,
+                                    surfaceAlpha = GlassDefaults.SurfaceAlphaBright
                                 )
                                 .clickable(
                                     interactionSource = searchInteractionSource,
@@ -748,15 +657,10 @@ fun AppNavigation(
                                 scaleX = scale
                                 scaleY = scale
                             }
-                            .drawBackdrop(
+                            .liquidGlass(
                                 backdrop = backdrop,
-                                shape = { RoundedRectangle(cornerRadius) },
-                                effects = {
-                                    vibrancy()
-                                    blur(2f.dp.toPx())
-                                    lens(16f.dp.toPx(), 32f.dp.toPx())
-                                },
-                                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
+                                cornerRadius = cornerRadius,
+                                surfaceAlpha = GlassDefaults.SurfaceAlphaBright
                             )
                             .clickable(
                                 interactionSource = searchInteractionSource,
@@ -833,9 +737,11 @@ fun AppNavigation(
             contentBackdrop = navBarContentBackdrop,
             mainItemCount = mainNavItems.size,
             selectedIndex = selectedIndex,
-            dragOffsetX = dragOffsetX,
+            dragOffsetX = dragOffsetXState,
             navBarHeight = navBarHeight,
-            mainBarProgress = mainBarProgressAnimation.value,
+            // asState() 返回 Animatable 内部缓存的 AnimationState（同一实例），
+            // 由 GlassSlider 在 draw 阶段读取，按压动画不再驱动整个外壳重组。
+            mainBarProgress = mainBarProgressAnimation.asState(),
             horizontalPadding = horizontalPadding,
             mainSearchGap = mainSearchGap,
             searchButtonWidth = searchButtonWidth,
@@ -969,19 +875,18 @@ private fun AccountFullScreenOverlay(
                 )
         )
 
-        // 主抽屉卡片：位移在 layout 阶段、缩放在 draw 阶段读取状态，均不触发每帧重组。
+        // 主抽屉卡片：位移与缩放全部在 draw 阶段读取状态，既不触发重组也不触发布局。
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.95f)
-                .offset {
+                .graphicsLayer {
+                    // 抽屉整体位移（收起 + 下拉拖动）统一走 RenderNode 的 translationY
                     val offsetFraction = panelOffsetFraction.value
                     val effectiveDragOffset = if (isDragging) dragOffsetPx else settledDragOffsetPx
-                    IntOffset(0, (offsetFraction * hiddenOffsetPx + effectiveDragOffset).roundToInt())
-                }
-                .graphicsLayer {
-                    val effectiveDragOffset = if (isDragging) dragOffsetPx else settledDragOffsetPx
+                    translationY = offsetFraction * hiddenOffsetPx + effectiveDragOffset
+
                     val dragProgress = (effectiveDragOffset / panelHeightPx).coerceIn(0f, 1f)
                     scaleX = 1f - dragProgress * 0.018f
                     scaleY = 1f - dragProgress * 0.03f
@@ -1079,15 +984,10 @@ private fun SearchMiniPlayerBar(
             .fillMaxWidth()
             .height(54.dp)
             .clickable { onBarClick() }
-            .drawBackdrop(
+            .liquidGlass(
                 backdrop = backdrop,
-                shape = { RoundedRectangle(cornerRadius) },
-                effects = {
-                    vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(16f.dp.toPx(), 32f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.56f)) }
+                cornerRadius = cornerRadius,
+                surfaceAlpha = GlassDefaults.SurfaceAlphaBright
             )
     ) {
         Row(

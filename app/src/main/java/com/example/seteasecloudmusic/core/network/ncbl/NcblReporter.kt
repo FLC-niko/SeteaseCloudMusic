@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.core.network.ncbl
 
 import android.content.Context
+import com.example.seteasecloudmusic.core.network.SmartDns
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,7 +38,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class NcblReporter @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val random = SecureRandom()
     private val RSA_N = BigInteger("fd90bd466ff9bc8a3fec2fbcf263b90d5c564879fa5d7aab89b31c1d5cb4139d", 16)
@@ -46,17 +47,8 @@ class NcblReporter @Inject constructor(
 
     private val smartDns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
-            try {
-                val res = Dns.SYSTEM.lookup(hostname)
-                if (res.isNotEmpty()) return res
-            } catch (e: Exception) {
-                android.util.Log.w("NCBL", "System DNS failed for $hostname: ${e.message}")
-            }
-            return listOf(
-                InetAddress.getByAddress(hostname, byteArrayOf(220.toByte(), 197.toByte(), 30.toByte(), 68.toByte())),
-                InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 60.toByte())),
-                InetAddress.getByAddress(hostname, byteArrayOf(59.toByte(), 111.toByte(), 181.toByte(), 38.toByte()))
-            )
+            // 上报主机没有国内 CDN 兜底需求，直接使用全部网易云固定节点
+            return SmartDns.systemLookupOrNull(hostname, "NCBL") ?: SmartDns.addressesFor(hostname)
         }
     }
 

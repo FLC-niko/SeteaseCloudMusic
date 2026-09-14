@@ -11,13 +11,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +29,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -66,9 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,17 +75,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -102,20 +91,19 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
+import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
+import com.example.seteasecloudmusic.core.ui.components.GlassSurface
+import com.example.seteasecloudmusic.core.ui.components.GlassThumb
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
+import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.liquidGlass
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
+import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
-import kotlin.math.absoluteValue
-import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 private val MineTextPrimary = Color(0xFF111111)
@@ -484,39 +472,6 @@ private fun MineAmbientBackground() {
 }
 
 @Composable
-private fun MineGlassSurface(
-    backdrop: Backdrop,
-    modifier: Modifier = Modifier,
-    cornerRadius: Dp = 24.dp,
-    surfaceAlpha: Float = 0.48f,
-    borderWidth: Dp = 1.dp,
-    content: @Composable BoxScope.() -> Unit
-) {
-    val shape = RoundedCornerShape(cornerRadius)
-    val borderModifier = if (borderWidth > 0.dp) {
-        Modifier.border(borderWidth, Color.White.copy(alpha = 0.62f), shape)
-    } else {
-        Modifier
-    }
-
-    Box(
-        modifier = modifier
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { RoundedRectangle(cornerRadius) },
-                effects = {
-                    vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(16f.dp.toPx(), 32f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = surfaceAlpha)) }
-            )
-            .then(borderModifier),
-        content = content
-    )
-}
-
-@Composable
 private fun LocalMusicDirectoryBar(
     backdrop: Backdrop,
     directoryPath: String?,
@@ -526,7 +481,7 @@ private fun LocalMusicDirectoryBar(
     onRequestPermission: () -> Unit,
     onRescan: () -> Unit
 ) {
-    MineGlassSurface(
+    GlassSurface(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 18.dp,
@@ -616,7 +571,7 @@ private fun UserProfileCenterpiece(
     onAccountClick: () -> Unit,
     isLoading: Boolean
 ) {
-    MineGlassSurface(
+    GlassSurface(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onAccountClick),
         cornerRadius = 28.dp,
@@ -707,15 +662,14 @@ private fun GlassIconButton(
         modifier = Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .drawBackdrop(
+            // 小尺寸控件用更克制的玻璃参数：折射更浅、铺底更淡
+            .liquidGlass(
                 backdrop = backdrop,
-                shape = { RoundedRectangle(19.dp) },
-                effects = {
-                    vibrancy()
-                    blur(1.5f.dp.toPx())
-                    lens(8f.dp.toPx(), 16f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.32f)) }
+                cornerRadius = 19.dp,
+                surfaceAlpha = 0.32f,
+                blurRadius = 1.5f.dp,
+                refractionHeight = 8.dp,
+                refractionAmount = 16.dp
             )
             .border(1.dp, Color.White.copy(alpha = 0.56f), CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
@@ -774,7 +728,7 @@ private fun MineLoggedOutView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        MineGlassSurface(
+        GlassSurface(
             backdrop = backdrop,
             modifier = Modifier.fillMaxWidth(),
             cornerRadius = 30.dp,
@@ -837,7 +791,7 @@ private fun LikedSongsHeroCard(
     playlist: UserPlaylist?,
     onClick: () -> Unit
 ) {
-    MineGlassSurface(
+    GlassSurface(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         cornerRadius = 26.dp,
@@ -929,8 +883,7 @@ private fun MinePlaylistTabs(
 
     val navBarHeight = 50.dp
     val cornerRadius = navBarHeight / 2
-    val thumbPadding = 4.dp
-    val innerCornerRadius = cornerRadius - thumbPadding
+    val thumbPadding = GlassSliderDefaults.ThumbPadding
 
     val animationScope = rememberCoroutineScope()
     val pressAnimation = remember { Animatable(0f) }
@@ -949,53 +902,20 @@ private fun MinePlaylistTabs(
                 scaleX = scale
                 scaleY = scale
             }
-            .drawBackdrop(
+            .liquidGlass(
                 backdrop = backdrop,
-                shape = { RoundedRectangle(cornerRadius) },
-                effects = {
-                    vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(16f.dp.toPx(), 32f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.5f)) }
+                cornerRadius = cornerRadius
             )
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var currentX = down.position.x
-                    // 按下时只让玻璃滑块跟随手指，不立即切换分类，避免拖动过程中反复重组列表内容。
-                    dragOffsetX = currentX
-
-                    animationScope.launch { pressAnimation.animateTo(1f, animationSpec) }
-
-                    var inGesture = true
-                    try {
-                        while (inGesture) {
-                            val event = awaitPointerEvent()
-                            val dragEvent = event.changes.firstOrNull()
-                            if (dragEvent != null && dragEvent.pressed) {
-                                currentX = dragEvent.position.x
-                                // 拖动中只记录手指位置用于滑块视觉跟随，分类切换留到松手时统一处理
-                                dragOffsetX = currentX
-                                dragEvent.consume()
-                            } else {
-                                inGesture = false
-                            }
-                        }
-                    } finally {
-                        animationScope.launch { pressAnimation.animateTo(0f, animationSpec) }
-                        dragOffsetX = null
-                    }
-
-                    // ⚡ 松手后才根据最终停留的位置切换分类：
-                    // 整个拖动过程只更新滑块的视觉位置，分类内容只在手势结束时切换一次。
-                    val slotWidthPx = size.width.toFloat() / tabs.size.toFloat()
-                    if (slotWidthPx > 0f) {
-                        val settledIndex = (currentX / slotWidthPx).toInt().coerceIn(0, tabs.size - 1)
-                        currentOnTabSelected(tabs[settledIndex].first)
+            .glassSegmentDrag(
+                itemCount = tabs.size,
+                onDragOffsetChange = { dragOffsetX = it },
+                onSettle = { settledIndex -> currentOnTabSelected(tabs[settledIndex].first) },
+                onPressChanged = { pressed ->
+                    animationScope.launch {
+                        pressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
                     }
                 }
-            }
+            )
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -1003,58 +923,19 @@ private fun MinePlaylistTabs(
                 .padding(horizontal = thumbPadding),
             contentAlignment = Alignment.CenterStart
         ) {
-            val slotWidth = maxWidth / tabs.size.toFloat()
-            val targetThumbWidth = (slotWidth - thumbPadding * 2).coerceAtLeast(0.dp)
-            val baseOffsetX = slotWidth * selectedIndex + thumbPadding
-
-            val density = LocalDensity.current
-            val targetThumbOffsetX = if (dragOffsetX != null) {
-                val fingerXDp = with(density) { dragOffsetX!!.toDp() }
-                val halfThumb = targetThumbWidth / 2
-                (fingerXDp - halfThumb).coerceIn(thumbPadding, maxWidth - targetThumbWidth - thumbPadding)
-            } else {
-                baseOffsetX
-            }
-
-            val tracking = dragOffsetX != null
-            val animatedThumbWidth by animateDpAsState(
-                targetValue = targetThumbWidth,
-                animationSpec = if (tracking) spring(stiffness = 800f, dampingRatio = 0.8f) else spring(stiffness = 300f, dampingRatio = 0.6f),
-                label = "mineThumbWidth"
-            )
-            val animatedThumbOffsetX by animateDpAsState(
-                targetValue = targetThumbOffsetX,
-                animationSpec = if (tracking) spring(stiffness = 800f, dampingRatio = 0.8f) else spring(stiffness = 300f, dampingRatio = 0.6f),
-                label = "mineThumbOffset"
+            // 与底栏共用同一套滑块几何 + Gooey 拉伸实现
+            val geometry = rememberGlassThumbGeometry(
+                containerWidth = maxWidth,
+                itemCount = tabs.size,
+                selectedIndex = selectedIndex,
+                dragOffsetX = dragOffsetX,
+                barHeight = navBarHeight,
+                cornerRadius = cornerRadius
             )
 
-            // 弹性拉伸（Gooey Stretch 拉丝拉长效果）
-            val offsetDiff = targetThumbOffsetX - animatedThumbOffsetX
-            val stretchFactor = 0.35f
-            val renderedOffsetX = if (offsetDiff.value < 0f) {
-                animatedThumbOffsetX + offsetDiff * stretchFactor
-            } else {
-                animatedThumbOffsetX
-            }
-            val renderedWidth = animatedThumbWidth + offsetDiff.value.absoluteValue.dp * stretchFactor
-            val thumbHeight = navBarHeight - thumbPadding * 2
-
-            // 底栏同款折射参数液体玻璃滑块
-            Box(
-                Modifier
-                    .offset(x = renderedOffsetX)
-                    .drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { RoundedRectangle(innerCornerRadius) },
-                        effects = {
-                            lens(
-                                refractionHeight = 6f.dp.toPx(),
-                                refractionAmount = 12f.dp.toPx(),
-                                chromaticAberration = true
-                            )
-                        }
-                    )
-                    .size(renderedWidth, thumbHeight)
+            GlassThumb(
+                backdrop = backdrop,
+                geometry = geometry
             )
 
             // 文字层（各项具备独立点击保障与高亮指示）

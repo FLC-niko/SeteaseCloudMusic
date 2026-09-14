@@ -1,6 +1,5 @@
 package com.example.seteasecloudmusic.feature.home.data
 
-import com.google.gson.annotations.SerializedName
 
 /**
  * GET /homepage/block/page 顶层响应模型

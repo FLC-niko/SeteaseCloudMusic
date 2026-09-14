@@ -128,7 +128,9 @@ class HomeViewModel @Inject constructor(
                             errorMessage = if (state.tracks.isEmpty()) throwable.toUserFriendlyMessage("获取每日推荐") else null
                         )
                     }
-                    if (!networkMonitor.checkOnlineStatus() || _uiState.value.tracks.isEmpty()) {
+                    // 仅当设备确实离线时才提示“网络连接已断开”。
+                    // 在线但接口返回空数据或服务端异常时会走上面的 errorMessage 提示，不应误报为断网。
+                    if (!networkMonitor.checkOnlineStatus()) {
                         networkMonitor.requestOfflineDialog(
                             title = "网络连接已断开",
                             description = "获取每日推荐失败，请检查网络设置后重试。"
