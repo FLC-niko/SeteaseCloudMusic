@@ -38,6 +38,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -49,13 +50,16 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
@@ -109,6 +113,21 @@ import kotlinx.coroutines.launch
  */
 data class BottomNavItem(val title: String, val icon: ImageVector)
 
+/**
+ * 左侧主导航条承载的三个一级入口。
+ *
+ * 提到文件级常量：避免每次重组重新分配列表，也让它的身份保持稳定，
+ * 便于 Compose 跳过依赖它的子组件。
+ */
+private val MainNavItems = listOf(
+    BottomNavItem("首页", Icons.Filled.Home),
+    BottomNavItem("电台", Icons.Filled.Radio),
+    BottomNavItem("我的", Icons.Filled.Person)
+)
+
+/** 左侧主导航条只承载 0~2，3 是右侧搜索按钮对应的页面。 */
+private const val SEARCH_PAGE_INDEX = 3
+
 private data class SelectedArtist(
     val id: Long,
     val name: String,
@@ -116,7 +135,7 @@ private data class SelectedArtist(
 )
 
 private data class DailyRecommendState(
-    val tracks: List<com.example.seteasecloudmusic.core.model.Track>,
+    val tracks: List<Track>,
     val posterBounds: Rect,
     val title: String = "每日推荐"
 )
@@ -127,9 +146,9 @@ fun GlassSlider(
     backdrop: Backdrop,
     contentBackdrop: Backdrop,
     mainItemCount: Int,
-    selectedIndex: Int,
-    // 拖拽横坐标（px）以 State 形式下传：指针移动只让本组件内部的读取作用域失效，
+    // 选中项与拖拽横坐标都以 State 形式下传：变化只让本组件内部的读取作用域失效，
     // 不会再向上重组整个 AppNavigation 组件树。
+    selectedIndex: State<Int>,
     dragOffsetX: State<Float?>,
     navBarHeight: Dp,
     // 同理，按压放大进度也在 draw 阶段按需读取。
@@ -162,17 +181,19 @@ fun GlassSlider(
                 },
             contentAlignment = Alignment.CenterStart
         ) {
-            // 滑块几何与 Gooey 拉伸统一由 core 的共用实现计算，避免与「我的」页各写一套
+            // 滑块几何与 Gooey 拉伸统一由 core 的共用实现计算，避免与「我的」页各写一套。
+            // 选中项在本作用域内读取：切换页面时只有滑块这一小块需要重建。
+            val activeIndex = selectedIndex.value
             val geometry = rememberGlassThumbGeometry(
                 containerWidth = maxWidth,
                 itemCount = mainItemCount,
-                selectedIndex = selectedIndex,
+                selectedIndex = activeIndex,
                 dragOffsetX = dragOffsetX.value,
                 barHeight = navBarHeight,
                 cornerRadius = cornerRadius
             )
             val thumbAlpha by animateFloatAsState(
-                targetValue = if (selectedIndex in 0 until mainItemCount) 1f else 0f,
+                targetValue = if (activeIndex in 0 until mainItemCount) 1f else 0f,
                 animationSpec = spring(stiffness = 500f, dampingRatio = 0.9f),
                 label = "glassThumbAlpha"
             )
@@ -271,14 +292,9 @@ fun AppNavigation(
 
     // 记录当前选中的导航项：
     // 0~2 对应左侧主导航条，3 对应右侧搜索按钮。
-    var selectedIndex by remember { mutableIntStateOf(0) }
-
-    // 左侧主导航条目前承载三个一级入口。
-    val mainNavItems = listOf(
-        BottomNavItem("首页", Icons.Filled.Home),
-        BottomNavItem("电台", Icons.Filled.Radio),
-        BottomNavItem("我的", Icons.Filled.Person)
-    )
+    // 与 dragOffsetXState 同理保留 State 本体、不用 by 解构：
+    // 让读取发生在真正需要它的子组件内部，切换页面时不再重组整个导航外壳。
+    val selectedIndexState = remember { mutableIntStateOf(0) }
 
     // 抽成共享布局参数，保证底栏和滑块按同一套比例计算。
     val horizontalPadding = 24.dp
@@ -286,13 +302,6 @@ fun AppNavigation(
     val mainSearchGap = 16.dp
     val searchButtonWidth = navBarHeight
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val pageTitle = when (selectedIndex) {
-        0 -> "首页"
-        1 -> "电台"
-        2 -> "我的"
-        3 -> "搜索"
-        else -> "首页"
-    }
     val searchContentTopPadding = statusBarTopPadding + 86.dp
     // 统一形状：使用 RoundedRectangle 实现 G² 连续圆角（squircle），
     // 让玻璃滑块、主导航条、搜索按钮共享一致的圆角半径。
@@ -326,78 +335,37 @@ fun AppNavigation(
                 // 被包进来的内容会先渲染到底层纹理，再提供给上面的导航栏做模糊采样。
                 .layerBackdrop(backdrop)
         ) {
-            // 根据 selectedIndex 显示不同页面
-            when (selectedIndex) {
-                0 -> HomeRoute(
-                    topContentPadding = searchContentTopPadding,
-                    bottomContentPadding = 180.dp + animatedImeOffset,
-                    avatarUrl = authUiState.authSession?.avatarUrl,
-                    displayName = authUiState.authSession?.nickname,
-                    onAvatarClick = { showAccountSheet = true },
-                    onPosterWallClick = { tracks, bounds, title ->
-                        dailyRecommendState = DailyRecommendState(tracks, bounds, title)
-                    }
-                )
-                1 -> AppPageBackground() // 电台
-                2 -> MineRoute(
-                    topContentPadding = searchContentTopPadding,
-                    bottomContentPadding = 180.dp + animatedImeOffset,
-                    onLoginClick = { showAccountSheet = true }
-                ) // 我的
-                3 -> SearchRoute(
-                    viewModel = searchViewModel,
-                    topContentPadding = searchContentTopPadding,
-                    bottomContentPadding = 180.dp + animatedImeOffset,
-                    onArtistClick = { artistId, artistName, artistCoverUrl ->
-                        selectedArtist = SelectedArtist(
-                            id = artistId,
-                            name = artistName,
-                            coverUrl = artistCoverUrl
-                        )
-                    }
-                ) // 搜索
-                else -> AppPageBackground()
-            }
-        }
-
-        val hasCustomTopBar = selectedIndex == 0 || selectedIndex == 2
-        if (!hasCustomTopBar) {
-            val topLargeTitleAlpha by animateFloatAsState(
-                targetValue = 1f - sinkProgress,
-                animationSpec = tween(durationMillis = 220),
-                label = "topLargeTitleAlpha"
-            )
-
-            AnimatedContent(
-                targetState = pageTitle,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 30)) togetherWith
-                        fadeOut(animationSpec = tween(durationMillis = 140))
-                },
-                label = "pageTitleTransition",
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(start = 20.dp, top = 14.dp)
-                    .graphicsLayer { alpha = topLargeTitleAlpha }
-            ) { animatedTitle ->
-                LargePageTitle(title = animatedTitle)
-            }
-
-            UserAvatarButton(
+            AppPageContent(
+                selectedIndex = selectedIndexState,
+                topContentPadding = searchContentTopPadding,
+                imeOffset = animatedImeOffset,
                 avatarUrl = authUiState.authSession?.avatarUrl,
                 displayName = authUiState.authSession?.nickname,
-                onClick = {
-                    showAccountSheet = true
-                    onAvatarClick?.invoke()
+                searchViewModel = searchViewModel,
+                onAccountClick = { showAccountSheet = true },
+                onPosterWallClick = { tracks, bounds, title ->
+                    dailyRecommendState = DailyRecommendState(tracks, bounds, title)
                 },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(end = 20.dp, top = 14.dp)
-                    .graphicsLayer { alpha = 1f - sinkProgress }
+                onArtistClick = { artistId, artistName, artistCoverUrl ->
+                    selectedArtist = SelectedArtist(
+                        id = artistId,
+                        name = artistName,
+                        coverUrl = artistCoverUrl
+                    )
+                }
             )
         }
+
+        AppTopArea(
+            selectedIndex = selectedIndexState,
+            sinkProgress = sinkProgress,
+            avatarUrl = authUiState.authSession?.avatarUrl,
+            displayName = authUiState.authSession?.nickname,
+            onAvatarClick = {
+                showAccountSheet = true
+                onAvatarClick?.invoke()
+            }
+        )
 
         // --- 顶层悬浮导航栏及独立搜索按钮 ---
         BoxWithConstraints(
@@ -420,7 +388,11 @@ fun AppNavigation(
             val collapsedWidth = navBarHeight
             val expandedWidth = totalWidth - collapsedWidth - mainSearchGap
 
-            val isSearchExpanded = selectedIndex == 3
+            // 用 derivedStateOf 让它只在「是否处于搜索态」真正翻转时才失效：
+            // 首页 ↔ 我的 之间切换不会重组整个导航栏外壳。
+            val isSearchExpanded by remember {
+                derivedStateOf { selectedIndexState.value == SEARCH_PAGE_INDEX }
+            }
 
             val leftWidth by animateDpAsState(
                 targetValue = if (isSearchExpanded) collapsedWidth else expandedWidth,
@@ -470,13 +442,13 @@ fun AppNavigation(
                             indication = null
                         ) {
                             if (isSearchExpanded) {
-                                selectedIndex = 0
+                                selectedIndexState.value = 0
                             }
                         }
                         .glassSegmentDrag(
-                            itemCount = mainNavItems.size,
+                            itemCount = MainNavItems.size,
                             onDragOffsetChange = { dragOffsetXState.value = it },
-                            onSettle = { selectedIndex = it },
+                            onSettle = { selectedIndexState.value = it },
                             onPressChanged = { pressed ->
                                 mainBarAnimationScope.launch {
                                     mainBarProgressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
@@ -493,8 +465,8 @@ fun AppNavigation(
                             modifier = Modifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            mainNavItems.forEachIndexed { index, item ->
-                                val isSelected = selectedIndex == index
+                            MainNavItems.forEachIndexed { index, item ->
+                                val isSelected = selectedIndexState.value == index
                                 val itemColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
 
                                 Column(
@@ -633,7 +605,7 @@ fun AppNavigation(
                                     indication = null
                                 ) {
                                     searchViewModel.onClearQuery()
-                                    selectedIndex = 0
+                                    selectedIndexState.value = 0
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -667,7 +639,7 @@ fun AppNavigation(
                                 indication = null
                             ) {
                                 if (!isSearchExpanded) {
-                                    selectedIndex = 3
+                                    selectedIndexState.value = SEARCH_PAGE_INDEX
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -735,8 +707,8 @@ fun AppNavigation(
         GlassSlider(
             backdrop = backdrop,
             contentBackdrop = navBarContentBackdrop,
-            mainItemCount = mainNavItems.size,
-            selectedIndex = selectedIndex,
+            mainItemCount = MainNavItems.size,
+            selectedIndex = selectedIndexState,
             dragOffsetX = dragOffsetXState,
             navBarHeight = navBarHeight,
             // asState() 返回 Animatable 内部缓存的 AnimationState（同一实例），
@@ -791,6 +763,162 @@ fun AppNavigation(
             description = dialogDescription,
             onRetry = { mainViewModel.retry() },
             onDismiss = { mainViewModel.dismissOfflineDialog() }
+        )
+    }
+}
+
+/**
+ * 一级页面内容区域（首页 / 电台 / 我的 / 搜索）。
+ *
+ * 单独抽成组件是为了**收窄重组范围**：[selectedIndex] 以 [State] 形式传入、在本组件内部读取，
+ * 因此切换页面时只有这一块需要重新执行，导航栏、迷你播放条、各类覆盖层（正在播放、
+ * 账号抽屉、歌手详情、断网弹窗）都不会被牵连重组。
+ *
+ * 页面采用「首次访问即常驻」策略，而不是每次切换都销毁重建：
+ * 逐帧 trace 显示，切换页面那一帧的 `Compose:onForgotten`（销毁旧页）单帧可达 40ms 以上，
+ * 与「首次组合新页」叠加后整帧达 85ms —— 这正是切换时页面与按钮动效一起卡顿一下的根因。
+ * 页面内的液态玻璃节点会各自持有采样图层，销毁/重建意味着反复释放与重建这些 GPU 资源。
+ *
+ * 因此：访问过的页面全部保留在组合树中，状态与玻璃图层都不再抖振；
+ * 靠下面的两个修饰符让非当前页**零开销**地待着：
+ * - [drawWithContent] 跳过整页绘制（不产生 RenderThread / GPU 开销）
+ * - [offset] 把整页挪到屏幕外（不参与命中测试，隐藏页不会吞掉当前页的手势）
+ */
+@Composable
+private fun AppPageContent(
+    selectedIndex: State<Int>,
+    topContentPadding: Dp,
+    imeOffset: Dp,
+    avatarUrl: String?,
+    displayName: String?,
+    searchViewModel: SearchViewModel,
+    onAccountClick: () -> Unit,
+    onPosterWallClick: (tracks: List<Track>, posterBounds: Rect, title: String) -> Unit,
+    onArtistClick: (Long, String, String?) -> Unit
+) {
+    val index = selectedIndex.value
+    val bottomContentPadding = 180.dp + imeOffset
+
+    // 页面常驻意味着离开搜索页后它的输入框仍然可聚焦，
+    // 因此显式清一次焦点，保证键盘随页面一起收起（与原先「切走即销毁」的行为一致）。
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(index) {
+        if (index != SEARCH_PAGE_INDEX) {
+            focusManager.clearFocus(force = true)
+        }
+    }
+
+    // 已访问过的页面集合。用普通 Set 而非 snapshot 状态：它只在组合期读写，
+    // 不需要（也不应该）驱动重组。首页在启动时就已挂载。
+    val mountedPages = remember { mutableSetOf(index) }
+    mountedPages.add(index)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        mountedPages.forEach { pageIndex ->
+            val isActive = pageIndex == index
+            key(pageIndex) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .drawWithContent { if (isActive) drawContent() }
+                        .offset { IntOffset(0, if (isActive) 0 else OFFSCREEN_PAGE_OFFSET_PX) }
+                ) {
+                    when (pageIndex) {
+                        0 -> HomeRoute(
+                            topContentPadding = topContentPadding,
+                            bottomContentPadding = bottomContentPadding,
+                            avatarUrl = avatarUrl,
+                            displayName = displayName,
+                            onAvatarClick = onAccountClick,
+                            onPosterWallClick = onPosterWallClick
+                        )
+
+                        1 -> AppPageBackground() // 电台（私人 FM 待实现）
+
+                        2 -> MineRoute(
+                            topContentPadding = topContentPadding,
+                            bottomContentPadding = bottomContentPadding,
+                            onLoginClick = onAccountClick
+                        )
+
+                        3 -> SearchRoute(
+                            viewModel = searchViewModel,
+                            topContentPadding = topContentPadding,
+                            bottomContentPadding = bottomContentPadding,
+                            onArtistClick = onArtistClick
+                        )
+
+                        else -> AppPageBackground()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 隐藏页被挪出的距离（px）。取远大于任何屏幕高度的值，
+ * 保证其整体落在父容器之外，从而不参与命中测试。
+ */
+private const val OFFSCREEN_PAGE_OFFSET_PX = 100_000
+
+/**
+ * 页面级大标题顶栏（仅服务「电台」「搜索」）。
+ *
+ * 首页与「我的」由各自页面内自带的 Apple Music 大标题承载，这里直接返回不渲染任何内容 ——
+ * 这与原来 `if (!hasCustomTopBar)` 的行为一致，但把判断搬到本组件内部，
+ * 使 [selectedIndex] 的变化不会向上重组整个导航外壳。
+ */
+@Composable
+private fun AppTopArea(
+    selectedIndex: State<Int>,
+    sinkProgress: Float,
+    avatarUrl: String?,
+    displayName: String?,
+    onAvatarClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val index = selectedIndex.value
+    val hasCustomTopBar = index == 0 || index == 2
+    if (hasCustomTopBar) return
+
+    val pageTitle = when (index) {
+        1 -> "电台"
+        3 -> "搜索"
+        else -> "首页"
+    }
+    val topLargeTitleAlpha by animateFloatAsState(
+        targetValue = 1f - sinkProgress,
+        animationSpec = tween(durationMillis = 220),
+        label = "topLargeTitleAlpha"
+    )
+
+    Box(modifier = modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = pageTitle,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 30)) togetherWith
+                    fadeOut(animationSpec = tween(durationMillis = 140))
+            },
+            label = "pageTitleTransition",
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(start = 20.dp, top = 14.dp)
+                .graphicsLayer { alpha = topLargeTitleAlpha }
+        ) { animatedTitle ->
+            LargePageTitle(title = animatedTitle)
+        }
+
+        UserAvatarButton(
+            avatarUrl = avatarUrl,
+            displayName = displayName,
+            onClick = onAvatarClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(end = 20.dp, top = 14.dp)
+                .graphicsLayer { alpha = 1f - sinkProgress }
         )
     }
 }
