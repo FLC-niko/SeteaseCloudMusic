@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -51,6 +52,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -91,6 +94,7 @@ import com.kyant.shapes.RoundedRectangle
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 
 
@@ -258,12 +262,33 @@ fun AppNavigation(
     val dialogDescription by mainViewModel.dialogDescription.collectAsStateWithLifecycle()
 
     var showNowPlaying by remember { mutableStateOf(false) }
+    var miniPlayerArtworkBounds by remember { mutableStateOf<Rect?>(null) }
+    var nowPlayingArtworkBounds by remember { mutableStateOf<Rect?>(null) }
+    var nowPlayingArtworkUrl by remember { mutableStateOf<String?>(null) }
+    val nowPlayingProgress = remember { Animatable(0f) }
+    val nowPlayingScope = rememberCoroutineScope()
     var showAccountSheet by remember { mutableStateOf(false) }
     var mountAccountOverlay by remember { mutableStateOf(false) }
     var selectedArtist by remember { mutableStateOf<SelectedArtist?>(null) }
     var dailyRecommendState by remember { mutableStateOf<DailyRecommendState?>(null) }
     val expandProgress = remember { Animatable(0f) }
     val expandScope = rememberCoroutineScope()
+
+    LaunchedEffect(showNowPlaying) {
+        if (showNowPlaying) {
+            nowPlayingProgress.snapTo(0f)
+            // 先让全屏播放器完成一次测量，拿到大封面的真实目标位置，再开始移动。
+            withFrameNanos { }
+            withFrameNanos { }
+            nowPlayingProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 560,
+                    easing = FastOutSlowInEasing
+                )
+            )
+        }
+    }
 
     LaunchedEffect(dailyRecommendState) {
         if (dailyRecommendState != null) {
@@ -666,7 +691,19 @@ fun AppNavigation(
             playbackStateFlow = playerViewModel.playbackState,
             onPlayPauseClick = { playerViewModel.onPlayPause() },
             onNextClick = { playerViewModel.onNext() },
-            onBarClick = { showNowPlaying = true },
+            onBarClick = { artworkUrl ->
+                if (!showNowPlaying) {
+                    nowPlayingArtworkUrl = artworkUrl
+                    nowPlayingArtworkBounds = null
+                    showNowPlaying = true
+                }
+            },
+            onArtworkBoundsChanged = { bounds ->
+                if (miniPlayerArtworkBounds != bounds) {
+                    miniPlayerArtworkBounds = bounds
+                }
+            },
+            hideArtwork = showNowPlaying && nowPlayingArtworkBounds != null,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)
@@ -702,9 +739,30 @@ fun AppNavigation(
         )
 
         if (showNowPlaying) {
-            NowPlayingScreen(
+            NowPlayingTransitionLayer(
                 playerViewModel = playerViewModel,
-                onClose = { showNowPlaying = false },
+                progress = nowPlayingProgress.asState(),
+                artworkUrl = nowPlayingArtworkUrl,
+                sourceArtworkBounds = miniPlayerArtworkBounds,
+                targetArtworkBounds = nowPlayingArtworkBounds,
+                onTargetArtworkBoundsChanged = { bounds ->
+                    if (nowPlayingArtworkBounds != bounds) {
+                        nowPlayingArtworkBounds = bounds
+                    }
+                },
+                onClose = {
+                    nowPlayingScope.launch {
+                        nowPlayingProgress.animateTo(
+                            targetValue = 0f,
+                            animationSpec = tween(
+                                durationMillis = 440,
+                                easing = FastOutSlowInEasing
+                            )
+                        )
+                        showNowPlaying = false
+                        nowPlayingArtworkBounds = null
+                    }
+                }
             )
         }
 
@@ -771,6 +829,10 @@ private fun AppPageContent(
 ) {
     val index = selectedIndex.value
     val bottomContentPadding = 180.dp + imeOffset
+    val pageBackgroundColor = when (index) {
+        2 -> Color(0xFFF7F7FA)
+        else -> Color.White
+    }
 
     // 页面常驻意味着离开搜索页后它的输入框仍然可聚焦，
     // 因此显式清一次焦点，保证键盘随页面一起收起（与原先「切走即销毁」的行为一致）。
@@ -786,7 +848,11 @@ private fun AppPageContent(
     val mountedPages = remember { mutableSetOf(index) }
     mountedPages.add(index)
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(pageBackgroundColor)
+    ) {
         mountedPages.forEach { pageIndex ->
             val isActive = pageIndex == index
             key(pageIndex) {
@@ -1126,13 +1192,141 @@ private fun SearchQueryField(
 }
 
 @Composable
+private fun NowPlayingTransitionLayer(
+    playerViewModel: PlayerViewModel,
+    progress: State<Float>,
+    artworkUrl: String?,
+    sourceArtworkBounds: Rect?,
+    targetArtworkBounds: Rect?,
+    onTargetArtworkBoundsChanged: (Rect) -> Unit,
+    onClose: () -> Unit
+) {
+    val pageAlpha = remember(progress) {
+        derivedStateOf {
+            ((progress.value - 0.04f) / 0.50f).coerceIn(0f, 1f)
+        }
+    }
+    val targetArtworkAlpha = remember(progress) {
+        derivedStateOf {
+            ((progress.value - 0.86f) / 0.14f).coerceIn(0f, 1f)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    alpha = pageAlpha.value
+                }
+        ) {
+            NowPlayingScreen(
+                playerViewModel = playerViewModel,
+                onClose = onClose,
+                artworkAlpha = targetArtworkAlpha,
+                onArtworkBoundsChanged = onTargetArtworkBoundsChanged
+            )
+        }
+
+        if (sourceArtworkBounds != null && targetArtworkBounds != null) {
+            MovingPlayerArtwork(
+                imageUrl = artworkUrl,
+                sourceBounds = sourceArtworkBounds,
+                targetBounds = targetArtworkBounds,
+                progress = progress,
+                targetArtworkAlpha = targetArtworkAlpha
+            )
+        }
+    }
+}
+
+@Composable
+private fun MovingPlayerArtwork(
+    imageUrl: String?,
+    sourceBounds: Rect,
+    targetBounds: Rect,
+    progress: State<Float>,
+    targetArtworkAlpha: State<Float>
+) {
+    if (sourceBounds.width <= 0f || sourceBounds.height <= 0f ||
+        targetBounds.width <= 0f || targetBounds.height <= 0f
+    ) {
+        return
+    }
+
+    val density = LocalDensity.current
+    val targetWidth = with(density) { targetBounds.width.toDp() }
+    val targetHeight = with(density) { targetBounds.height.toDp() }
+    val sourceCornerPx = with(density) { 8.dp.toPx() }
+    val targetCornerPx = with(density) { 16.dp.toPx() }
+
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    targetBounds.left.roundToInt(),
+                    targetBounds.top.roundToInt()
+                )
+            }
+            .size(targetWidth, targetHeight)
+            .graphicsLayer {
+                val fraction = progress.value.coerceIn(0f, 1f)
+                val currentScaleX = lerp(
+                    sourceBounds.width / targetBounds.width,
+                    1f,
+                    fraction
+                )
+                val currentScaleY = lerp(
+                    sourceBounds.height / targetBounds.height,
+                    1f,
+                    fraction
+                )
+
+                transformOrigin = TransformOrigin(0f, 0f)
+                scaleX = currentScaleX
+                scaleY = currentScaleY
+                translationX = lerp(sourceBounds.left - targetBounds.left, 0f, fraction)
+                translationY = lerp(sourceBounds.top - targetBounds.top, 0f, fraction)
+                alpha = 1f - targetArtworkAlpha.value
+
+                // 图层本身会被缩放，因此反算局部圆角，确保视觉圆角从 MiniPlayer 的 8dp
+                // 平滑过渡到大封面的 16dp，而不是随缩放突然变成夸张的大圆角。
+                val visualCornerPx = lerp(sourceCornerPx, targetCornerPx, fraction)
+                val localCornerPx = visualCornerPx / minOf(currentScaleX, currentScaleY)
+                shape = RoundedCornerShape(with(density) { localCornerPx.toDp() })
+                clip = true
+            }
+            .background(Color(0xFFE3E3E6)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!imageUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun SearchMiniPlayerBar(
     backdrop: Backdrop,
     cornerRadius: Dp,
     playbackStateFlow: StateFlow<PlaybackState>,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
-    onBarClick: () -> Unit,
+    onBarClick: (String?) -> Unit,
+    onArtworkBoundsChanged: (Rect) -> Unit,
+    hideArtwork: Boolean,
     modifier: Modifier = Modifier
 ) {
     // 播放进度每 500ms 刷新一次。这里把订阅收回组件内部，并用 derivedStateOf 只保留
@@ -1162,12 +1356,14 @@ private fun SearchMiniPlayerBar(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .clickable { onBarClick() }
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright
             )
+            // 点击反馈必须沿 MiniPlayer 的胶囊轮廓裁切，避免默认矩形水波纹看起来像一块阴影。
+            .clip(RoundedCornerShape(cornerRadius))
+            .clickable { onBarClick(artworkUrl) }
     ) {
         Row(
             modifier = Modifier
@@ -1177,7 +1373,10 @@ private fun SearchMiniPlayerBar(
         ) {
             MiniPlayerArtwork(
                 imageUrl = artworkUrl,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier
+                    .size(40.dp)
+                    .graphicsLayer { alpha = if (hideArtwork) 0f else 1f },
+                onBoundsChanged = onArtworkBoundsChanged
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
@@ -1210,12 +1409,16 @@ private fun SearchMiniPlayerBar(
 @Composable
 private fun MiniPlayerArtwork(
     imageUrl: String?,
+    onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(8.dp)
 
     Box(
         modifier = modifier
+            .onGloballyPositioned { coordinates ->
+                onBoundsChanged(coordinates.boundsInRoot())
+            }
             .clip(shape)
             .background(Color(0xFFE3E3E6)),
         contentAlignment = Alignment.Center

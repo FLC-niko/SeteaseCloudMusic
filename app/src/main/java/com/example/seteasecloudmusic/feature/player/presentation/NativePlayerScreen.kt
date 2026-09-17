@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -47,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
@@ -57,6 +59,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -95,6 +99,8 @@ private val BLUR_VISUAL_RADIUS = 50.dp
 fun NativePlayerScreen(
     playerViewModel: PlayerViewModel,
     onClose: () -> Unit,
+    artworkAlpha: State<Float>,
+    onArtworkBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val playbackState by playerViewModel.playbackState.collectAsStateWithLifecycle()
@@ -317,8 +323,12 @@ fun NativePlayerScreen(
                                             .fillMaxWidth()
                                             .padding(horizontal = sidePad)
                                             .aspectRatio(1f)
+                                            .onGloballyPositioned { coordinates ->
+                                                onArtworkBoundsChanged(coordinates.boundsInRoot())
+                                            }
                                             .clip(RoundedCornerShape(16.dp))
                                             .graphicsLayer {
+                                                alpha = artworkAlpha.value
                                                 compositingStrategy = CompositingStrategy.Offscreen
                                             }
                                             .drawWithContent {
@@ -356,6 +366,12 @@ fun NativePlayerScreen(
                                             .fillMaxWidth()
                                             .padding(horizontal = 16.dp)
                                             .aspectRatio(1f)
+                                            .onGloballyPositioned { coordinates ->
+                                                onArtworkBoundsChanged(coordinates.boundsInRoot())
+                                            }
+                                            .graphicsLayer {
+                                                alpha = artworkAlpha.value
+                                            }
                                             .clip(RoundedCornerShape(18.dp))
                                             .background(Color.White.copy(alpha = 0.06f))
                                             .border(

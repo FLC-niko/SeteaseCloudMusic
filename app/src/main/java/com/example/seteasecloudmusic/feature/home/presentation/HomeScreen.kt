@@ -69,6 +69,7 @@ import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBa
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
+import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 
 private val HomeBackground = Color.White
 private val HomePrimary = Color(0xFF111111)
@@ -145,7 +146,9 @@ private fun HomeScreenContent(
     ) {
         LazyColumn(
             state = lazyListState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
                 bottom = bottomContentPadding
@@ -1077,4 +1080,3 @@ private fun PrivateDjCardArtwork() {
         )
     }
 }
-

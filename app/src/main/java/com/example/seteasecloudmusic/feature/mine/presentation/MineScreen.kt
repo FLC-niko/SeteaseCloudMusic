@@ -62,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -100,6 +103,7 @@ import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
+import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -163,7 +167,7 @@ fun MineScreen(
         }
     }
 
-    val collapseFraction by rememberAppleMusicCollapseFraction(
+    val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
     )
@@ -176,6 +180,10 @@ fun MineScreen(
         drawContent()
     }
 
+    // 注意：不要用 `CompositionLocalProvider(LocalOverscrollFactory provides null)`
+    // 关掉系统边缘拉伸。实测为负优化（50 分位帧耗时 13ms → 17ms）：关掉后本页的
+    // verticalElasticOverscroll 才开始生效，而它用 graphicsLayer 平移整个 LazyColumn，
+    // 代价高于系统拉伸。
     Box(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -221,7 +229,9 @@ fun MineScreen(
         } else {
             LazyColumn(
                 state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalElasticOverscroll(),
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 8.dp,
                     bottom = bottomContentPadding
@@ -231,7 +241,7 @@ fun MineScreen(
                 item(key = "large_page_title") {
                     AppleMusicLargeTitle(
                         title = "我的",
-                        collapseFraction = collapseFraction,
+                        collapseFraction = collapseFractionState.value,
                         trailingContent = {
                             UserAvatarButton(
                                 avatarUrl = session.avatarUrl,
@@ -242,232 +252,269 @@ fun MineScreen(
                     )
                 }
 
-                item(key = "user_header") {
-                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                        UserProfileCenterpiece(
-                            backdrop = mineBackdrop,
-                            nickname = session.nickname ?: "云音乐用户",
-                            userId = session.userId,
-                            avatarUrl = session.avatarUrl,
-                            createdCount = uiState.createdPlaylists.size,
-                            favoritedCount = uiState.favoritedPlaylists.size,
-                            likedCount = uiState.likedPlaylist?.trackCount ?: 0,
-                            localCount = uiState.localSongs.size,
-                            onRefresh = onRefresh,
-                            onAccountClick = onLoginClick,
-                            isLoading = uiState.isLoading
-                        )
-                    }
+            item(key = "user_header") {
+                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    UserProfileCenterpiece(
+                        backdrop = mineBackdrop,
+                        nickname = session.nickname ?: "云音乐用户",
+                        userId = session.userId,
+                        avatarUrl = session.avatarUrl,
+                        createdCount = uiState.createdPlaylists.size,
+                        favoritedCount = uiState.favoritedPlaylists.size,
+                        likedCount = uiState.likedPlaylist?.trackCount ?: 0,
+                        localCount = uiState.localSongs.size,
+                        onRefresh = onRefresh,
+                        onAccountClick = onLoginClick,
+                        isLoading = uiState.isLoading
+                    )
                 }
+            }
 
-                item(key = "liked_hero") {
-                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                        LikedSongsHeroCard(
-                            backdrop = mineBackdrop,
-                            playlist = uiState.likedPlaylist,
-                            onClick = { uiState.likedPlaylist?.let(onPlaylistClick) }
-                        )
-                    }
+            item(key = "liked_hero") {
+                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    LikedSongsHeroCard(
+                        backdrop = mineBackdrop,
+                        playlist = uiState.likedPlaylist,
+                        onClick = { uiState.likedPlaylist?.let(onPlaylistClick) }
+                    )
                 }
+            }
 
-                // 原生吸顶：零延迟同一帧渲染，彻底解决上下滑动时的抖动问题
-                stickyHeader(key = "playlist_tabs") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MinePageBase)
-                            .padding(horizontal = 20.dp, vertical = 2.dp)
-                    ) {
-                        MinePlaylistTabs(
-                            backdrop = mineBackdrop,
-                            selectedTab = uiState.selectedTab,
-                            createdCount = uiState.createdPlaylists.size,
-                            favoritedCount = uiState.favoritedPlaylists.size,
-                            localCount = uiState.localSongs.size,
-                            onTabSelected = onTabSelected
-                        )
-                    }
+            // 原生吸顶：零延迟同一帧渲染，彻底解决上下滑动时的抖动问题
+            stickyHeader(key = "playlist_tabs") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MinePageBase)
+                        .padding(horizontal = 20.dp, vertical = 2.dp)
+                ) {
+                    MinePlaylistTabs(
+                        backdrop = mineBackdrop,
+                        selectedTab = uiState.selectedTab,
+                        createdCount = uiState.createdPlaylists.size,
+                        favoritedCount = uiState.favoritedPlaylists.size,
+                        localCount = uiState.localSongs.size,
+                        onTabSelected = onTabSelected
+                    )
                 }
+            }
 
-                when (uiState.selectedTab) {
-                    MinePlaylistTab.CREATED -> {
-                        if (uiState.createdPlaylists.isEmpty() && !uiState.isLoading) {
-                            if (!uiState.errorMessage.isNullOrBlank()) {
-                                item(key = "error_created") {
-                                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                        MineErrorNotice(
-                                            message = uiState.errorMessage,
-                                            onRetry = onRefresh
-                                        )
-                                    }
-                                }
-                            } else {
-                                item(key = "empty_created") {
-                                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                        EmptyPlaylistNotice("暂无自建歌单")
-                                    }
+            when (uiState.selectedTab) {
+                MinePlaylistTab.CREATED -> {
+                    if (uiState.createdPlaylists.isEmpty() && !uiState.isLoading) {
+                        if (!uiState.errorMessage.isNullOrBlank()) {
+                            item(key = "error_created") {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                    MineErrorNotice(
+                                        message = uiState.errorMessage,
+                                        onRetry = onRefresh
+                                    )
                                 }
                             }
                         } else {
-                            items(uiState.createdPlaylists, key = { it.id }) { playlist ->
+                            item(key = "empty_created") {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                    PlaylistRowItem(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                                    EmptyPlaylistNotice("暂无自建歌单")
                                 }
                             }
                         }
-                    }
-
-                    MinePlaylistTab.FAVORITED -> {
-                        if (uiState.favoritedPlaylists.isEmpty() && !uiState.isLoading) {
-                            if (!uiState.errorMessage.isNullOrBlank()) {
-                                item(key = "error_favorited") {
-                                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                        MineErrorNotice(
-                                            message = uiState.errorMessage,
-                                            onRetry = onRefresh
-                                        )
-                                    }
-                                }
-                            } else {
-                                item(key = "empty_favorited") {
-                                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                        EmptyPlaylistNotice("暂无收藏歌单")
-                                    }
-                                }
-                            }
-                        } else {
-                            items(uiState.favoritedPlaylists, key = { it.id }) { playlist ->
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                    PlaylistRowItem(playlist = playlist, onClick = { onPlaylistClick(playlist) })
-                                }
-                            }
-                        }
-                    }
-
-                    MinePlaylistTab.LOCAL -> {
-                        item(key = "local_playlist_entry") {
+                    } else {
+                        items(uiState.createdPlaylists, key = { it.id }) { playlist ->
                             Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                PlaylistRowItem(
-                                    playlist = uiState.localPlaylist,
-                                    onClick = { onPlaylistClick(uiState.localPlaylist) }
-                                )
-                            }
-                        }
-                        item(key = "local_dir_control_bar") {
-                            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                LocalMusicDirectoryBar(
-                                    backdrop = mineBackdrop,
-                                    directoryPath = uiState.localDirectoryPath,
-                                    hasPermission = hasPermission,
-                                    isScanning = uiState.isScanningLocal,
-                                    onChangeDirectory = { showDirectoryDialog = true },
-                                    onRequestPermission = { permissionLauncher.launch(permissionToRequest) },
-                                    onRescan = {
-                                        if (!hasPermission) permissionLauncher.launch(permissionToRequest)
-                                        else onScanLocal(uiState.localDirectoryPath)
-                                    }
-                                )
+                                PlaylistRowItem(playlist = playlist, onClick = { onPlaylistClick(playlist) })
                             }
                         }
                     }
                 }
 
-                if (uiState.isLoading) {
-                    item(key = "loading_indicator") {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(26.dp),
-                                color = MineAccentRed,
-                                strokeWidth = 2.5.dp
+                MinePlaylistTab.FAVORITED -> {
+                    if (uiState.favoritedPlaylists.isEmpty() && !uiState.isLoading) {
+                        if (!uiState.errorMessage.isNullOrBlank()) {
+                            item(key = "error_favorited") {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                    MineErrorNotice(
+                                        message = uiState.errorMessage,
+                                        onRetry = onRefresh
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = "empty_favorited") {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                    EmptyPlaylistNotice("暂无收藏歌单")
+                                }
+                            }
+                        }
+                    } else {
+                        items(uiState.favoritedPlaylists, key = { it.id }) { playlist ->
+                            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                PlaylistRowItem(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                            }
+                        }
+                    }
+                }
+
+                MinePlaylistTab.LOCAL -> {
+                    item(key = "local_playlist_entry") {
+                        Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                            PlaylistRowItem(
+                                playlist = uiState.localPlaylist,
+                                onClick = { onPlaylistClick(uiState.localPlaylist) }
+                            )
+                        }
+                    }
+                    item(key = "local_dir_control_bar") {
+                        Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                            LocalMusicDirectoryBar(
+                                backdrop = mineBackdrop,
+                                directoryPath = uiState.localDirectoryPath,
+                                hasPermission = hasPermission,
+                                isScanning = uiState.isScanningLocal,
+                                onChangeDirectory = { showDirectoryDialog = true },
+                                onRequestPermission = { permissionLauncher.launch(permissionToRequest) },
+                                onRescan = {
+                                    if (!hasPermission) permissionLauncher.launch(permissionToRequest)
+                                    else onScanLocal(uiState.localDirectoryPath)
+                                }
                             )
                         }
                     }
                 }
             }
 
-            AppleMusicCollapsedTopBar(
-                title = "我的",
-                collapseFraction = collapseFraction,
-                statusBarHeight = statusBarHeight,
-                backdrop = mineBackdrop,
-                trailingContent = {
-                    UserAvatarButton(
-                        avatarUrl = session.avatarUrl,
-                        displayName = session.nickname,
-                        size = 34.dp,
-                        onClick = onLoginClick
-                    )
-                },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .zIndex(4f)
-            )
-        }
-
-        if (showDirectoryDialog) {
-            ChangeLocalDirectoryDialog(
-                currentPath = uiState.localDirectoryPath ?: "",
-                onDismiss = { showDirectoryDialog = false },
-                onConfirm = { newPath ->
-                    showDirectoryDialog = false
-                    if (!hasPermission) permissionLauncher.launch(permissionToRequest)
-                    onSetLocalDirectory(newPath)
+            if (uiState.isLoading) {
+                item(key = "loading_indicator") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(26.dp),
+                            color = MineAccentRed,
+                            strokeWidth = 2.5.dp
+                        )
+                    }
                 }
-            )
-        }
-
-        AnimatedVisibility(
-            visible = uiState.activePlaylistDetail != null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.fillMaxSize().zIndex(20f)
-        ) {
-            uiState.activePlaylistDetail?.let { detail ->
-                PlaylistDetailScreen(
-                    detail = detail,
-                    isLoading = uiState.isLoadingDetail,
-                    backdrop = mineBackdrop,
-                    onClose = onCloseDetail,
-                    onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
-                    onPlayAll = { onPlayAll(detail.tracks) }
-                )
             }
         }
+
+        MineCollapsedTopBar(
+            collapseFractionState = collapseFractionState,
+            statusBarHeight = statusBarHeight,
+            backdrop = mineBackdrop,
+            avatarUrl = session.avatarUrl,
+            displayName = session.nickname,
+            onAvatarClick = onLoginClick,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .zIndex(4f)
+        )
     }
+
+    if (showDirectoryDialog) {
+        ChangeLocalDirectoryDialog(
+            currentPath = uiState.localDirectoryPath ?: "",
+            onDismiss = { showDirectoryDialog = false },
+            onConfirm = { newPath ->
+                showDirectoryDialog = false
+                if (!hasPermission) permissionLauncher.launch(permissionToRequest)
+                onSetLocalDirectory(newPath)
+            }
+        )
+    }
+
+    AnimatedVisibility(
+        visible = uiState.activePlaylistDetail != null,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        modifier = Modifier.fillMaxSize().zIndex(20f)
+    ) {
+        uiState.activePlaylistDetail?.let { detail ->
+            PlaylistDetailScreen(
+                detail = detail,
+                isLoading = uiState.isLoadingDetail,
+                backdrop = mineBackdrop,
+                onClose = onCloseDetail,
+                onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
+                onPlayAll = { onPlayAll(detail.tracks) }
+            )
+        }
+    }
+    }
+}
+
+/**
+ * 「我的」页顶部折叠栏。
+ *
+ * 单独抽成一层的原因：`collapseFraction` 在滚动最开始的 76dp 内每帧都会变化，
+ * 如果直接在 [MineScreen] 作用域里读取它的 `.value`，就会让整页（含 LazyColumn
+ * 的整个内容 DSL）每帧重新组合一次。把读取动作放进这个子组件后，滚动时只有
+ * 这个顶栏自己重组。
+ */
+@Composable
+private fun MineCollapsedTopBar(
+    collapseFractionState: State<Float>,
+    statusBarHeight: Dp,
+    backdrop: Backdrop,
+    avatarUrl: String?,
+    displayName: String?,
+    onAvatarClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AppleMusicCollapsedTopBar(
+        title = "我的",
+        collapseFraction = collapseFractionState.value,
+        statusBarHeight = statusBarHeight,
+        backdrop = backdrop,
+        trailingContent = {
+            UserAvatarButton(
+                avatarUrl = avatarUrl,
+                displayName = displayName,
+                size = 34.dp,
+                onClick = onAvatarClick
+            )
+        },
+        modifier = modifier
+    )
 }
 
 @Composable
 private fun MineAmbientBackground() {
-    Box(modifier = Modifier.fillMaxSize().background(MinePageBase))
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(420.dp)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFFFE8ED).copy(alpha = 0.82f),
-                        Color(0xFFF2EEFF).copy(alpha = 0.32f),
-                        Color.Transparent
-                    )
-                )
-            )
-    )
+    // 三层氛围背景合并到同一个节点的 drawBehind 里：
+    // 原先三个各自带 .background(brush) 的 Box 会产生三个布局节点 + 三份绘制指令，
+    // 而这段内容既要在屏幕上画一遍、又要在 mineBackdrop 图层里录一遍。
+    // 合并后绘制顺序与像素结果完全一致，但节点数从 3 降到 1。
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFFE9F5FF).copy(alpha = 0.30f),
-                        Color.Transparent,
-                        Color(0xFFFFF1E8).copy(alpha = 0.24f)
+            .drawBehind {
+                drawRect(MinePageBase)
+                // 顶部暖色渐晕：原先是 height(420.dp) 的 Box，
+                // 因此渐变必须显式限定在 0..420dp，否则会按整个画布高度拉伸。
+                val warmBandHeight = 420.dp.toPx()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFFFE8ED).copy(alpha = 0.82f),
+                            Color(0xFFF2EEFF).copy(alpha = 0.32f),
+                            Color.Transparent
+                        ),
+                        startY = 0f,
+                        endY = warmBandHeight
+                    ),
+                    size = Size(size.width, warmBandHeight)
+                )
+                // 左右冷/暖对冲微光，铺满整屏
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFFE9F5FF).copy(alpha = 0.30f),
+                            Color.Transparent,
+                            Color(0xFFFFF1E8).copy(alpha = 0.24f)
+                        )
                     )
                 )
-            )
+            }
     )
 }
 
@@ -871,11 +918,13 @@ private fun MinePlaylistTabs(
     onTabSelected: (MinePlaylistTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val tabs = listOf(
-        MinePlaylistTab.CREATED to "创建 $createdCount",
-        MinePlaylistTab.FAVORITED to "收藏 $favoritedCount",
-        MinePlaylistTab.LOCAL to "本地 $localCount"
-    )
+    val tabs = remember(createdCount, favoritedCount, localCount) {
+        listOf(
+            MinePlaylistTab.CREATED to "创建 $createdCount",
+            MinePlaylistTab.FAVORITED to "收藏 $favoritedCount",
+            MinePlaylistTab.LOCAL to "本地 $localCount"
+        )
+    }
 
     val currentOnTabSelected by rememberUpdatedState(onTabSelected)
     val currentSelectedTab by rememberUpdatedState(selectedTab)

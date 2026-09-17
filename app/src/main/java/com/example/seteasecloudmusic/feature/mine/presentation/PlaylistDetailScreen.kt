@@ -51,6 +51,7 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
+import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.kyant.backdrop.Backdrop
 
@@ -98,7 +99,9 @@ fun PlaylistDetailScreen(
         ) {
             LazyColumn(
                 state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalElasticOverscroll(),
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 14.dp,
                     bottom = 160.dp,

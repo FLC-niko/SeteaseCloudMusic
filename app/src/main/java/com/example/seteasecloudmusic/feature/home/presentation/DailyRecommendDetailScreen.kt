@@ -51,6 +51,7 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
+import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 
 private val DetailPageBg = Color.White
 private val DetailPrimary = Color(0xFF111111)
@@ -97,7 +98,9 @@ fun DailyRecommendDetailScreen(
     ) {
         LazyColumn(
             state = lazyListState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalElasticOverscroll(),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             item {

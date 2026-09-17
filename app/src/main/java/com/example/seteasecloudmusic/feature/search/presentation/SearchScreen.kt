@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 
 private val PageBackground = Color.White
 private val PrimaryText = Color(0xFF111111)
@@ -247,7 +248,7 @@ private fun SearchResultsList(
     onTrackClick: (Track) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyColumn(modifier = modifier) {
+    LazyColumn(modifier = modifier.verticalElasticOverscroll()) {
         itemsIndexed(items = items, key = { _, item -> item.key }) { index, item ->
             when (item) {
                 is SearchRowItem.Song -> SongRow(
