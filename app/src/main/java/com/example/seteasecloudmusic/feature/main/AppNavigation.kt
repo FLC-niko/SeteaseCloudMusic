@@ -89,6 +89,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.RoundedRectangle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 
@@ -138,6 +139,21 @@ private data class DailyRecommendState(
     val tracks: List<Track>,
     val posterBounds: Rect,
     val title: String = "每日推荐"
+)
+
+/**
+ * 迷你播放条真正需要的字段。
+ *
+ * [PlaybackState] 里的 [PlaybackState.currentPositionMs] 每 500ms 变化一次，
+ * 而迷你播放条并不展示进度。把它派生为一个只含必要字段的值，
+ * 进度推进时派生值保持相等，因此不会引发任何重组。
+ */
+private data class MiniPlayerUiState(
+    val hasTrack: Boolean,
+    val isPlaying: Boolean,
+    val title: String?,
+    val artworkUrl: String?,
+    val hasNextTrack: Boolean
 )
 
 //底栏上方的玻璃滑块
@@ -231,8 +247,10 @@ fun AppNavigation(
     val authViewModel: AuthViewModel = hiltViewModel()
     val mainViewModel: MainViewModel = hiltViewModel()
 
-    val searchUiState by searchViewModel.uiState.collectAsStateWithLifecycle()
-    val playbackState by playerViewModel.playbackState.collectAsStateWithLifecycle()
+    // 注意：这里刻意不订阅 searchViewModel.uiState 与 playerViewModel.playbackState。
+    // 二者都是高频变化的流（输入每个字符 / 播放位置每 500ms），一旦在外壳作用域读取，
+    // 整个导航外壳（含玻璃 Backdrop、导航项、正在播放、账号抽屉等覆盖层）都会被重组。
+    // 真正的消费者在各自的子组件内部订阅：SearchQueryField / SearchMiniPlayerBar。
     val authUiState by authViewModel.uiState.collectAsStateWithLifecycle()
     val showOfflineDialog by mainViewModel.showOfflineDialog.collectAsStateWithLifecycle()
     val isRetrying by mainViewModel.isRetrying.collectAsStateWithLifecycle()
@@ -544,52 +562,7 @@ fun AppNavigation(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            BasicTextField(
-                                value = searchUiState.query,
-                                onValueChange = { searchViewModel.onQueryChanged(it) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 18.dp)
-                                    .onKeyEvent { keyEvent ->
-                                        if (keyEvent.key == Key.Enter) {
-                                            searchViewModel.onSearchSubmit()
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    },
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.Black),
-                                decorationBox = { innerTextField ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Search,
-                                            contentDescription = null,
-                                            tint = Color.DarkGray,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            if (searchUiState.query.isEmpty()) {
-                                                Text("搜你想听的", color = Color.Gray)
-                                            }
-                                            innerTextField()
-                                        }
-                                        if (searchUiState.query.isNotEmpty()) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Clear,
-                                                contentDescription = "清空搜索",
-                                                tint = Color.Gray,
-                                                modifier = Modifier
-                                                    .size(18.dp)
-                                                    .clickable { searchViewModel.onClearQuery() }
-                                            )
-                                        }
-                                    }
-                                }
-                            )
+                            SearchQueryField(viewModel = searchViewModel)
                         }
 
                         Box(
@@ -690,7 +663,7 @@ fun AppNavigation(
         SearchMiniPlayerBar(
             backdrop = backdrop,
             cornerRadius = cornerRadius,
-            playbackState = playbackState,
+            playbackStateFlow = playerViewModel.playbackState,
             onPlayPauseClick = { playerViewModel.onPlayPause() },
             onNextClick = { playerViewModel.onNext() },
             onBarClick = { showNowPlaying = true },
@@ -1090,22 +1063,100 @@ private fun LargePageTitle(
 /**
  * 搜索模式底部迷你播放条。
  */
+/**
+ * 顶部搜索输入框。
+ *
+ * 搜索状态在这里**独立订阅**，而不是在 [AppNavigation] 里读取：
+ * `SearchViewModel.uiState` 每输入一个字符就会变化，若在外壳作用域读取，
+ * 整个导航外壳（玻璃 Backdrop、导航项、各覆盖层）都会随每次按键一起重组。
+ */
+@Composable
+private fun SearchQueryField(
+    viewModel: SearchViewModel,
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    BasicTextField(
+        value = uiState.query,
+        onValueChange = { viewModel.onQueryChanged(it) },
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp)
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.key == Key.Enter) {
+                    viewModel.onSearchSubmit()
+                    true
+                } else {
+                    false
+                }
+            },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.Black),
+        decorationBox = { innerTextField ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = Color.DarkGray,
+                    modifier = Modifier.size(20.dp)
+                )
+                Box(modifier = Modifier.weight(1f)) {
+                    if (uiState.query.isEmpty()) {
+                        Text("搜你想听的", color = Color.Gray)
+                    }
+                    innerTextField()
+                }
+                if (uiState.query.isNotEmpty()) {
+                    Icon(
+                        imageVector = Icons.Filled.Clear,
+                        contentDescription = "清空搜索",
+                        tint = Color.Gray,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clickable { viewModel.onClearQuery() }
+                    )
+                }
+            }
+        }
+    )
+}
+
 @Composable
 private fun SearchMiniPlayerBar(
     backdrop: Backdrop,
     cornerRadius: Dp,
-    playbackState: PlaybackState,
+    playbackStateFlow: StateFlow<PlaybackState>,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
     onBarClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val hasTrack = playbackState.currentTrack != null
-    val isPlaying = playbackState.status == PlayerStatus.PLAYING
-    val artworkUrl = playbackState.currentTrack?.coverUrl ?: playbackState.currentTrack?.album?.coverUrl
-    val hasNextTrack =
-        playbackState.currentQueueIndex in playbackState.queueTracks.indices &&
-            playbackState.currentQueueIndex < playbackState.queueTracks.lastIndex
+    // 播放进度每 500ms 刷新一次。这里把订阅收回组件内部，并用 derivedStateOf 只保留
+    // 迷你播放器真正关心的字段：进度推进时派生值不变，因此不会触发任何重组。
+    val playbackState by playbackStateFlow.collectAsStateWithLifecycle()
+    val miniState by remember {
+        derivedStateOf {
+            MiniPlayerUiState(
+                hasTrack = playbackState.currentTrack != null,
+                isPlaying = playbackState.status == PlayerStatus.PLAYING,
+                title = playbackState.currentTrack?.title,
+                artworkUrl = playbackState.currentTrack?.coverUrl
+                    ?: playbackState.currentTrack?.album?.coverUrl,
+                hasNextTrack = playbackState.currentQueueIndex in playbackState.queueTracks.indices &&
+                    playbackState.currentQueueIndex < playbackState.queueTracks.lastIndex
+            )
+        }
+    }
+
+    val hasTrack = miniState.hasTrack
+    val isPlaying = miniState.isPlaying
+    val artworkUrl = miniState.artworkUrl
+    val hasNextTrack = miniState.hasNextTrack
+    val title = miniState.title ?: "未在播放"
 
     Box(
         modifier = modifier
@@ -1130,7 +1181,7 @@ private fun SearchMiniPlayerBar(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = playbackState.currentTrack?.title ?: "未在播放",
+                text = title,
                 color = Color.Black,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f)

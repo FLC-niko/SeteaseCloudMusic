@@ -3,6 +3,7 @@ package com.example.seteasecloudmusic.feature.player.presentation
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.SystemClock
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -21,6 +22,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.core.player.PlayerStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -29,6 +31,16 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import kotlin.math.abs
+
+/**
+ * 正常播放时向 WebView 校准进度的间隔（ms）。WebView 自身会按时间插值推进进度，
+ * 原生侧只做低频漂移校准即可。
+ */
+private const val PLAYBACK_SYNC_INTERVAL_MS = 1000L
+
+/** 播放位置跳变超过该阈值视为 seek，需要立即下发。 */
+private const val PLAYBACK_SEEK_THRESHOLD_MS = 1200
 
 private class WebPlayerSession {
     val webReady = MutableStateFlow(false)
@@ -163,8 +175,8 @@ fun WebPlayerScreen(
                     "SCMBridge"
                 )
 
-                // 开发调试：新电脑当前局域网 IP (亦可结合 adb reverse 使用 http://localhost:5173)
-                loadUrl("http://192.168.1.113:5173")
+                // 使用 APK 内置的 AMLL 页面，避免安装包依赖开发机局域网地址。
+                loadUrl("file:///android_asset/amll/index.html")
             }
         },
         update = { webView ->
@@ -176,8 +188,36 @@ fun WebPlayerScreen(
     DisposableEffect(musicPlayerController, lifecycleOwner) {
         val playbackJob: Job = scope.launch {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                musicPlayerController.playbackState.collectLatest { state ->
-                    if (!session.webReady.value || session.disposed) return@collectLatest
+                // 进度同步节流：
+                // 播放位置由 MusicPlayerController 每 500ms 推送一次，若每次变化都执行
+                // evaluateJavascript，等于每秒往 WebView 注入 2 次 JS（JSON 构造 + URL 编码 +
+                // 跨线程调度）。WebView 侧的播放进度可以自行按时间插值推进，
+                // 因此这里只在「状态/时长变化、发生 seek、或到达校准间隔」时才真正下发。
+                var lastSentPositionMs = -1
+                var lastSentStatus: PlayerStatus? = null
+                var lastSentDurationMs = -1
+                var lastSentAtMs = 0L
+
+                musicPlayerController.playbackState.collect { state ->
+                    if (!session.webReady.value || session.disposed) return@collect
+
+                    val now = SystemClock.elapsedRealtime()
+                    val statusChanged = state.status != lastSentStatus
+                    val durationChanged = state.durationMs != lastSentDurationMs
+                    // 拖动进度条或切歌会造成位置跳变，必须立即下发，否则歌词会停在旧位置
+                    val seeked = lastSentPositionMs >= 0 &&
+                        abs(state.currentPositionMs - lastSentPositionMs) > PLAYBACK_SEEK_THRESHOLD_MS
+                    val driftCorrectionDue = now - lastSentAtMs >= PLAYBACK_SYNC_INTERVAL_MS
+
+                    if (!statusChanged && !durationChanged && !seeked && !driftCorrectionDue) {
+                        return@collect
+                    }
+
+                    lastSentPositionMs = state.currentPositionMs
+                    lastSentStatus = state.status
+                    lastSentDurationMs = state.durationMs
+                    lastSentAtMs = now
+
                     dispatchToWeb(
                         "SET_PLAYBACK",
                         JSONObject().apply {

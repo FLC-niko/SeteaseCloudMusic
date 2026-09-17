@@ -24,6 +24,9 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -57,28 +60,34 @@ fun PlayerControls(
     isLocalTrack: Boolean = false,
     currentQuality: OnlineAudioQuality = OnlineAudioQuality.STANDARD,
     dominantColor: Color = Color.Transparent,
+    hasTrack: Boolean = true,
+    isLyricsPage: Boolean = false,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
     onTogglePlaybackMode: () -> Unit = {},
     onSelectQualityClick: () -> Unit = {},
+    onToggleLyrics: (() -> Unit)? = null,
+    onQueueClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
 
-    val rawProgress = if (durationMs > 0) {
+    val rawProgress = if (hasTrack && durationMs > 0) {
         (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
 
-    val displayProgress = if (isDragging) dragProgress else rawProgress
-    val displayCurrentMs = if (isDragging) {
+    val displayProgress = if (isDragging && hasTrack) dragProgress else rawProgress
+    val displayCurrentMs = if (isDragging && hasTrack) {
         (dragProgress * durationMs).toInt().coerceIn(0, durationMs)
-    } else {
+    } else if (hasTrack) {
         currentPositionMs
+    } else {
+        0
     }
 
     Column(
@@ -91,6 +100,7 @@ fun PlayerControls(
             progress = displayProgress,
             isDragging = isDragging,
             durationMs = durationMs,
+            enabled = hasTrack && durationMs > 0,
             onSeekTo = onSeekTo,
             onDragUpdate = { dragging, frac ->
                 isDragging = dragging
@@ -106,20 +116,20 @@ fun PlayerControls(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = formatTime(displayCurrentMs),
-                color = if (isDragging) Color.White else Color.White.copy(alpha = 0.65f),
+                text = if (hasTrack) formatTime(displayCurrentMs) else "00:00",
+                color = if (isDragging && hasTrack) Color.White else Color.White.copy(alpha = if (hasTrack) 0.65f else 0.40f),
                 fontSize = 12.sp,
-                fontWeight = if (isDragging) FontWeight.Bold else FontWeight.Normal
+                fontWeight = if (isDragging && hasTrack) FontWeight.Bold else FontWeight.Normal
             )
             Text(
-                text = if (durationMs > 0) {
+                text = if (hasTrack && durationMs > 0) {
                     "-" + formatTime((durationMs - displayCurrentMs).coerceAtLeast(0))
                 } else {
                     "--:--"
                 },
-                color = if (isDragging) Color.White else Color.White.copy(alpha = 0.65f),
+                color = if (isDragging && hasTrack) Color.White else Color.White.copy(alpha = if (hasTrack) 0.65f else 0.40f),
                 fontSize = 12.sp,
-                fontWeight = if (isDragging) FontWeight.Bold else FontWeight.Normal
+                fontWeight = if (isDragging && hasTrack) FontWeight.Bold else FontWeight.Normal
             )
         }
 
@@ -134,12 +144,19 @@ fun PlayerControls(
             // 播放模式切换按钮（顺序循环 / 随机播放）
             IconButton(
                 onClick = onTogglePlaybackMode,
+                enabled = hasTrack,
                 modifier = Modifier.size(46.dp)
             ) {
                 Icon(
                     imageVector = if (playbackMode == PlaybackMode.SHUFFLE) Icons.Filled.Shuffle else Icons.Filled.Repeat,
                     contentDescription = if (playbackMode == PlaybackMode.SHUFFLE) "当前：随机播放" else "当前：顺序播放",
-                    tint = if (playbackMode == PlaybackMode.SHUFFLE) Color(0xFFFA233B) else Color.White.copy(alpha = 0.85f),
+                    tint = if (!hasTrack) {
+                        Color.White.copy(alpha = 0.35f)
+                    } else if (playbackMode == PlaybackMode.SHUFFLE) {
+                        Color(0xFFFA233B)
+                    } else {
+                        Color.White.copy(alpha = 0.85f)
+                    },
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -147,12 +164,13 @@ fun PlayerControls(
             // 上一首
             IconButton(
                 onClick = onPrevious,
+                enabled = hasTrack,
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.SkipPrevious,
                     contentDescription = "上一首",
-                    tint = Color.White,
+                    tint = if (hasTrack) Color.White else Color.White.copy(alpha = 0.25f),
                     modifier = Modifier.size(34.dp)
                 )
             }
@@ -187,12 +205,13 @@ fun PlayerControls(
             // 下一首
             IconButton(
                 onClick = onNext,
+                enabled = hasTrack,
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.SkipNext,
                     contentDescription = "下一首",
-                    tint = Color.White,
+                    tint = if (hasTrack) Color.White else Color.White.copy(alpha = 0.25f),
                     modifier = Modifier.size(34.dp)
                 )
             }
@@ -202,7 +221,7 @@ fun PlayerControls(
                 modifier = Modifier
                     .size(46.dp)
                     .then(
-                        if (!isLocalTrack) {
+                        if (!isLocalTrack && hasTrack) {
                             Modifier
                                 .clip(CircleShape)
                                 .clickable(onClick = onSelectQualityClick)
@@ -214,7 +233,13 @@ fun PlayerControls(
             ) {
                 Text(
                     text = if (isLocalTrack) "本地" else currentQuality.title,
-                    color = if (isLocalTrack) Color.White.copy(alpha = 0.50f) else Color.White.copy(alpha = 0.90f),
+                    color = if (!hasTrack) {
+                        Color.White.copy(alpha = 0.35f)
+                    } else if (isLocalTrack) {
+                        Color.White.copy(alpha = 0.50f)
+                    } else {
+                        Color.White.copy(alpha = 0.90f)
+                    },
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -222,6 +247,70 @@ fun PlayerControls(
         }
 
         Spacer(modifier = Modifier.height(14.dp))
+
+        // 4. Apple Music 底部操作栏（歌词切换按钮、音频输出指示、待播清单按钮）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 歌词切换按键 (Apple Music 风格气泡按键)
+            IconButton(
+                onClick = { onToggleLyrics?.invoke() },
+                enabled = hasTrack && onToggleLyrics != null,
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .background(
+                        if (isLyricsPage) Color.White.copy(alpha = 0.22f) else Color.Transparent
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ChatBubble,
+                    contentDescription = "歌词",
+                    tint = if (!hasTrack) {
+                        Color.White.copy(alpha = 0.25f)
+                    } else if (isLyricsPage) {
+                        Color.White
+                    } else {
+                        Color.White.copy(alpha = 0.65f)
+                    },
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // 中间音频输出指示 (Apple Music 风格耳机/AirPlay)
+            IconButton(
+                onClick = {},
+                enabled = false,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Headphones,
+                    contentDescription = "音频输出",
+                    tint = Color.White.copy(alpha = 0.40f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // 右侧待播清单列表按键
+            IconButton(
+                onClick = { onQueueClick?.invoke() },
+                enabled = onQueueClick != null,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                    contentDescription = "待播清单",
+                    tint = Color.White.copy(alpha = if (onQueueClick != null) 0.65f else 0.40f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
     }
 }
 
@@ -236,45 +325,50 @@ private fun SmoothProgressBar(
     progress: Float,
     isDragging: Boolean,
     durationMs: Int,
+    enabled: Boolean = true,
     onSeekTo: (Int) -> Unit,
     onDragUpdate: (Boolean, Float) -> Unit
 ) {
-    val trackHeight = if (isDragging) 6.dp else 4.dp
-    val thumbRadius = if (isDragging) 8.dp else 5.dp
+    val trackHeight = if (isDragging && enabled) 6.dp else 4.dp
+    val thumbRadius = if (isDragging && enabled) 8.dp else 5.dp
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(32.dp)
-            .pointerInput(durationMs) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val width = size.width.toFloat()
-                    if (width <= 0f) return@awaitEachGesture
+            .then(
+                if (enabled && durationMs > 0) {
+                    Modifier.pointerInput(durationMs) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val width = size.width.toFloat()
+                            if (width <= 0f) return@awaitEachGesture
 
-                    val initialFraction = (down.position.x / width).coerceIn(0f, 1f)
-                    onDragUpdate(true, initialFraction)
+                            val initialFraction = (down.position.x / width).coerceIn(0f, 1f)
+                            onDragUpdate(true, initialFraction)
 
-                    var currentFraction = initialFraction
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull() ?: break
-                        if (change.changedToUp()) {
-                            val finalFraction = (change.position.x / width).coerceIn(0f, 1f)
-                            onDragUpdate(false, finalFraction)
-                            if (durationMs > 0) {
-                                onSeekTo((finalFraction * durationMs).toInt())
+                            var currentFraction = initialFraction
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (change.changedToUp()) {
+                                    val finalFraction = (change.position.x / width).coerceIn(0f, 1f)
+                                    onDragUpdate(false, finalFraction)
+                                    onSeekTo((finalFraction * durationMs).toInt())
+                                    change.consume()
+                                    break
+                                } else {
+                                    currentFraction = (change.position.x / width).coerceIn(0f, 1f)
+                                    onDragUpdate(true, currentFraction)
+                                    change.consume()
+                                }
                             }
-                            change.consume()
-                            break
-                        } else {
-                            currentFraction = (change.position.x / width).coerceIn(0f, 1f)
-                            onDragUpdate(true, currentFraction)
-                            change.consume()
                         }
                     }
+                } else {
+                    Modifier
                 }
-            },
+            ),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxWidth().height(trackHeight)) {
@@ -284,7 +378,7 @@ private fun SmoothProgressBar(
 
             // 背景底轨
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.25f),
+                color = Color.White.copy(alpha = if (enabled) 0.25f else 0.12f),
                 topLeft = Offset(0f, 0f),
                 size = Size(canvasWidth, canvasHeight),
                 cornerRadius = CornerRadius(canvasHeight / 2, canvasHeight / 2)
@@ -293,19 +387,21 @@ private fun SmoothProgressBar(
             // 激活进度轨
             if (activeWidth > 0f) {
                 drawRoundRect(
-                    color = Color.White,
+                    color = Color.White.copy(alpha = if (enabled) 1f else 0.3f),
                     topLeft = Offset(0f, 0f),
                     size = Size(activeWidth, canvasHeight),
                     cornerRadius = CornerRadius(canvasHeight / 2, canvasHeight / 2)
                 )
             }
 
-            // 拖拽手柄小圆点
-            drawCircle(
-                color = Color.White,
-                radius = thumbRadius.toPx(),
-                center = Offset(activeWidth, canvasHeight / 2)
-            )
+            // 拖拽手柄小圆点（不可用时隐藏，避免暗示可拖动）
+            if (enabled) {
+                drawCircle(
+                    color = Color.White,
+                    radius = thumbRadius.toPx(),
+                    center = Offset(activeWidth, canvasHeight / 2)
+                )
+            }
         }
     }
 }

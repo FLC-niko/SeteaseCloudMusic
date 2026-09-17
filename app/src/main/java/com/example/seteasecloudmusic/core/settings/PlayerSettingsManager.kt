@@ -59,11 +59,11 @@ class PlayerSettingsManager @Inject constructor(
     }
 
     private fun loadSavedStyle(): PlayerStyle {
-        val name = prefs.getString(KEY_PLAYER_STYLE, PlayerStyle.AMLL_WEB.name)
+        val name = prefs.getString(KEY_PLAYER_STYLE, PlayerStyle.NATIVE_COMPOSE.name)
         return try {
-            PlayerStyle.valueOf(name ?: PlayerStyle.AMLL_WEB.name)
+            PlayerStyle.valueOf(name ?: PlayerStyle.NATIVE_COMPOSE.name)
         } catch (e: Exception) {
-            PlayerStyle.AMLL_WEB
+            PlayerStyle.NATIVE_COMPOSE
         }
     }
 
