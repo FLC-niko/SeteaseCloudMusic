@@ -14,6 +14,9 @@ import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -57,13 +60,34 @@ class SearchRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * 网易云直链是短时效签名 URL：路径中携带 yyyyMMddHHmmss 格式的过期时间戳（北京时间）。
+     * 缓存/复用前先校验时效，过期立即失效重新请求，避免把过期地址交给播放器（CDN 会直接返回 403）。
+     */
+    private fun isUrlExpired(url: String, safetyMarginMs: Long = 60_000L): Boolean {
+        val timestamp = Regex("""/(\d{14})(?:/|$)""").find(url)?.groupValues?.get(1) ?: return false
+        return try {
+            val format = SimpleDateFormat("yyyyMMddHHmmss", Locale.CHINA).apply {
+                timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+            }
+            val expiredAt = format.parse(timestamp)?.time ?: return false
+            System.currentTimeMillis() + safetyMarginMs >= expiredAt
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun getTrackUrl(
         trackId: Long,
         level: String
     ): Result<String> = withContext(Dispatchers.IO) {
         val cacheKey = "$trackId-$level"
         trackUrlCache[cacheKey]?.let { cachedUrl ->
-            return@withContext Result.success(cachedUrl)
+            if (!isUrlExpired(cachedUrl)) {
+                return@withContext Result.success(cachedUrl)
+            }
+            // 缓存的直链已过期：立即剔除，走下面的网络请求获取最新地址
+            trackUrlCache.remove(cacheKey)
         }
 
         try {

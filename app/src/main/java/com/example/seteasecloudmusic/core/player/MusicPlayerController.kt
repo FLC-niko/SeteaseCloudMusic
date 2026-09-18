@@ -82,6 +82,9 @@ class MusicPlayerController @Inject constructor(
     private var isConnecting: Boolean = false
     private var reconnectRequested = false
 
+    // 直链过期（HTTP 403）自愈重试计数：每次播放请求最多自动重解析一次，防止失败循环
+    private var streamUrlRetryCount = 0
+
     // 听歌打卡与时长统计（/scrobble 对应底层 /api/feedback/weblog，计入年度报告与听歌排行）
     private var listenStartTimeMs: Long = 0L
     private var accumulatedListenMs: Long = 0L
@@ -94,14 +97,17 @@ class MusicPlayerController @Inject constructor(
         // 1. 冷启动自动恢复上次持久化的播放状态、播放列表与进度
         val saved = playbackCacheManager.getSavedPlaybackState()
         if (saved != null && saved.queueTracks.isNotEmpty() && saved.currentQueueIndex in saved.queueTracks.indices) {
-            val track = saved.queueTracks.getOrNull(saved.currentQueueIndex)
+            // 网易云在线直链是短时效签名 URL（过期后 CDN 直接返回 403），
+            // 磁盘恢复的旧直链一律剥离，首次起播强制重新解析最新地址；本地文件路径保留。
+            val restoredQueue = saved.queueTracks.map { it.withoutExpiredRemoteUrl() }
+            val track = restoredQueue.getOrNull(saved.currentQueueIndex)
             _playbackState.update {
                 it.copy(
                     status = PlayerStatus.PAUSED,
                     currentTrack = track,
                     currentPositionMs = saved.currentPositionMs,
                     durationMs = saved.durationMs,
-                    queueTracks = saved.queueTracks,
+                    queueTracks = restoredQueue,
                     currentQueueIndex = saved.currentQueueIndex,
                     playbackMode = saved.playbackMode
                 )
@@ -259,6 +265,21 @@ class MusicPlayerController @Inject constructor(
 
         override fun onPlayerError(error: PlaybackException) {
             stopProgressTicker()
+
+            // 在线直链短时效：HTTP 403 基本是直链过期，清除失效直链后自动重新解析一次，从当前进度续播
+            val currentTrack = _playbackState.value.currentTrack
+            if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
+                currentTrack != null && streamUrlRetryCount == 0
+            ) {
+                streamUrlRetryCount++
+                android.util.Log.w(
+                    "MusicPlayerController",
+                    "Playback source error (HTTP 403) for '${currentTrack.title}', retrying with refreshed URL"
+                )
+                retryPlaybackWithFreshUrl()
+                return
+            }
+
             _playbackState.update {
                 it.copy(status = PlayerStatus.ERROR, errorMessage = error.toUserFriendlyMessage("播放"))
             }
@@ -676,6 +697,7 @@ class MusicPlayerController @Inject constructor(
         val track = queue[index]
         invalidatePrefetch()
         playJob?.cancel()
+        streamUrlRetryCount = 0
         val requestId = nextPlayRequestId()
 
         val prevTrack = _playbackState.value.currentTrack
@@ -868,11 +890,28 @@ class MusicPlayerController @Inject constructor(
         }
     }
 
+    /**
+     * 直链过期（HTTP 403）自愈：清除当前曲目的失效直链并重新解析播放地址，
+     * 从当前进度续播；每个播放请求最多触发一次（streamUrlRetryCount 门控），避免失败循环。
+     */
+    private fun retryPlaybackWithFreshUrl() {
+        val state = _playbackState.value
+        val index = state.currentQueueIndex
+        if (index !in state.queueTracks.indices) return
+
+        val refreshedQueue = state.queueTracks.toMutableList()
+        refreshedQueue[index] = refreshedQueue[index].withoutExpiredRemoteUrl()
+        _playbackState.update { it.copy(queueTracks = refreshedQueue) }
+
+        playQueueIndex(index, initialSeekMs = state.currentPositionMs)
+    }
+
     private fun persistCurrentState() {
         val state = _playbackState.value
         if (state.queueTracks.isNotEmpty() && state.currentQueueIndex in state.queueTracks.indices) {
             val snapshot = SavedPlaybackState(
-                queueTracks = state.queueTracks,
+                // 短时效直链不落盘：既避免下次冷启动恢复出 403，也避免把带签名的 URL 长期透传
+                queueTracks = state.queueTracks.map { it.withoutExpiredRemoteUrl() },
                 currentQueueIndex = state.currentQueueIndex,
                 currentPositionMs = state.currentPositionMs,
                 durationMs = state.durationMs,
@@ -881,6 +920,19 @@ class MusicPlayerController @Inject constructor(
             scope.launch(ioDispatcher) {
                 playbackCacheManager.savePlaybackState(snapshot)
             }
+        }
+    }
+
+    /**
+     * 剥离短时效的在线播放直链（http/https 签名 URL），只保留本地文件路径。
+     * 用于播放状态持久化与恢复：过期直链直接复用会被 CDN 拒绝（HTTP 403）。
+     */
+    private fun Track.withoutExpiredRemoteUrl(): Track {
+        val url = playableUrl ?: return this
+        return if (url.startsWith("http://") || url.startsWith("https://")) {
+            copy(playableUrl = null)
+        } else {
+            this
         }
     }
 

@@ -172,8 +172,10 @@ fun LyricsColumn(
             scrollResidual.snapTo(0f)
             runCatchingCancellable { listState.scrollToItem(activeLineIndex) }
         } else {
-            // 退回旧位置 → 瞬移 → 弹簧归零：视觉上就是一次过阻尼的平滑滚动
-            scrollResidual.snapTo(-delta)
+            // 瞬移会带来一次视觉跳变，先用残差把它抵消（画面拉回旧位置），再让弹簧归零：
+            // 视觉上是一次无过冲的过阻尼平滑滚动——新行从下方滑入、旧行向上移出。
+            // 注意符号必须为 +delta（与列表滚动方向相反），写成 -delta 会出现"先向上跳过目标、再反向滑回"的抖动。
+            scrollResidual.snapTo(delta)
             runCatchingCancellable { listState.scrollToItem(activeLineIndex) }
             scrollResidual.animateTo(0f, AmllLyricSpec.SCROLL_SPRING)
         }
