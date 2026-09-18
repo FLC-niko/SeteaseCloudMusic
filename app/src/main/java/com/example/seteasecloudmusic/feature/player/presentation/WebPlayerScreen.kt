@@ -5,9 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.SystemClock
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -20,6 +21,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlayerStatus
@@ -116,6 +119,13 @@ fun WebPlayerScreen(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
             WebView.setWebContentsDebuggingEnabled(true)
+            val assetLoader = WebViewAssetLoader.Builder()
+                .addPathHandler(
+                    "/assets/",
+                    WebViewAssetLoader.AssetsPathHandler(context)
+                )
+                .build()
+
             WebView(context).apply {
                 session.webView = this
                 session.webReady.value = false
@@ -129,7 +139,12 @@ fun WebPlayerScreen(
                 settings.loadWithOverviewMode = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
                 webChromeClient = WebChromeClient()
-                webViewClient = object : WebViewClient() {
+                webViewClient = object : WebViewClientCompat() {
+                    override fun shouldInterceptRequest(
+                        view: WebView,
+                        request: WebResourceRequest
+                    ): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
+
                     override fun onPageStarted(
                         view: WebView?,
                         url: String?,
@@ -175,8 +190,10 @@ fun WebPlayerScreen(
                     "SCMBridge"
                 )
 
-                // 使用 APK 内置的 AMLL 页面，避免安装包依赖开发机局域网地址。
-                loadUrl("file:///android_asset/amll/index.html")
+                // 用 WebViewAssetLoader 把 APK 内资源映射到受信任的 HTTPS 源。
+                // ES module 与带 crossorigin 的样式在 file:// 下会被 Chromium 的同源策略拦截，
+                // 从而只显示 WebView 的黑色背景。
+                loadUrl("https://appassets.androidplatform.net/assets/amll/index.html")
             }
         },
         update = { webView ->

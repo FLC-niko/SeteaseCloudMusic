@@ -68,5 +68,6 @@
             ]
         }
     },
-    "diffEditor.renderSideBySide": true
+    "diffEditor.renderSideBySide": true,
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

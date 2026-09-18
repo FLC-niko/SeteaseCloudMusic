@@ -1,10 +1,15 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.EaseOutQuart
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +34,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -52,9 +58,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,6 +72,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,8 +103,24 @@ enum class NativePlayerPage {
  */
 private const val BLUR_DOWNSCALE = 6f
 private const val BLUR_SOURCE_SIZE = 300
-private val BLUR_VISUAL_RADIUS = 50.dp
 
+/**
+ * AMLL 模式背景：`filter: blur(60px) saturate(180%)` 且封面放大到 140%。
+ * 这里保持降采样模糊（见 [BLUR_DOWNSCALE]）以控制 GPU 开销，视觉半径与 WebView 完全一致。
+ */
+private val BLUR_VISUAL_RADIUS = 60.dp
+private const val BLUR_BACKGROUND_SCALE = 1.4f
+
+/** AMLL 背景遮罩：`background-color: rgba(0, 0, 0, 0.35)`。 */
+private const val BLUR_SCRIM_ALPHA = 0.35f
+
+/** 饱和度提升：`saturate(180%)`。 */
+private const val BLUR_SATURATION = 1.8f
+
+/** 专辑页大封面与歌词页迷你封面共用的共享元素 key。 */
+private const val PLAYER_ARTWORK_SHARED_KEY = "player_artwork"
+
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun NativePlayerScreen(
     playerViewModel: PlayerViewModel,
@@ -173,7 +199,7 @@ fun NativePlayerScreen(
                 )
             }
     ) {
-        // ── Layer 0: 沉浸式背景（专辑封面高斯模糊流光底色）──
+        // ── Layer 0: 沉浸式背景（AMLL 规格的专辑封面模糊流光底色）──
         // 模糊背景按 1/BLUR_DOWNSCALE 分辨率渲染、再放大铺满屏幕：
         // 高斯模糊本身会抹掉高频细节，所以缩小渲染几乎不影响观感，
         // 但模糊的采样面积降到约 1/BLUR_DOWNSCALE²，播放页最主要的 GPU 开销随之消失。
@@ -189,8 +215,13 @@ fun NativePlayerScreen(
                     model = blurArtworkUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    // saturate(180%)：饱和度提升必须在模糊之前语义上成立，
+                    // 这里作为颜色滤镜作用在同一层上，等价于 CSS 的 filter 链
+                    colorFilter = ColorFilter.colorMatrix(
+                        ColorMatrix().apply { setToSaturation(BLUR_SATURATION) }
+                    ),
                     modifier = Modifier
-                        .fillMaxSize(1f / BLUR_DOWNSCALE)
+                        .fillMaxSize(BLUR_BACKGROUND_SCALE / BLUR_DOWNSCALE)
                         .graphicsLayer {
                             scaleX = BLUR_DOWNSCALE
                             scaleY = BLUR_DOWNSCALE
@@ -200,17 +231,17 @@ fun NativePlayerScreen(
             }
         }
 
-        // ── Layer 1: 渐变暗色遮罩层，保证文字与操作清晰易读 ──
+        // ── Layer 1: 暗色遮罩（AMLL 均匀 0.35 黑 + 底部加强保证控制栏可读）──
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     if (track != null) {
                         Brush.verticalGradient(
-                            0.0f to Color.Black.copy(alpha = 0.50f),
-                            0.4f to Color.Black.copy(alpha = 0.40f),
-                            0.8f to Color.Black.copy(alpha = 0.75f),
-                            1.0f to Color.Black.copy(alpha = 0.95f)
+                            0.0f to Color.Black.copy(alpha = BLUR_SCRIM_ALPHA + 0.10f),
+                            0.45f to Color.Black.copy(alpha = BLUR_SCRIM_ALPHA),
+                            0.75f to Color.Black.copy(alpha = BLUR_SCRIM_ALPHA + 0.22f),
+                            1.0f to Color.Black.copy(alpha = BLUR_SCRIM_ALPHA + 0.45f)
                         )
                     } else {
                         // 未在播放：Apple Music 标志性深空自然环境渐变，杜绝纯黑死板
@@ -270,13 +301,17 @@ fun NativePlayerScreen(
                 }
             }
 
-            // 中部主内容区：Apple Music 专辑页 (ALBUM) 与 歌词页 (LYRIC) 平滑切换
-            Crossfade(
-                targetState = currentPage,
-                label = "playerPageTransition",
+            // 中部主内容区：Apple Music 专辑页 (ALBUM) 与 歌词页 (LYRIC) 平滑切换。
+            // 外层 SharedTransitionLayout 负责"专辑大封面 ↔ 歌词页顶部迷你封面"的共享元素过渡。
+            SharedTransitionLayout(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+            ) {
+            Crossfade(
+                targetState = currentPage,
+                label = "playerPageTransition",
+                modifier = Modifier.fillMaxSize()
             ) { page ->
                 when (page) {
                     NativePlayerPage.ALBUM -> {
@@ -317,15 +352,46 @@ fun NativePlayerScreen(
                                     )
                                     // 播放中封面满宽展示；暂停时轻微收窄，形成 Apple Music 式的呼吸感
                                     val sidePad = (16 * scale).dp
+                                    // 封面阴影：暂停时贴地、播放时浮起，强化"正在播放"的立体层次
+                                    val shadowSpringSpec = remember {
+                                        spring<Dp>(stiffness = 300f, dampingRatio = 1f)
+                                    }
+                                    val shadowTweenSpec = remember {
+                                        tween<Dp>(durationMillis = 350, easing = EaseOutQuart)
+                                    }
+                                    val artworkShadow by animateDpAsState(
+                                        targetValue = if (isPlaying) 26.dp else 12.dp,
+                                        animationSpec = if (isPlaying) shadowSpringSpec else shadowTweenSpec,
+                                        label = "albumShadow"
+                                    )
 
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = sidePad)
                                             .aspectRatio(1f)
+                                            // 与歌词页顶部迷你封面共享同一元素：切页时封面平滑缩小飞入/飞回
+                                            .sharedElementWithCallerManagedVisibility(
+                                                sharedContentState = rememberSharedContentState(
+                                                    key = PLAYER_ARTWORK_SHARED_KEY
+                                                ),
+                                                visible = page == NativePlayerPage.ALBUM
+                                            )
+                                            // 展开动画依赖此处的 bounds 上报，务必保持；
+                                            // 仅在专辑页为当前页时同步，避免切页过渡期间与歌词页迷你封面互相覆盖
                                             .onGloballyPositioned { coordinates ->
-                                                onArtworkBoundsChanged(coordinates.boundsInRoot())
+                                                if (currentPage == NativePlayerPage.ALBUM) {
+                                                    onArtworkBoundsChanged(coordinates.boundsInRoot())
+                                                }
                                             }
+                                            // 阴影放在 alpha 图层外层：它属于"页面"的一部分，随整页淡入，
+                                            // 而封面图本身则由 artworkAlpha 在共享元素落位后接管显现
+                                            .shadow(
+                                                elevation = artworkShadow,
+                                                shape = RoundedCornerShape(16.dp),
+                                                ambientColor = Color.Black,
+                                                spotColor = Color.Black
+                                            )
                                             .clip(RoundedCornerShape(16.dp))
                                             .graphicsLayer {
                                                 alpha = artworkAlpha.value
@@ -391,31 +457,118 @@ fun NativePlayerScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(18.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
 
-                            // 歌曲标题、艺术家及操作按钮
+                            // 歌曲标题、艺术家及操作按钮（Apple Music 专辑页信息区：左对齐标题 + 右侧收藏/更多）
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    .padding(start = 8.dp, end = 2.dp, bottom = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = track?.title ?: "未在播放",
                                         color = Color.White,
-                                        fontSize = 22.sp,
+                                        fontSize = 21.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Spacer(modifier = Modifier.height(3.dp))
                                     Text(
                                         text = track?.artists?.joinToString(" / ") { it.name }
                                             ?.ifBlank { "未知艺术家" }
                                             ?: "从音乐库或搜索中挑选音乐播放",
-                                        color = Color.White.copy(alpha = if (track != null) 0.65f else 0.45f),
-                                        fontSize = 15.sp,
+                                        color = Color.White.copy(alpha = if (track != null) 0.62f else 0.45f),
+                                        fontSize = 17.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                if (track != null) {
+                                    IconButton(
+                                        onClick = { /* 收藏逻辑 */ },
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.FavoriteBorder,
+                                            contentDescription = "收藏",
+                                            tint = Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(25.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { /* 更多操作 */ },
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MoreHoriz,
+                                            contentDescription = "更多",
+                                            tint = Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(25.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+
+                    NativePlayerPage.LYRIC -> {
+                        // ── Apple Music 风格歌词页 ──
+                        Column(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            // 顶部迷你封面条（Apple Music 歌词页头部，点击任意处切回专辑大封面页）
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { currentPage = NativePlayerPage.ALBUM }
+                                    .padding(start = 28.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = track?.coverUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .sharedElementWithCallerManagedVisibility(
+                                            sharedContentState = rememberSharedContentState(
+                                                key = PLAYER_ARTWORK_SHARED_KEY
+                                            ),
+                                            visible = page == NativePlayerPage.LYRIC
+                                        )
+                                        .clip(RoundedCornerShape(8.dp))
+                                        // 从歌词页直接收起/展开播放页时，迷你封面同样由共享元素动画接管显现时机
+                                        .graphicsLayer { alpha = artworkAlpha.value }
+                                        // 停留在歌词页时，收起播放页的动画会从这个迷你封面位置飞回，
+                                        // 因此这里同样要把当前封面位置同步给外层过渡层
+                                        .onGloballyPositioned { coordinates ->
+                                            onArtworkBoundsChanged(coordinates.boundsInRoot())
+                                        },
+                                    contentScale = ContentScale.Crop
+                                )
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = track?.title ?: "未在播放",
+                                        color = Color.White,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = track?.artists?.joinToString(" / ") { it.name }
+                                            ?.ifBlank { "未知艺术家" } ?: "",
+                                        color = Color.White.copy(alpha = 0.62f),
+                                        fontSize = 14.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -429,63 +582,25 @@ fun NativePlayerScreen(
                                         Icon(
                                             imageVector = Icons.Filled.FavoriteBorder,
                                             contentDescription = "收藏",
-                                            tint = Color.White.copy(alpha = 0.8f),
-                                            modifier = Modifier.size(24.dp)
+                                            tint = Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { /* 更多操作 */ },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MoreHoriz,
+                                            contentDescription = "更多",
+                                            tint = Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-
-                    NativePlayerPage.LYRIC -> {
-                        // ── 歌词滚动页 ──
-                        Column(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // 顶部小封面条（点击切换回专辑大封面页）
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentPage = NativePlayerPage.ALBUM }
-                                    .padding(horizontal = 28.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AsyncImage(
-                                    model = track?.coverUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(54.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-
-Spacer(modifier = Modifier.width(14.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = track?.title ?: "未在播放",
-                                        color = Color.White,
-                                        fontSize = 19.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = track?.artists?.joinToString(" / ") { it.name }
-                                            ?.ifBlank { "未知艺术家" } ?: "",
-                                        color = Color.White.copy(alpha = 0.7f),
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             // 歌词滚动区域
                             if (parsedLyrics.lines.isNotEmpty()) {
@@ -493,6 +608,7 @@ Spacer(modifier = Modifier.width(14.dp))
                                     lyrics = parsedLyrics,
                                     activeLineIndex = activeLineIndex,
                                     currentTimeMs = currentPosition,
+                                    isPlaying = isPlaying,
                                     onLineClick = { seekMs -> playerViewModel.seekTo(seekMs) },
                                     modifier = Modifier.weight(1f)
                                 )
@@ -522,6 +638,7 @@ Spacer(modifier = Modifier.width(14.dp))
                         }
                     }
                     }
+            }
         }
 
         // 底部原生控制栏（整合进度条、音质胶囊、Apple Music 操作栏）
