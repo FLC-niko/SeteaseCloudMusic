@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.AudioAttributes
@@ -142,10 +143,96 @@ class MusicService : MediaSessionService() {
 
     // 实时歌词同步引擎状态
     private var currentLyricLines: List<LyricLine> = emptyList()
+    private var rawLrcContent: String = ""
     private var currentLyricJob: Job? = null
     private var lyricTickerJob: Job? = null
     private var lastBroadcastLyric: String = ""
     private var currentTrackId: Long? = null
+
+    // 小米 17 Pro 妙享背屏与平台媒体会话同步支持
+    private var musicForwardingPlayer: MusicForwardingPlayer? = null
+    private var currentArtworkBitmap: Bitmap? = null
+    private var cachedSessionCompat: androidx.media3.session.legacy.MediaSessionCompat? = null
+
+    inner class MusicForwardingPlayer(player: Player) : ForwardingPlayer(player) {
+        private val playerListeners = java.util.concurrent.CopyOnWriteArraySet<Player.Listener>()
+        private var dynamicMetadata: MediaMetadata? = null
+
+        override fun addListener(listener: Player.Listener) {
+            super.addListener(listener)
+            playerListeners.add(listener)
+        }
+
+        override fun removeListener(listener: Player.Listener) {
+            super.removeListener(listener)
+            playerListeners.remove(listener)
+        }
+
+        override fun getMediaMetadata(): MediaMetadata {
+            return dynamicMetadata ?: super.getMediaMetadata()
+        }
+
+        fun updateDynamicMetadata(metadata: MediaMetadata) {
+            dynamicMetadata = metadata
+            for (listener in playerListeners) {
+                try {
+                    listener.onMediaMetadataChanged(metadata)
+                } catch (e: Exception) {
+                    android.util.Log.w("MusicService", "Error notifying listener", e)
+                }
+            }
+        }
+
+        override fun getAvailableCommands(): Player.Commands {
+            return super.getAvailableCommands().buildUpon()
+                .add(Player.COMMAND_PLAY_PAUSE)
+                .add(Player.COMMAND_SEEK_TO_NEXT)
+                .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                .build()
+        }
+
+        override fun isCommandAvailable(command: Int): Boolean {
+            return when (command) {
+                Player.COMMAND_PLAY_PAUSE,
+                Player.COMMAND_SEEK_TO_NEXT,
+                Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_PREVIOUS,
+                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> true
+
+                else -> super.isCommandAvailable(command)
+            }
+        }
+
+        override fun play() {
+            if (this@MusicService.player?.mediaItemCount == 0) {
+                musicPlayerController.resume()
+            } else {
+                super.play()
+            }
+        }
+
+        override fun pause() {
+            super.pause()
+        }
+
+        override fun seekToNext() {
+            musicPlayerController.playNext()
+        }
+
+        override fun seekToNextMediaItem() {
+            musicPlayerController.playNext()
+        }
+
+        override fun seekToPrevious() {
+            musicPlayerController.playPrevious()
+        }
+
+        override fun seekToPreviousMediaItem() {
+            musicPlayerController.playPrevious()
+        }
+    }
 
     companion object {
         const val CHANNEL_ID = "playback_channel_id"
@@ -192,10 +279,15 @@ class MusicService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
                     SuperLyricHelper.registerPublisher()
+                    lastBroadcastLyric = ""
                     startLyricTicker()
                 } else {
                     stopLyricTicker()
                     SuperLyricHelper.sendStop()
+                    val track = musicPlayerController.playbackState.value.currentTrack
+                    if (track != null) {
+                        updateMetadataAndNotification(track, "")
+                    }
                 }
             }
         })
@@ -213,60 +305,9 @@ class MusicService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // 4. 使用 ForwardingPlayer 将系统通知栏、锁屏及副屏的播控操作（播放/暂停/上一曲/下一曲/拖拽）路由到播放器与队列
-        val forwardingPlayer = object : ForwardingPlayer(exoPlayer) {
-            override fun getAvailableCommands(): Player.Commands {
-                return super.getAvailableCommands().buildUpon()
-                    .add(Player.COMMAND_PLAY_PAUSE)
-                    .add(Player.COMMAND_SEEK_TO_NEXT)
-                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
-                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                    .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-                    .build()
-            }
-
-            override fun isCommandAvailable(command: Int): Boolean {
-                return when (command) {
-                    Player.COMMAND_PLAY_PAUSE,
-                    Player.COMMAND_SEEK_TO_NEXT,
-                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
-                    Player.COMMAND_SEEK_TO_PREVIOUS,
-                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
-                    Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM -> true
-
-                    else -> super.isCommandAvailable(command)
-                }
-            }
-
-            override fun play() {
-                if (exoPlayer.mediaItemCount == 0) {
-                    musicPlayerController.resume()
-                } else {
-                    super.play()
-                }
-            }
-
-            override fun pause() {
-                super.pause()
-            }
-
-            override fun seekToNext() {
-                musicPlayerController.playNext()
-            }
-
-            override fun seekToNextMediaItem() {
-                musicPlayerController.playNext()
-            }
-
-            override fun seekToPrevious() {
-                musicPlayerController.playPrevious()
-            }
-
-            override fun seekToPreviousMediaItem() {
-                musicPlayerController.playPrevious()
-            }
-        }
+        // 4. 使用 MusicForwardingPlayer 将系统通知栏、锁屏及副屏的播控操作路由到播放器与队列，并分发动态歌词元数据
+        val forwardingPlayer = MusicForwardingPlayer(exoPlayer)
+        this.musicForwardingPlayer = forwardingPlayer
 
         // 5. 创建公开通知渠道，配置 CoilBitmapLoader 与 DefaultMediaNotificationProvider，并绑定纯白单色通知图标
         createNotificationChannel()
@@ -295,7 +336,6 @@ class MusicService : MediaSessionService() {
                         .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                         .add(Player.COMMAND_SEEK_TO_PREVIOUS)
                         .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                        .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                         .add(Player.COMMAND_SET_MEDIA_ITEM)
                         .add(Player.COMMAND_CHANGE_MEDIA_ITEMS)
                         .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
@@ -322,7 +362,10 @@ class MusicService : MediaSessionService() {
                         stopLyricTicker()
                         SuperLyricHelper.sendStop()
                         currentLyricLines = emptyList()
+                        rawLrcContent = ""
                         lastBroadcastLyric = ""
+                        currentArtworkBitmap = null
+                        loadArtworkBitmap(track.coverUrl)
                         fetchLyricsForTrack(track.id)
                     }
 
@@ -332,17 +375,123 @@ class MusicService : MediaSessionService() {
         }
     }
 
+    private fun loadArtworkBitmap(coverUrl: String?) {
+        if (coverUrl.isNullOrBlank()) {
+            currentArtworkBitmap = null
+            return
+        }
+        val request = ImageRequest.Builder(this)
+            .data(coverUrl)
+            .size(320, 320)
+            .allowHardware(false) // 禁用 GPU 硬件加速位图，确保通过 Binder 跨进程安全传输至背屏
+            .bitmapConfig(Bitmap.Config.ARGB_8888)
+            .target(
+                onSuccess = { drawable ->
+                    val bitmap = drawable.toBitmap(config = Bitmap.Config.ARGB_8888)
+                    currentArtworkBitmap = bitmap
+                    val track = musicPlayerController.playbackState.value.currentTrack
+                    if (track != null) {
+                        updateMetadataAndNotification(track, lastBroadcastLyric)
+                    }
+                },
+                onError = {
+                    currentArtworkBitmap = null
+                }
+            )
+            .build()
+        imageLoader.enqueue(request)
+    }
+
+    private fun getMediaSessionCompat(): androidx.media3.session.legacy.MediaSessionCompat? {
+        if (cachedSessionCompat != null) return cachedSessionCompat
+        return try {
+            val session = mediaSession ?: return null
+            val implField = session.javaClass.getDeclaredField("impl").apply { isAccessible = true }
+            val impl = implField.get(session) ?: return null
+            val stubField = impl.javaClass.getDeclaredField("sessionLegacyStub").apply { isAccessible = true }
+            val stub = stubField.get(impl) ?: return null
+            val method = stub.javaClass.getMethod("getSessionCompat")
+            val result = method.invoke(stub) as? androidx.media3.session.legacy.MediaSessionCompat
+            cachedSessionCompat = result
+            result
+        } catch (e: Throwable) {
+            android.util.Log.w("MusicService", "Failed to retrieve MediaSessionCompat via reflection", e)
+            null
+        }
+    }
+
+    private fun updatePlatformMediaSession(
+        displayTitle: String,
+        displayArtist: String,
+        trackTitle: String,
+        albumTitle: String,
+        artist: String,
+        lyricLrc: String,
+        duration: Long,
+        artworkBitmap: Bitmap?,
+        artworkUri: String?
+    ) {
+        try {
+            val compat = getMediaSessionCompat() ?: return
+            val compatBuilder = androidx.media3.session.legacy.MediaMetadataCompat.Builder()
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_TITLE, displayTitle)
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ARTIST, displayArtist)
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ALBUM, albumTitle)
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST, artist)
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, displayTitle)
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, displayArtist)
+                .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, displayArtist)
+
+            if (lyricLrc.isNotBlank()) {
+                compatBuilder.putString("android.media.metadata.LYRIC", lyricLrc)
+                compatBuilder.putString("METADATA_KEY_LYRIC", lyricLrc)
+            }
+            if (duration > 0) {
+                compatBuilder.putLong(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+            }
+            if (artworkBitmap != null) {
+                compatBuilder.putBitmap(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artworkBitmap)
+                compatBuilder.putBitmap(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ART, artworkBitmap)
+            }
+            if (!artworkUri.isNullOrBlank()) {
+                compatBuilder.putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artworkUri)
+                compatBuilder.putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ART_URI, artworkUri)
+            }
+            compat.setMetadata(compatBuilder.build())
+        } catch (e: Throwable) {
+            android.util.Log.e("MusicService", "updatePlatformMediaSession failed", e)
+        }
+    }
+
     private fun fetchLyricsForTrack(trackId: Long) {
         currentLyricJob = serviceScope.launch {
             val result = runCatching { getLyricsUseCase(trackId) }.getOrNull()
             val parsed = result?.getOrNull()
             if (isActive && parsed != null && currentTrackId == trackId) {
                 currentLyricLines = parsed.lines
+                rawLrcContent = buildRawLrc(parsed.lines)
+                val track = musicPlayerController.playbackState.value.currentTrack
+                if (track != null) {
+                    updateMetadataAndNotification(track, lastBroadcastLyric)
+                }
                 if (player?.isPlaying == true) {
                     startLyricTicker()
                 }
             }
         }
+    }
+
+    private fun buildRawLrc(lines: List<LyricLine>): String {
+        if (lines.isEmpty()) return ""
+        val sb = StringBuilder()
+        for (line in lines) {
+            val m = line.startTime / 60000
+            val s = (line.startTime % 60000) / 1000
+            val ms = (line.startTime % 1000) / 10
+            val text = line.words.joinToString("") { it.word }
+            sb.append(String.format("[%02d:%02d.%02d]%s\n", m, s, ms, text))
+        }
+        return sb.toString()
     }
 
     private fun startLyricTicker() {
@@ -376,23 +525,65 @@ class MusicService : MediaSessionService() {
 
     private fun updateMetadataAndNotification(track: com.example.seteasecloudmusic.core.model.Track, lyric: String) {
         val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
-        val displaySubtitle = lyric.ifBlank { artist }
+        val hasLyric = lyric.isNotBlank() && (player?.isPlaying == true)
         val isBluetoothLyrics = playerSettingsManager.bluetoothLyricsEnabled.value
-        val displayTitle = if (isBluetoothLyrics && lyric.isNotBlank()) lyric else track.title
+
+        val displayTitle: String
+        val displayArtist: String
+
+        if (hasLyric) {
+            if (isBluetoothLyrics) {
+                // 小米 17 Pro 妙享背屏与网易云音乐车载模式：第一行实时歌词，第二行歌曲名
+                displayTitle = lyric
+                displayArtist = track.title
+            } else {
+                displayTitle = track.title
+                displayArtist = lyric
+            }
+        } else {
+            // 无歌词或暂停播放：第一行歌曲名，第二行歌手名
+            displayTitle = track.title
+            displayArtist = artist
+        }
+
+        val displaySubtitle = if (hasLyric) lyric else artist
+
+        val extras = Bundle().apply {
+            if (rawLrcContent.isNotBlank()) {
+                putString("android.media.metadata.LYRIC", rawLrcContent)
+                putString("METADATA_KEY_LYRIC", rawLrcContent)
+            }
+        }
 
         val metadata = MediaMetadata.Builder()
             .setTitle(displayTitle)
             .setDisplayTitle(displayTitle)
-            .setArtist(artist)
+            .setArtist(displayArtist)
             .setSubtitle(displaySubtitle)
-            .setDescription(displaySubtitle)
+            .setDescription(if (rawLrcContent.isNotBlank()) rawLrcContent else displaySubtitle)
             .setAlbumTitle(track.album?.title ?: track.title)
             .setArtworkUri(track.coverUrl?.toUri())
+            .setExtras(extras)
             .setIsPlayable(true)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
             .build()
 
+        // 1. 同步 Media3 ForwardingPlayer 内部元数据并分发给所有 Player.Listener
+        musicForwardingPlayer?.updateDynamicMetadata(metadata)
         player?.playlistMetadata = metadata
+
+        // 2. 直接注入底层 Android MediaSessionCompat，立即触发系统 MediaController onMetadataChanged（小米副屏核心通道）
+        updatePlatformMediaSession(
+            displayTitle = displayTitle,
+            displayArtist = displayArtist,
+            trackTitle = track.title,
+            albumTitle = track.album?.title ?: track.title,
+            artist = artist,
+            lyricLrc = rawLrcContent,
+            duration = player?.duration ?: 0L,
+            artworkBitmap = currentArtworkBitmap,
+            artworkUri = track.coverUrl
+        )
     }
 
     private fun sendSuperLyric(
@@ -512,6 +703,10 @@ class MusicService : MediaSessionService() {
         SuperLyricHelper.unregisterPublisher()
         currentLyricJob?.cancel()
         currentLyricLines = emptyList()
+        rawLrcContent = ""
+        cachedSessionCompat = null
+        currentArtworkBitmap = null
+        musicForwardingPlayer = null
         serviceScope.cancel()
         mediaSession?.release()
         player?.release()
