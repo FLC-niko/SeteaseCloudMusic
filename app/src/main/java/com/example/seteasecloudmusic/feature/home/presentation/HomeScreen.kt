@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -53,9 +54,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -580,6 +585,77 @@ data class BigCardItem(
     val defaultGradient: List<Color>
 )
 
+/**
+ * 单行自适应字号标题：当标题过长一行放不下时，动态计算并缩小字号，确保刚好放满一行或略短，绝不换行
+ */
+@Composable
+private fun AutoFitSingleLineTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxFontSize: TextUnit = 20.sp,
+    minFontSize: TextUnit = 11.sp,
+    color: Color = HomePrimary,
+    fontWeight: FontWeight = FontWeight.Bold
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    BoxWithConstraints(modifier = modifier) {
+        val availableWidthPx = constraints.maxWidth
+        val calculatedFontSize = remember(text, availableWidthPx, density) {
+            if (availableWidthPx <= 0) {
+                maxFontSize
+            } else {
+                val maxStyle = TextStyle(
+                    fontSize = maxFontSize,
+                    fontWeight = fontWeight
+                )
+                val fullResult = textMeasurer.measure(
+                    text = text,
+                    style = maxStyle,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                val fullWidth = fullResult.size.width
+
+                if (fullWidth <= availableWidthPx) {
+                    maxFontSize
+                } else {
+                    // 按比例缩放，并乘 0.98 预留 2% 安全微小余量，确保刚好放满一行或略短
+                    val ratio = availableWidthPx.toFloat() / fullWidth.toFloat()
+                    var currentSp = (maxFontSize.value * ratio * 0.98f)
+                        .coerceIn(minFontSize.value, maxFontSize.value)
+
+                    // 步进微调：若仍超出可用宽度则逐步递减 0.5sp，直至严丝合缝放下一行
+                    while (currentSp > minFontSize.value) {
+                        val testWidth = textMeasurer.measure(
+                            text = text,
+                            style = TextStyle(fontSize = currentSp.sp, fontWeight = fontWeight),
+                            maxLines = 1,
+                            softWrap = false
+                        ).size.width
+                        if (testWidth <= availableWidthPx) {
+                            break
+                        }
+                        currentSp -= 0.5f
+                    }
+                    currentSp.sp
+                }
+            }
+        }
+
+        Text(
+            text = text,
+            color = color,
+            fontSize = calculatedFontSize,
+            fontWeight = fontWeight,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 @Composable
 private fun FavoriteRecommendedSongsSection(
     title: String,
@@ -623,12 +699,15 @@ private fun FavoriteRecommendedSongsSection(
     val pagerState = rememberPagerState(pageCount = { songColumns.size })
 
     Column(modifier = modifier) {
-        Text(
+        AutoFitSingleLineTitle(
             text = title,
             color = HomePrimary,
-            fontSize = 20.sp,
+            maxFontSize = 20.sp,
+            minFontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 6.dp)
         )
 
         Spacer(modifier = Modifier.height(6.dp))
