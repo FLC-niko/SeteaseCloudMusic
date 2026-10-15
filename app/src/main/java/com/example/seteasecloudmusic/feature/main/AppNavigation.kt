@@ -25,15 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -91,6 +82,16 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.RoundedRectangle
+import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.feature.player.presentation.PlaylistQueueSheet
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -114,9 +115,14 @@ import kotlin.math.roundToInt
  * 底部导航栏的数据模型
  *
  * @property title 导航项显示的文字标题
- * @property icon 导航项显示的图标资源
+ * @property iconRes 导航项未选中时显示的图标资源（空心）
+ * @property selectedIconRes 导航项选中高亮时显示的图标资源（填充实心）
  */
-data class BottomNavItem(val title: String, val icon: ImageVector)
+data class BottomNavItem(
+    val title: String,
+    val iconRes: Int,
+    val selectedIconRes: Int
+)
 
 /**
  * 左侧主导航条承载的三个一级入口。
@@ -125,9 +131,9 @@ data class BottomNavItem(val title: String, val icon: ImageVector)
  * 便于 Compose 跳过依赖它的子组件。
  */
 private val MainNavItems = listOf(
-    BottomNavItem("首页", Icons.Filled.Home),
-    BottomNavItem("电台", Icons.Filled.Radio),
-    BottomNavItem("我的", Icons.Filled.Person)
+    BottomNavItem("首页", R.drawable.ic_nav_home, R.drawable.ic_nav_home_filled),
+    BottomNavItem("电台", R.drawable.ic_nav_radio, R.drawable.ic_nav_radio_filled),
+    BottomNavItem("我的", R.drawable.ic_nav_mine, R.drawable.ic_nav_mine_filled)
 )
 
 /** 左侧主导航条只承载 0~2，3 是右侧搜索按钮对应的页面。 */
@@ -145,20 +151,6 @@ private data class DailyRecommendState(
     val title: String = "每日推荐"
 )
 
-/**
- * 迷你播放条真正需要的字段。
- *
- * [PlaybackState] 里的 [PlaybackState.currentPositionMs] 每 500ms 变化一次，
- * 而迷你播放条并不展示进度。把它派生为一个只含必要字段的值，
- * 进度推进时派生值保持相等，因此不会引发任何重组。
- */
-private data class MiniPlayerUiState(
-    val hasTrack: Boolean,
-    val isPlaying: Boolean,
-    val title: String?,
-    val artworkUrl: String?,
-    val hasNextTrack: Boolean
-)
 
 //底栏上方的玻璃滑块
 @Composable
@@ -262,6 +254,7 @@ fun AppNavigation(
     val dialogDescription by mainViewModel.dialogDescription.collectAsStateWithLifecycle()
 
     var showNowPlaying by remember { mutableStateOf(false) }
+    var showPlaylistQueueSheet by remember { mutableStateOf(false) }
     var miniPlayerArtworkBounds by remember { mutableStateOf<Rect?>(null) }
     var nowPlayingArtworkBounds by remember { mutableStateOf<Rect?>(null) }
     var nowPlayingArtworkUrl by remember { mutableStateOf<String?>(null) }
@@ -520,7 +513,7 @@ fun AppNavigation(
                                     verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically)
                                 ) {
                                     Icon(
-                                        imageVector = item.icon,
+                                        painter = painterResource(id = if (isSelected) item.selectedIconRes else item.iconRes),
                                         contentDescription = item.title,
                                         tint = itemColor,
                                         modifier = Modifier.size(26.dp)
@@ -537,7 +530,7 @@ fun AppNavigation(
                     } else {
                         // 缩小成圆形按钮时显示返回或主页图标
                         Icon(
-                            imageVector = Icons.Filled.Home,
+                            painter = painterResource(id = R.drawable.ic_nav_home),
                             contentDescription = "返回主导航",
                             tint = Color.DarkGray,
                             modifier = Modifier.align(Alignment.Center).size(26.dp)
@@ -546,7 +539,6 @@ fun AppNavigation(
                 }
 
                 // ============ 右侧独立的搜索按钮 / 搜索栏 ============
-                val searchColor = if (isSearchExpanded) Color(0xFFFA233B) else Color.DarkGray
                 val searchInteractionSource = remember { MutableInteractionSource() }
                 
                 LaunchedEffect(searchInteractionSource) {
@@ -608,10 +600,10 @@ fun AppNavigation(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Close,
+                                painter = painterResource(id = R.drawable.ic_nav_close),
                                 contentDescription = "关闭搜索",
                                 tint = Color.Black,
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
@@ -643,10 +635,10 @@ fun AppNavigation(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Search,
+                            painter = painterResource(id = R.drawable.ic_nav_search),
                             contentDescription = "搜索",
-                            tint = searchColor,
-                            modifier = Modifier.size(26.dp)
+                            tint = Color.DarkGray,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -690,7 +682,7 @@ fun AppNavigation(
             cornerRadius = cornerRadius,
             playbackStateFlow = playerViewModel.playbackState,
             onPlayPauseClick = { playerViewModel.onPlayPause() },
-            onNextClick = { playerViewModel.onNext() },
+            onPlaylistClick = { showPlaylistQueueSheet = true },
             onBarClick = { artworkUrl ->
                 if (!showNowPlaying) {
                     nowPlayingArtworkUrl = artworkUrl
@@ -762,6 +754,28 @@ fun AppNavigation(
                         showNowPlaying = false
                         nowPlayingArtworkBounds = null
                     }
+                }
+            )
+        }
+
+        if (showPlaylistQueueSheet) {
+            val playbackState by playerViewModel.playbackState.collectAsStateWithLifecycle()
+            PlaylistQueueSheet(
+                playbackState = playbackState,
+                onTrackClick = { index ->
+                    playerViewModel.playQueueTrackAt(index)
+                },
+                onRemoveTrack = { index ->
+                    playerViewModel.removeQueueTrackAt(index)
+                },
+                onClearQueue = {
+                    playerViewModel.clearQueue()
+                },
+                onTogglePlaybackMode = {
+                    playerViewModel.togglePlaybackMode()
+                },
+                onDismiss = {
+                    showPlaylistQueueSheet = false
                 }
             )
         }
@@ -1165,10 +1179,10 @@ private fun SearchQueryField(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Search,
+                    painter = painterResource(id = R.drawable.ic_nav_search),
                     contentDescription = null,
-                    tint = Color.DarkGray,
-                    modifier = Modifier.size(20.dp)
+                    tint = Color(0xFFFA233B),
+                    modifier = Modifier.size(18.dp)
                 )
                 Box(modifier = Modifier.weight(1f)) {
                     if (uiState.query.isEmpty()) {
@@ -1178,7 +1192,7 @@ private fun SearchQueryField(
                 }
                 if (uiState.query.isNotEmpty()) {
                     Icon(
-                        imageVector = Icons.Filled.Clear,
+                        painter = painterResource(id = R.drawable.ic_nav_close),
                         contentDescription = "清空搜索",
                         tint = Color.Gray,
                         modifier = Modifier
@@ -1323,34 +1337,35 @@ private fun SearchMiniPlayerBar(
     cornerRadius: Dp,
     playbackStateFlow: StateFlow<PlaybackState>,
     onPlayPauseClick: () -> Unit,
-    onNextClick: () -> Unit,
+    onPlaylistClick: () -> Unit,
     onBarClick: (String?) -> Unit,
     onArtworkBoundsChanged: (Rect) -> Unit,
     hideArtwork: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // 播放进度每 500ms 刷新一次。这里把订阅收回组件内部，并用 derivedStateOf 只保留
-    // 迷你播放器真正关心的字段：进度推进时派生值不变，因此不会触发任何重组。
     val playbackState by playbackStateFlow.collectAsStateWithLifecycle()
-    val miniState by remember {
-        derivedStateOf {
-            MiniPlayerUiState(
-                hasTrack = playbackState.currentTrack != null,
-                isPlaying = playbackState.status == PlayerStatus.PLAYING,
-                title = playbackState.currentTrack?.title,
-                artworkUrl = playbackState.currentTrack?.coverUrl
-                    ?: playbackState.currentTrack?.album?.coverUrl,
-                hasNextTrack = playbackState.currentQueueIndex in playbackState.queueTracks.indices &&
-                    playbackState.currentQueueIndex < playbackState.queueTracks.lastIndex
-            )
-        }
-    }
+    val hasTrack = playbackState.currentTrack != null
+    val isPlaying = playbackState.status == PlayerStatus.PLAYING
+    val artworkUrl = playbackState.currentTrack?.coverUrl
+        ?: playbackState.currentTrack?.album?.coverUrl
+    val title = playbackState.currentTrack?.title ?: "未在播放"
+    val duration = playbackState.durationMs
+    val currentPosition = playbackState.currentPositionMs
 
-    val hasTrack = miniState.hasTrack
-    val isPlaying = miniState.isPlaying
-    val artworkUrl = miniState.artworkUrl
-    val hasNextTrack = miniState.hasNextTrack
-    val title = miniState.title ?: "未在播放"
+    val targetProgress = remember(playbackState.currentTrack?.id, currentPosition, duration) {
+        if (duration > 0) {
+            (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+        } else 0f
+    }
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = if (isPlaying && targetProgress > 0f) {
+            tween(durationMillis = 500, easing = LinearEasing)
+        } else {
+            spring(stiffness = 500f)
+        },
+        label = "miniPlayerProgress"
+    )
 
     Box(
         modifier = modifier
@@ -1368,7 +1383,7 @@ private fun SearchMiniPlayerBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(start = 14.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MiniPlayerArtwork(
@@ -1383,26 +1398,103 @@ private fun SearchMiniPlayerBar(
                 text = title,
                 color = Color.Black,
                 style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            Icon(
-                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "暂停" else "播放",
-                tint = if (hasTrack) Color.Black else Color(0xFFB8B8B8),
-                modifier = Modifier
-                    .size(30.dp)
-                    .clickable(enabled = hasTrack) { onPlayPauseClick() }
-            )
             Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.Filled.SkipNext,
-                contentDescription = "下一首",
-                tint = if (hasNextTrack) Color.Black else Color(0xFFB8B8B8),
+
+            // 播放列表图标（在播放暂停左边，点击展开二级菜单显示歌曲播放顺序）
+            Box(
                 modifier = Modifier
-                    .size(30.dp)
-                    .clickable(enabled = hasNextTrack) { onNextClick() }
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        enabled = true,
+                        onClick = onPlaylistClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_mini_playlist),
+                    contentDescription = "播放列表",
+                    tint = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8),
+                    modifier = Modifier.size(23.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // 播放暂停在最靠右，外面加上一个圈，显示播放进度，与组件的圆角和大小对齐
+            MiniPlayerProgressPlayButton(
+                isPlaying = isPlaying,
+                hasTrack = hasTrack,
+                progress = animatedProgress,
+                onClick = onPlayPauseClick
             )
         }
+    }
+}
+
+/**
+ * 迷你播放条右侧的播放/暂停按钮：
+ * 外层包裹播放进度指示圆环，与组件的大小与圆角对齐
+ */
+@Composable
+private fun MiniPlayerProgressPlayButton(
+    isPlaying: Boolean,
+    hasTrack: Boolean,
+    progress: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ringColor = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8)
+    val trackColor = if (hasTrack) Color(0x1F000000) else Color(0x0F000000)
+    val strokeWidth = 1.8.dp
+
+    Box(
+        modifier = modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .clickable(enabled = hasTrack, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokePx = strokeWidth.toPx()
+            val radius = (size.minDimension - strokePx) / 2f
+            val centerOffset = Offset(size.width / 2f, size.height / 2f)
+
+            // 1. 底层浅色完整圆环轨道
+            drawCircle(
+                color = trackColor,
+                radius = radius,
+                center = centerOffset,
+                style = Stroke(width = strokePx)
+            )
+
+            // 2. 顶层根据播放进度推进的圆弧（从顶部 12 点钟方向顺时针旋转，末端带圆角）
+            if (progress > 0f) {
+                drawArc(
+                    color = ringColor,
+                    startAngle = -90f,
+                    sweepAngle = progress * 360f,
+                    useCenter = false,
+                    topLeft = Offset(centerOffset.x - radius, centerOffset.y - radius),
+                    size = Size(radius * 2f, radius * 2f),
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
+            }
+        }
+
+        // 3. 居中播放/暂停图标（尺寸放大至 19dp）
+        Icon(
+            painter = painterResource(
+                id = if (isPlaying) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
+            ),
+            contentDescription = if (isPlaying) "暂停" else "播放",
+            tint = ringColor,
+            modifier = Modifier.size(19.dp)
+        )
     }
 }
 

@@ -519,6 +519,89 @@ class MusicPlayerController @Inject constructor(
         playQueueIndex(prevIndex, initialSeekMs = 0)
     }
 
+    fun playQueueIndexAt(index: Int) {
+        val state = _playbackState.value
+        val queue = state.queueTracks
+        if (index !in queue.indices) return
+        if (index == state.currentQueueIndex && state.status == PlayerStatus.PLAYING) {
+            return
+        }
+        if (index == state.currentQueueIndex && (state.status == PlayerStatus.PAUSED || state.status == PlayerStatus.IDLE)) {
+            resume()
+            return
+        }
+        _playbackState.update {
+            it.copy(
+                currentQueueIndex = index,
+                currentPositionMs = 0,
+                errorMessage = null
+            )
+        }
+        playQueueIndex(index, initialSeekMs = 0)
+    }
+
+    fun removeQueueTrackAt(index: Int) {
+        val state = _playbackState.value
+        val queue = state.queueTracks.toMutableList()
+        if (index !in queue.indices) return
+
+        val currentIndex = state.currentQueueIndex
+        queue.removeAt(index)
+
+        if (queue.isEmpty()) {
+            stop()
+            _playbackState.update {
+                it.copy(
+                    queueTracks = emptyList(),
+                    currentTrack = null,
+                    currentQueueIndex = -1,
+                    status = PlayerStatus.IDLE,
+                    currentPositionMs = 0,
+                    durationMs = 0
+                )
+            }
+            return
+        }
+
+        val newCurrentIndex = when {
+            index < currentIndex -> currentIndex - 1
+            index == currentIndex -> {
+                val nextIdx = index.coerceAtMost(queue.lastIndex)
+                _playbackState.update {
+                    it.copy(
+                        queueTracks = queue,
+                        currentQueueIndex = nextIdx,
+                        currentPositionMs = 0
+                    )
+                }
+                playQueueIndex(nextIdx, initialSeekMs = 0)
+                return
+            }
+            else -> currentIndex
+        }
+
+        _playbackState.update {
+            it.copy(
+                queueTracks = queue,
+                currentQueueIndex = newCurrentIndex
+            )
+        }
+    }
+
+    fun clearQueue() {
+        stop()
+        _playbackState.update {
+            it.copy(
+                queueTracks = emptyList(),
+                currentTrack = null,
+                currentQueueIndex = -1,
+                status = PlayerStatus.IDLE,
+                currentPositionMs = 0,
+                durationMs = 0
+            )
+        }
+    }
+
     fun togglePlaybackMode() {
         val nextMode = when (_playbackState.value.playbackMode) {
             PlaybackMode.SEQUENTIAL -> PlaybackMode.SHUFFLE
@@ -658,7 +741,7 @@ class MusicPlayerController @Inject constructor(
 
     private fun buildMediaItem(track: Track, url: String): MediaItem {
         val artistName = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
-        val albumName = track.album?.title ?: track.title
+        val albumName = track.album.title.ifBlank { track.title }
         val coverUri = track.coverUrl?.toUri()
         val mediaUri = if (url.startsWith("/") && !url.startsWith("http")) {
             android.net.Uri.fromFile(java.io.File(url))

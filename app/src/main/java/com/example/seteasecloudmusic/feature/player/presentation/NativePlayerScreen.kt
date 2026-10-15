@@ -158,6 +158,7 @@ fun NativePlayerScreen(
     }
 
     var showQualitySheet by remember { mutableStateOf(false) }
+    var showQueueSheet by remember { mutableStateOf(false) }
 
     // 解析歌词
     val parsedLyrics: ParsedLyrics = remember(lyricResponseResult) {
@@ -657,6 +658,7 @@ fun NativePlayerScreen(
                 onSeekTo = { posMs -> playerViewModel.seekTo(posMs) },
                 onTogglePlaybackMode = { playerViewModel.togglePlaybackMode() },
                 onSelectQualityClick = { if (hasTrack) showQualitySheet = true },
+                onQueueClick = { showQueueSheet = true },
                 onToggleLyrics = if (hasTrack) {
                     {
                         currentPage = if (currentPage == NativePlayerPage.LYRIC) {
@@ -666,6 +668,26 @@ fun NativePlayerScreen(
                         }
                     }
                 } else null
+            )
+        }
+
+        // 待播清单与播放列表二级菜单弹窗
+        if (showQueueSheet) {
+            PlaylistQueueSheet(
+                playbackState = playbackState,
+                onTrackClick = { index ->
+                    playerViewModel.playQueueTrackAt(index)
+                },
+                onRemoveTrack = { index ->
+                    playerViewModel.removeQueueTrackAt(index)
+                },
+                onClearQueue = {
+                    playerViewModel.clearQueue()
+                },
+                onTogglePlaybackMode = {
+                    playerViewModel.togglePlaybackMode()
+                },
+                onDismiss = { showQueueSheet = false }
             )
         }
 

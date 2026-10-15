@@ -130,4 +130,16 @@ class PlayerViewModel @Inject constructor(
     fun setPlaybackMode(mode: com.example.seteasecloudmusic.core.player.PlaybackMode) {
         controller.setPlaybackMode(mode)
     }
+
+    fun playQueueTrackAt(index: Int) {
+        controller.playQueueIndexAt(index)
+    }
+
+    fun removeQueueTrackAt(index: Int) {
+        controller.removeQueueTrackAt(index)
+    }
+
+    fun clearQueue() {
+        controller.clearQueue()
+    }
 }
