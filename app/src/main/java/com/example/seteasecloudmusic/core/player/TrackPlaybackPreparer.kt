@@ -32,4 +32,14 @@ interface TrackPlaybackPreparer {
      * 将本地歌曲标题与歌手匹配为网易云在线曲目 ID（支持本地音乐上报打卡）
      */
     suspend fun resolveOnlineTrackId(title: String, artist: String): Long?
+
+    /**
+     * 校验在线播放直链是否已过期或即将过期
+     */
+    fun isStreamUrlExpired(url: String): Boolean = false
+
+    /**
+     * 主动使指定曲目的内存直链缓存失效（用于 HTTP 403 / 播放源异常时强制重新拉取）
+     */
+    fun invalidateTrackUrl(trackId: Long) {}
 }

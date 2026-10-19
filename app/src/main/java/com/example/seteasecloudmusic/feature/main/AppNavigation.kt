@@ -83,7 +83,14 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.RoundedRectangle
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -93,8 +100,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.feature.player.presentation.PlaylistQueueSheet
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 
@@ -683,6 +697,8 @@ fun AppNavigation(
             playbackStateFlow = playerViewModel.playbackState,
             onPlayPauseClick = { playerViewModel.onPlayPause() },
             onPlaylistClick = { showPlaylistQueueSheet = true },
+            onNextClick = { playerViewModel.onNext() },
+            onPreviousClick = { playerViewModel.onPrevious(forcePreviousSong = true) },
             onBarClick = { artworkUrl ->
                 if (!showNowPlaying) {
                     nowPlayingArtworkUrl = artworkUrl
@@ -1338,6 +1354,8 @@ private fun SearchMiniPlayerBar(
     playbackStateFlow: StateFlow<PlaybackState>,
     onPlayPauseClick: () -> Unit,
     onPlaylistClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onPreviousClick: () -> Unit,
     onBarClick: (String?) -> Unit,
     onArtworkBoundsChanged: (Rect) -> Unit,
     hideArtwork: Boolean,
@@ -1346,11 +1364,45 @@ private fun SearchMiniPlayerBar(
     val playbackState by playbackStateFlow.collectAsStateWithLifecycle()
     val hasTrack = playbackState.currentTrack != null
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
-    val artworkUrl = playbackState.currentTrack?.coverUrl
-        ?: playbackState.currentTrack?.album?.coverUrl
-    val title = playbackState.currentTrack?.title ?: "未在播放"
     val duration = playbackState.durationMs
     val currentPosition = playbackState.currentPositionMs
+
+    val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+
+    // 当前展示的曲目信息（滑动切歌动画期间保持旧歌曲滑出，新歌曲就绪后滑入）
+    var displayedTrack by remember { mutableStateOf(playbackState.currentTrack) }
+    var isTransitioning by remember { mutableStateOf(false) }
+    var transitionJob by remember { mutableStateOf<Job?>(null) }
+
+    // 左右滑动手势状态：实时位移与平启动画控制器
+    var isDragging by remember { mutableStateOf(false) }
+    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    val animOffsetX = remember { Animatable(0f) }
+    val animAlpha = remember { Animatable(1f) }
+
+    // 是否允许切歌（有曲目且待播列表大于 1 首）
+    val canSwitch = hasTrack && playbackState.queueTracks.size > 1
+
+    // 外部切歌或播放列表切换时，自动同步 displayedTrack
+    LaunchedEffect(playbackState.currentTrack?.id) {
+        val newTrack = playbackState.currentTrack
+        if (!isTransitioning && !isDragging && displayedTrack?.id != newTrack?.id) {
+            if (displayedTrack == null || newTrack == null) {
+                displayedTrack = newTrack
+                animOffsetX.snapTo(0f)
+                animAlpha.snapTo(1f)
+            } else {
+                animAlpha.animateTo(0f, tween(durationMillis = 80))
+                displayedTrack = newTrack
+                animAlpha.animateTo(1f, tween(durationMillis = 120))
+            }
+        }
+    }
+
+    val currentArtworkUrl = displayedTrack?.coverUrl
+        ?: displayedTrack?.album?.coverUrl
+    val title = displayedTrack?.title ?: "未在播放"
 
     val targetProgress = remember(playbackState.currentTrack?.id, currentPosition, duration) {
         if (duration > 0) {
@@ -1367,6 +1419,122 @@ private fun SearchMiniPlayerBar(
         label = "miniPlayerProgress"
     )
 
+    val swipeThreshold = with(density) { 36.dp.toPx() }
+    val exitDistance = with(density) { 220.dp.toPx() }
+
+    val handleDragRelease: (Float) -> Unit = { finalDrag ->
+        transitionJob?.cancel()
+        transitionJob = coroutineScope.launch {
+            val isNext = finalDrag < -swipeThreshold
+            val isPrev = finalDrag > swipeThreshold
+
+            if (canSwitch && (isNext || isPrev)) {
+                isTransitioning = true
+                val targetExit = if (isNext) -exitDistance else exitDistance
+                val targetEnter = if (isNext) exitDistance else -exitDistance
+
+                // 1. 同步当前拖拽起始点到动画控制器
+                animOffsetX.snapTo(finalDrag)
+                val releaseAlpha = (1f - (abs(finalDrag) / exitDistance) * 0.35f).coerceIn(0.65f, 1f)
+                animAlpha.snapTo(releaseAlpha)
+
+                // 2. 只有在 animOffsetX 与 animAlpha 已经对齐 finalDrag 时，才解除 isDragging 并重置 dragOffsetX。
+                // 此时 translationX 从 dragOffsetX (finalDrag) 切换至 animOffsetX.value (finalDrag)，差值为 0，彻底杜绝闪烁！
+                isDragging = false
+                dragOffsetX = 0f
+
+                // 3. 旧歌曲（封面+歌名）朝滑动方向加速滑出并淡出
+                val exitMove = launch {
+                    animOffsetX.animateTo(
+                        targetValue = targetExit,
+                        animationSpec = tween(durationMillis = 140, easing = FastOutLinearInEasing)
+                    )
+                }
+                val exitFade = launch {
+                    animAlpha.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(durationMillis = 120, easing = LinearEasing)
+                    )
+                }
+                joinAll(exitMove, exitFade)
+
+                val oldTrackId = displayedTrack?.id
+
+                // 4. 将位移瞬移到对侧入口，注意此时 alpha 保持为 0f，对用户绝对隐形！
+                animOffsetX.snapTo(targetEnter)
+                animAlpha.snapTo(0f)
+
+                // 5. 触发切歌
+                if (isNext) {
+                    onNextClick()
+                } else {
+                    onPreviousClick()
+                }
+
+                // 6. 等待新歌曲就绪（超时放宽至 600ms，确保异步分发时不因超时退化）
+                val newTrack = withTimeoutOrNull(600) {
+                    snapshotFlow { playbackState.currentTrack }
+                        .filter { it != null && it.id != oldTrackId }
+                        .first()
+                }
+
+                if (newTrack != null) {
+                    // 在透明隐形状态下切换曲目，无任何视觉撕裂
+                    displayedTrack = newTrack
+
+                    // 7. 新歌曲（封面+歌名）从对侧优雅滑入复位，带有自然弹簧感
+                    val enterMove = launch {
+                        animOffsetX.animateTo(
+                            targetValue = 0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.82f,
+                                stiffness = 450f
+                            )
+                        )
+                    }
+                    val enterFade = launch {
+                        animAlpha.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(durationMillis = 180, easing = LinearOutSlowInEasing)
+                        )
+                    }
+                    joinAll(enterMove, enterFade)
+                } else {
+                    // 超时未就绪兜底：在原位渐入当前曲目，绝不把旧歌曲在对侧滑入
+                    displayedTrack = playbackState.currentTrack
+                    animOffsetX.snapTo(0f)
+                    animAlpha.animateTo(1f, tween(durationMillis = 150))
+                }
+
+                isTransitioning = false
+            } else {
+                // 未达阈值或单曲队列，弹簧回弹复位
+                animOffsetX.snapTo(finalDrag)
+                val releaseAlpha = (1f - (abs(finalDrag) / exitDistance) * 0.35f).coerceIn(0.65f, 1f)
+                animAlpha.snapTo(releaseAlpha)
+                isDragging = false
+                dragOffsetX = 0f
+
+                val reboundMove = launch {
+                    animOffsetX.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    )
+                }
+                val reboundFade = launch {
+                    animAlpha.animateTo(
+                        targetValue = 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                    )
+                }
+                joinAll(reboundMove, reboundFade)
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1376,32 +1544,132 @@ private fun SearchMiniPlayerBar(
                 cornerRadius = cornerRadius,
                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright
             )
-            // 点击反馈必须沿 MiniPlayer 的胶囊轮廓裁切，避免默认矩形水波纹看起来像一块阴影。
             .clip(RoundedCornerShape(cornerRadius))
-            .clickable { onBarClick(artworkUrl) }
+            // 移除默认水波纹（灰色），使用无 indication 的点击，避免按压变灰
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                enabled = hasTrack && !isTransitioning
+            ) {
+                onBarClick(currentArtworkUrl)
+            }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 14.dp, end = 12.dp),
+                .padding(end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            MiniPlayerArtwork(
-                imageUrl = artworkUrl,
+            // 左侧可滑动区域：封面与歌名同时随手势平移
+            Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .graphicsLayer { alpha = if (hideArtwork) 0f else 1f },
-                onBoundsChanged = onArtworkBoundsChanged
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = title,
-                color = Color.Black,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clipToBounds()
+                    .padding(start = 14.dp)
+                    .pointerInput(hasTrack, canSwitch) {
+                        if (!hasTrack) return@pointerInput
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // 立即消费 Down 事件，彻底切断底层列表接收按压，杜绝底层水波纹与灰色渗透！
+                            down.consume()
+                            var totalDragX = 0f
+                            var isDrag = false
+                            var gestureEnded = false
+                            val touchSlop = viewConfiguration.touchSlop
+                            val pointerId = down.id
+
+                            // 关键：手势重新开始时，立即将 dragOffsetX 重置为 0，防止历史手势残存数值！
+                            dragOffsetX = 0f
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                if (change == null) break
+
+                                if (!change.pressed) {
+                                    change.consume()
+                                    gestureEnded = true
+                                    if (isDrag) {
+                                        val releaseDrag = totalDragX
+                                        handleDragRelease(releaseDrag)
+                                    } else {
+                                        isDragging = false
+                                        dragOffsetX = 0f
+                                        onBarClick(currentArtworkUrl)
+                                    }
+                                    break
+                                }
+
+                                val deltaX = change.position.x - down.position.x
+                                val deltaY = change.position.y - down.position.y
+
+                                if (!isDrag) {
+                                    if (abs(deltaX) > touchSlop && abs(deltaX) > abs(deltaY)) {
+                                        isDrag = true
+                                        transitionJob?.cancel()
+                                        transitionJob = null
+                                        isTransitioning = false
+                                        // 关键：在触发拖拽的第一帧，必须在开启 isDragging 前立即同步更新 dragOffsetX！
+                                        // 绝不能进入下个分支才更新，彻底解决“首帧读取历史残存位移导致在中间闪现”的问题！
+                                        val effectiveDeltaX = if (canSwitch) deltaX else deltaX * 0.25f
+                                        totalDragX = effectiveDeltaX
+                                        dragOffsetX = totalDragX
+                                        isDragging = true
+                                        change.consume()
+                                    } else if (abs(deltaY) > touchSlop) {
+                                        break
+                                    }
+                                } else {
+                                    val effectiveDeltaX = if (canSwitch) deltaX else deltaX * 0.25f
+                                    totalDragX = effectiveDeltaX
+                                    dragOffsetX = totalDragX
+                                    change.consume()
+                                }
+                            }
+
+                            if (!gestureEnded && isDrag) {
+                                handleDragRelease(totalDragX)
+                            }
+                        }
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = if (isDragging) dragOffsetX else animOffsetX.value
+                            alpha = if (isDragging) {
+                                (1f - (abs(dragOffsetX) / exitDistance) * 0.35f).coerceIn(0.65f, 1f)
+                            } else {
+                                animAlpha.value
+                            }
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MiniPlayerArtwork(
+                        imageUrl = currentArtworkUrl,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .graphicsLayer { alpha = if (hideArtwork) 0f else 1f },
+                        onBoundsChanged = { bounds ->
+                            if (!isDragging && !isTransitioning) {
+                                onArtworkBoundsChanged(bounds)
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = title,
+                        color = Color.Black,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.width(8.dp))
 
             // 播放列表图标（在播放暂停左边，点击展开二级菜单显示歌曲播放顺序）
@@ -1410,6 +1678,8 @@ private fun SearchMiniPlayerBar(
                     .size(32.dp)
                     .clip(CircleShape)
                     .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
                         enabled = true,
                         onClick = onPlaylistClick
                     ),
@@ -1456,7 +1726,12 @@ private fun MiniPlayerProgressPlayButton(
         modifier = modifier
             .size(30.dp)
             .clip(CircleShape)
-            .clickable(enabled = hasTrack, onClick = onClick),
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                enabled = hasTrack,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {

@@ -154,6 +154,52 @@ class MusicService : MediaSessionService() {
     private var currentArtworkBitmap: Bitmap? = null
     private var cachedSessionCompat: androidx.media3.session.legacy.MediaSessionCompat? = null
 
+    // 服务级持久唤醒锁与网络锁：跨越单曲 STATE_ENDED 到下一首 URL 解析起播的空窗期，防止切歌瞬间被系统挂起或断网
+    private var serviceWakeLock: android.os.PowerManager.WakeLock? = null
+    private var serviceWifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
+    private fun acquirePlaybackLocks() {
+        try {
+            if (serviceWakeLock == null) {
+                val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                serviceWakeLock = pm?.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                    "SeteaseCloudMusic:MusicServiceWakeLock"
+                )?.apply { setReferenceCounted(false) }
+            }
+            if (serviceWakeLock?.isHeld == false) {
+                serviceWakeLock?.acquire()
+            }
+
+            if (serviceWifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+                val lockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                }
+                serviceWifiLock = wm?.createWifiLock(lockMode, "SeteaseCloudMusic:MusicServiceWifiLock")?.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (serviceWifiLock?.isHeld == false) {
+                serviceWifiLock?.acquire()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MusicService", "Failed to acquire playback locks", e)
+        }
+    }
+
+    private fun releasePlaybackLocks() {
+        try {
+            if (serviceWakeLock?.isHeld == true) serviceWakeLock?.release()
+            if (serviceWifiLock?.isHeld == true) serviceWifiLock?.release()
+        } catch (e: Exception) {
+            android.util.Log.w("MusicService", "Failed to release playback locks", e)
+        }
+    }
+
     inner class MusicForwardingPlayer(player: Player) : ForwardingPlayer(player) {
         private val playerListeners = java.util.concurrent.CopyOnWriteArraySet<Player.Listener>()
         private var dynamicMetadata: MediaMetadata? = null
@@ -203,6 +249,27 @@ class MusicService : MediaSessionService() {
 
                 else -> super.isCommandAvailable(command)
             }
+        }
+
+        override fun getPlaybackState(): Int {
+            val rawState = super.getPlaybackState()
+            val controllerStatus = musicPlayerController.playbackState.value.status
+            // 关键防护：切歌间隙底层 ExoPlayer 处于 STATE_ENDED/STATE_IDLE 时，若控制器正在拉取下一首直链或处于播放态，
+            // 强制向 MediaSession / MediaNotificationManager 报告 STATE_BUFFERING，防止异步通知回调调用 stopForeground()！
+            if ((rawState == Player.STATE_ENDED || rawState == Player.STATE_IDLE) &&
+                (controllerStatus == PlayerStatus.BUFFERING || controllerStatus == PlayerStatus.PLAYING)
+            ) {
+                return Player.STATE_BUFFERING
+            }
+            return rawState
+        }
+
+        override fun getPlayWhenReady(): Boolean {
+            val controllerStatus = musicPlayerController.playbackState.value.status
+            if (controllerStatus == PlayerStatus.BUFFERING || controllerStatus == PlayerStatus.PLAYING) {
+                return true
+            }
+            return super.getPlayWhenReady()
         }
 
         override fun play() {
@@ -276,15 +343,27 @@ class MusicService : MediaSessionService() {
         SuperLyricHelper.registerPublisher()
 
         exoPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    acquirePlaybackLocks()
+                    musicPlayerController.onServicePlayerEnded()
+                }
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
+                    acquirePlaybackLocks()
                     SuperLyricHelper.registerPublisher()
                     lastBroadcastLyric = ""
                     startLyricTicker()
                 } else {
                     stopLyricTicker()
                     SuperLyricHelper.sendStop()
-                    val track = musicPlayerController.playbackState.value.currentTrack
+                    val state = musicPlayerController.playbackState.value
+                    if (state.status != PlayerStatus.BUFFERING && state.status != PlayerStatus.PLAYING) {
+                        releasePlaybackLocks()
+                    }
+                    val track = state.currentTrack
                     if (track != null) {
                         updateMetadataAndNotification(track, "")
                     }
@@ -293,6 +372,7 @@ class MusicService : MediaSessionService() {
         })
 
         this.player = exoPlayer
+        musicPlayerController.bindServicePlayer(exoPlayer)
 
         // 3. 设置点击通知栏时的跳转意图
         val launchIntent = requireNotNull(packageManager.getLaunchIntentForPackage(packageName)).apply {
@@ -697,6 +777,8 @@ class MusicService : MediaSessionService() {
     override fun onDestroy() {
         val shouldReconnect = player?.playWhenReady == true && player?.mediaItemCount != 0
         musicPlayerController.onServiceDestroyed(shouldReconnect)
+        musicPlayerController.unbindServicePlayer(player)
+        releasePlaybackLocks()
         isForegroundServiceStarted = false
         stopLyricTicker()
         SuperLyricHelper.sendStop()

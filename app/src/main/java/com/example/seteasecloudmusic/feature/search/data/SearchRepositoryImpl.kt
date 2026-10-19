@@ -35,8 +35,13 @@ class SearchRepositoryImpl @Inject constructor(
     private val ncblReporter: com.example.seteasecloudmusic.core.network.ncbl.NcblReporter
 ) : SearchRepository, TrackPlaybackPreparer {
 
-    // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链 (0ms 极速切歌)
-    private val trackUrlCache = ConcurrentHashMap<String, String>()
+    private data class CachedTrackUrl(
+        val url: String,
+        val fetchedAtMs: Long = System.currentTimeMillis()
+    )
+
+    // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链与获取时间 (0ms 极速切歌)
+    private val trackUrlCache = ConcurrentHashMap<String, CachedTrackUrl>()
 
     override suspend fun searchTracks(
         query: String,
@@ -61,20 +66,42 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     /**
-     * 网易云直链是短时效签名 URL：路径中携带 yyyyMMddHHmmss 格式的过期时间戳（北京时间）。
-     * 缓存/复用前先校验时效，过期立即失效重新请求，避免把过期地址交给播放器（CDN 会直接返回 403）。
+     * 网易云直链是短时效签名 URL（通常 20 分钟左右过期）：
+     * 1. 若路径中携带 yyyyMMddHHmmss 格式的过期时间戳（北京时间），提前 3 分钟判定过期；
+     * 2. 若无路径时间戳，按缓存获取时间超过 15 分钟判定过期。
      */
-    private fun isUrlExpired(url: String, safetyMarginMs: Long = 60_000L): Boolean {
-        val timestamp = Regex("""/(\d{14})(?:/|$)""").find(url)?.groupValues?.get(1) ?: return false
-        return try {
-            val format = SimpleDateFormat("yyyyMMddHHmmss", Locale.CHINA).apply {
-                timeZone = TimeZone.getTimeZone("Asia/Shanghai")
-            }
-            val expiredAt = format.parse(timestamp)?.time ?: return false
-            System.currentTimeMillis() + safetyMarginMs >= expiredAt
-        } catch (_: Exception) {
-            false
+    private fun isUrlExpired(
+        url: String,
+        fetchedAtMs: Long? = null,
+        safetyMarginMs: Long = 180_000L
+    ): Boolean {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return false
+        val now = System.currentTimeMillis()
+        if (fetchedAtMs != null && now - fetchedAtMs >= 15 * 60_000L) {
+            return true
         }
+        val timestamp = Regex("""/(\d{14})(?:/|$)""").find(url)?.groupValues?.get(1)
+        if (timestamp != null) {
+            return try {
+                val format = SimpleDateFormat("yyyyMMddHHmmss", Locale.CHINA).apply {
+                    timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+                }
+                val expiredAt = format.parse(timestamp)?.time ?: return false
+                now + safetyMarginMs >= expiredAt
+            } catch (_: Exception) {
+                false
+            }
+        }
+        return false
+    }
+
+    override fun isStreamUrlExpired(url: String): Boolean {
+        return isUrlExpired(url)
+    }
+
+    override fun invalidateTrackUrl(trackId: Long) {
+        val prefix = "$trackId-"
+        trackUrlCache.keys.removeIf { it.startsWith(prefix) }
     }
 
     override suspend fun getTrackUrl(
@@ -82,9 +109,9 @@ class SearchRepositoryImpl @Inject constructor(
         level: String
     ): Result<String> = withContext(Dispatchers.IO) {
         val cacheKey = "$trackId-$level"
-        trackUrlCache[cacheKey]?.let { cachedUrl ->
-            if (!isUrlExpired(cachedUrl)) {
-                return@withContext Result.success(cachedUrl)
+        trackUrlCache[cacheKey]?.let { cached ->
+            if (!isUrlExpired(cached.url, cached.fetchedAtMs)) {
+                return@withContext Result.success(cached.url)
             }
             // 缓存的直链已过期：立即剔除，走下面的网络请求获取最新地址
             trackUrlCache.remove(cacheKey)
@@ -101,7 +128,7 @@ class SearchRepositoryImpl @Inject constructor(
                 } else {
                     url
                 }
-                trackUrlCache[cacheKey] = secureUrl
+                trackUrlCache[cacheKey] = CachedTrackUrl(secureUrl)
                 Result.success(secureUrl)
             } else {
                 Result.failure(Exception("No playable URL available for track $trackId at level $level"))
@@ -114,8 +141,9 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     override suspend fun invoke(track: Track): Result<Track> {
-        // 1. 若当前曲目已带有可用播放直链（本地扫描或预先准备），0ms 立即起播
-        if (!track.playableUrl.isNullOrBlank() && track.isPlayable) {
+        // 1. 若当前曲目已带有可用播放直链（本地扫描或预先准备），先校验在线直链是否未过期
+        val existingUrl = track.playableUrl
+        if (!existingUrl.isNullOrBlank() && track.isPlayable && !isUrlExpired(existingUrl)) {
             return Result.success(track)
         }
 

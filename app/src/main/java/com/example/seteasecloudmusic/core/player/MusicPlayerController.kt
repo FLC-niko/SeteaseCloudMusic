@@ -68,6 +68,10 @@ class MusicPlayerController @Inject constructor(
     private var connectionFuture: ListenableFuture<MediaController>? = null
     private var reconnectJob: Job? = null
 
+    // MusicService 进程内直连 Player 引用（当后台 MediaController IPC 断连或延迟时作为保底通道）
+    private var servicePlayer: Player? = null
+    private var lastEndedTrackKey: String? = null
+
     // 进度轮询任务：每 500ms 同步一次 position/duration 到 UI
     private var progressJob: Job? = null
     private var playJob: Job? = null
@@ -208,7 +212,7 @@ class MusicPlayerController @Inject constructor(
     // 监听 Media3 播放器状态变化，统一映射到你的 PlaybackState
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
-            val c = controller ?: return
+            val c = controller ?: servicePlayer ?: return
             val mapped = when (playbackState) {
                 Player.STATE_IDLE -> PlayerStatus.IDLE
                 Player.STATE_BUFFERING -> PlayerStatus.BUFFERING
@@ -218,10 +222,7 @@ class MusicPlayerController @Inject constructor(
             }
 
             if (playbackState == Player.STATE_ENDED) {
-                val current = _playbackState.value.currentTrack
-                val dur = _playbackState.value.durationMs
-                checkAndTriggerScrobble(current, dur)
-                playNextInternal()
+                handleTrackEnded()
                 return
             }
 
@@ -266,16 +267,16 @@ class MusicPlayerController @Inject constructor(
         override fun onPlayerError(error: PlaybackException) {
             stopProgressTicker()
 
-            // 在线直链短时效：HTTP 403 基本是直链过期，清除失效直链后自动重新解析一次，从当前进度续播
             val currentTrack = _playbackState.value.currentTrack
-            if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
-                currentTrack != null && streamUrlRetryCount == 0
-            ) {
+            val isRecoverableSourceError =
+                error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+
+            if (isRecoverableSourceError && currentTrack != null && streamUrlRetryCount < 2) {
                 streamUrlRetryCount++
-                android.util.Log.w(
-                    "MusicPlayerController",
-                    "Playback source error (HTTP 403) for '${currentTrack.title}', retrying with refreshed URL"
-                )
+                trackPlaybackPreparer.invalidateTrackUrl(currentTrack.id)
                 retryPlaybackWithFreshUrl()
                 return
             }
@@ -337,6 +338,32 @@ class MusicPlayerController @Inject constructor(
             },
             context.mainExecutor
         )
+    }
+
+    fun bindServicePlayer(player: Player) {
+        servicePlayer = player
+    }
+
+    fun unbindServicePlayer(player: Player?) {
+        if (servicePlayer === player) {
+            servicePlayer = null
+        }
+    }
+
+    fun onServicePlayerEnded() {
+        handleTrackEnded()
+    }
+
+    private fun handleTrackEnded() {
+        val state = _playbackState.value
+        val current = state.currentTrack
+        val endedKey = "${state.currentQueueIndex}_${current?.id ?: -1L}_$latestPlayRequestId"
+        if (lastEndedTrackKey == endedKey) return
+        lastEndedTrackKey = endedKey
+
+        val dur = state.durationMs
+        checkAndTriggerScrobble(current, dur)
+        playNextInternal()
     }
 
     /**
@@ -485,13 +512,13 @@ class MusicPlayerController @Inject constructor(
         playNextInternal()
     }
 
-    fun playPrevious() {
+    fun playPrevious(forcePreviousSong: Boolean = false) {
         val state = _playbackState.value
         val queue = state.queueTracks
         if (queue.isEmpty()) return
 
-        // 1. 如果当前歌曲已播放超过 3 秒，点击上一首优先从头播放当前歌曲（符合主流音乐 App 习惯）
-        if (state.currentPositionMs > 3000) {
+        // 1. 如果当前歌曲已播放超过 3 秒，点击上一首优先从头播放当前歌曲（符合主流音乐 App 习惯；手势强切上一首除外）
+        if (!forcePreviousSong && state.currentPositionMs > 3000) {
             seekTo(0)
             return
         }
@@ -632,12 +659,12 @@ class MusicPlayerController @Inject constructor(
     }
 
     fun pause() {
-        controller?.pause()
+        (controller ?: servicePlayer)?.pause()
         persistCurrentState()
     }
 
     fun resume() {
-        val c = controller
+        val c = controller ?: servicePlayer
         val state = _playbackState.value
         if (c != null && c.currentMediaItem != null) {
             c.play()
@@ -650,12 +677,12 @@ class MusicPlayerController @Inject constructor(
     }
 
     fun stop() {
-        controller?.stop()
+        (controller ?: servicePlayer)?.stop()
         persistCurrentState()
     }
 
     fun seekTo(positionMs: Int) {
-        controller?.seekTo(positionMs.toLong())
+        (controller ?: servicePlayer)?.seekTo(positionMs.toLong())
         _playbackState.update { it.copy(currentPositionMs = positionMs) }
         persistCurrentState()
     }
@@ -807,20 +834,20 @@ class MusicPlayerController @Inject constructor(
                 )
             }
 
-            // 0. 若曲目已带有可用直链（预加载命中），立即 0ms 起播，无需等待任何网络！
+            // 0. 若曲目已带有可用且未过期的直链（预加载命中），立即 0ms 起播，无需等待任何网络！
             val directUrl = track.playableUrl
-            if (!directUrl.isNullOrBlank() && track.isPlayable) {
+            if (!directUrl.isNullOrBlank() && track.isPlayable && !trackPlaybackPreparer.isStreamUrlExpired(directUrl)) {
                 val item = buildMediaItem(track, directUrl)
 
-                val c = controller
-                if (c != null) {
+                val activePlayer = controller ?: servicePlayer
+                if (activePlayer != null) {
                     if (initialSeekMs > 0) {
-                        c.setMediaItem(item, initialSeekMs.toLong())
+                        activePlayer.setMediaItem(item, initialSeekMs.toLong())
                     } else {
-                        c.setMediaItem(item)
+                        activePlayer.setMediaItem(item)
                     }
-                    c.prepare()
-                    c.play()
+                    activePlayer.prepare()
+                    activePlayer.play()
                 } else {
                     pendingPlayItem = item to initialSeekMs
                     connect()
@@ -865,15 +892,15 @@ class MusicPlayerController @Inject constructor(
                         )
                     }
 
-                    val ctrl = controller
-                    if (ctrl != null) {
+                    val activePlayer = controller ?: servicePlayer
+                    if (activePlayer != null) {
                         if (initialSeekMs > 0) {
-                            ctrl.setMediaItem(item, initialSeekMs.toLong())
+                            activePlayer.setMediaItem(item, initialSeekMs.toLong())
                         } else {
-                            ctrl.setMediaItem(item)
+                            activePlayer.setMediaItem(item)
                         }
-                        ctrl.prepare()
-                        ctrl.play()
+                        activePlayer.prepare()
+                        activePlayer.play()
                     } else {
                         pendingPlayItem = item to initialSeekMs
                         connect()
@@ -1073,7 +1100,7 @@ class MusicPlayerController @Inject constructor(
         stopProgressTicker()
         progressJob = scope.launch {
             while (isActive) {
-                val c = controller ?: break
+                val c = controller ?: servicePlayer ?: break
                 val pos = c.currentPosition.toInt().coerceAtLeast(0)
                 val dur = c.duration.takeIf { d -> d > 0 }?.toInt() ?: 0
                 _playbackState.update {

@@ -115,8 +115,8 @@ class PlayerViewModel @Inject constructor(
         controller.playNext()
     }
 
-    fun onPrevious() {
-        controller.playPrevious()
+    fun onPrevious(forcePreviousSong: Boolean = false) {
+        controller.playPrevious(forcePreviousSong)
     }
 
     fun seekTo(positionMs: Int) {
