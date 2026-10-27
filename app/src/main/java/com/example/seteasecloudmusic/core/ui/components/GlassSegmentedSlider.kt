@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -38,6 +39,9 @@ import kotlin.math.absoluteValue
 object GlassSliderDefaults {
     /** 滑块与容器内壁的间距 */
     val ThumbPadding: Dp = 4.dp
+
+    /** 选中项滑块白色铺底透明度（选中的透明度调低，呈现显眼高亮白色滑块） */
+    const val ThumbSurfaceAlpha: Float = 0.6f
 
     /** 跟手时的弹簧：偏硬，保证滑块紧贴手指 */
     const val TRACKING_STIFFNESS = 800f
@@ -181,7 +185,8 @@ fun GlassThumb(
     backdrop: Backdrop,
     geometry: GlassThumbGeometry,
     modifier: Modifier = Modifier,
-    alpha: Float = 1f
+    alpha: Float = 1f,
+    surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha
 ) {
     if (geometry.width <= 0.dp || geometry.height <= 0.dp) return
 
@@ -202,12 +207,16 @@ fun GlassThumb(
                 backdrop = backdrop,
                 shape = { RoundedRectangle(geometry.innerCornerRadius) },
                 effects = {
-                    // 滑块只做透镜折射、不做铺底，才能“透出”下方内容产生液体玻璃感
                     lens(
                         refractionHeight = 6f.dp.toPx(),
                         refractionAmount = 12f.dp.toPx(),
                         chromaticAberration = true
                     )
+                },
+                onDrawSurface = {
+                    if (surfaceAlpha > 0f) {
+                        drawRect(Color.White.copy(alpha = surfaceAlpha))
+                    }
                 }
             )
             .size(geometry.width, geometry.height)

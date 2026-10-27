@@ -34,11 +34,11 @@ object GlassDefaults {
     /** 透镜折射量（越大内容扭曲越明显） */
     val LensRefractionAmount: Dp = 32.dp
 
-    /** 表面白色铺底透明度：主导航条/卡片的主用值 */
-    const val SurfaceAlpha: Float = 0.5f
+    /** 表面白色铺底透明度：主导航条/卡片的主用值（调高透明度，更通透） */
+    const val SurfaceAlpha: Float = 0.20f
 
-    /** 搜索栏一类的浅色面板需要更亮一点的铺底 */
-    const val SurfaceAlphaBright: Float = 0.56f
+    /** 搜索栏、播放栏等面板（调高透明度） */
+    const val SurfaceAlphaBright: Float = 0.22f
 
     /** 玻璃边缘高光描边透明度 */
     const val BorderAlpha: Float = 0.62f

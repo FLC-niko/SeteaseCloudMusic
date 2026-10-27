@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -8,6 +9,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -70,6 +72,7 @@ import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScree
 import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
 import com.example.seteasecloudmusic.core.ui.components.Ios26NetworkOfflineDialog
 import com.example.seteasecloudmusic.core.ui.components.GlassDefaults
+import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
 import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
@@ -166,74 +169,38 @@ private data class DailyRecommendState(
 )
 
 
-//底栏上方的玻璃滑块
+private fun lerpDp(start: Dp, stop: Dp, fraction: Float): Dp = start + (stop - start) * fraction
+private fun lerpColor(start: Color, stop: Color, fraction: Float): Color = androidx.compose.ui.graphics.lerp(start, stop, fraction)
+
+// 左侧主导航条内部分段滑块
 @Composable
-fun GlassSlider(
+private fun LeftBarGlassThumb(
     backdrop: Backdrop,
-    contentBackdrop: Backdrop,
-    mainItemCount: Int,
-    // 选中项与拖拽横坐标都以 State 形式下传：变化只让本组件内部的读取作用域失效，
-    // 不会再向上重组整个 AppNavigation 组件树。
-    selectedIndex: State<Int>,
+    containerWidth: Dp,
+    itemCount: Int,
+    selectedIndex: Int,
     dragOffsetX: State<Float?>,
-    navBarHeight: Dp,
-    // 同理，按压放大进度也在 draw 阶段按需读取。
-    mainBarProgress: State<Float>,
-    horizontalPadding: Dp,
-    mainSearchGap: Dp,
-    searchButtonWidth: Dp,
+    barHeight: Dp,
     cornerRadius: Dp,
+    alpha: Float,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    if (alpha <= 0f) return
+    val geometry = rememberGlassThumbGeometry(
+        containerWidth = containerWidth,
+        itemCount = itemCount,
+        selectedIndex = selectedIndex,
+        dragOffsetX = dragOffsetX.value,
+        barHeight = barHeight,
+        cornerRadius = cornerRadius
+    )
+    GlassThumb(
+        backdrop = backdrop,
+        geometry = geometry,
+        alpha = alpha,
+        surfaceAlpha = GlassSliderDefaults.ThumbSurfaceAlpha,
         modifier = modifier
-            .padding(horizontal = horizontalPadding)
-            .fillMaxWidth()
-            .height(navBarHeight),
-        horizontalArrangement = Arrangement.spacedBy(mainSearchGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .graphicsLayer {
-                    // 让滑块在点击状态下的放大程度增大。
-                    // 在 draw 阶段读取进度 State：按压动画每帧只触发重绘，不触发重组。
-                    val maxScale = (size.width + 32f.dp.toPx()) / size.width
-                    val scale = lerp(1f, maxScale, mainBarProgress.value)
-                    scaleX = scale
-                    scaleY = scale
-                },
-            contentAlignment = Alignment.CenterStart
-        ) {
-            // 滑块几何与 Gooey 拉伸统一由 core 的共用实现计算，避免与「我的」页各写一套。
-            // 选中项在本作用域内读取：切换页面时只有滑块这一小块需要重建。
-            val activeIndex = selectedIndex.value
-            val geometry = rememberGlassThumbGeometry(
-                containerWidth = maxWidth,
-                itemCount = mainItemCount,
-                selectedIndex = activeIndex,
-                dragOffsetX = dragOffsetX.value,
-                barHeight = navBarHeight,
-                cornerRadius = cornerRadius
-            )
-            val thumbAlpha by animateFloatAsState(
-                targetValue = if (activeIndex in 0 until mainItemCount) 1f else 0f,
-                animationSpec = spring(stiffness = 500f, dampingRatio = 0.9f),
-                label = "glassThumbAlpha"
-            )
-
-            GlassThumb(
-                backdrop = rememberCombinedBackdrop(backdrop, contentBackdrop),
-                geometry = geometry,
-                alpha = thumbAlpha
-            )
-        }
-
-        // 占位搜索按钮宽度，确保滑块计算区域与主导航条完全一致。
-        Spacer(modifier = Modifier.width(searchButtonWidth))
-    }
+    )
 }
 
 /**
@@ -325,6 +292,10 @@ fun AppNavigation(
     // 右侧独立搜索按钮使用单独的动画状态，避免和主导航条互相影响。
     val searchAnimationScope = rememberCoroutineScope()
     val searchProgressAnimation = remember { Animatable(0f) }
+
+    // 搜索展开后的关闭按钮按下动画状态
+    val closeAnimationScope = rememberCoroutineScope()
+    val closeProgressAnimation = remember { Animatable(0f) }
     
     // 缩小底栏接收点击时的弹跳程度，增加 stiffness 使其更紧致，缩小弹跳幅度
     val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
@@ -333,7 +304,6 @@ fun AppNavigation(
         drawRect(backgroundColor)
         drawContent()
     }
-    val navBarContentBackdrop = rememberLayerBackdrop()
 
     // 记录当前手指 X 坐标准备拖拽交互。
     // 刻意保留 State 对象本体、不用 by 解构：解构会在 AppNavigation 作用域读取 .value，
@@ -342,9 +312,36 @@ fun AppNavigation(
 
     // 记录当前选中的导航项：
     // 0~2 对应左侧主导航条，3 对应右侧搜索按钮。
-    // 与 dragOffsetXState 同理保留 State 本体、不用 by 解构：
-    // 让读取发生在真正需要它的子组件内部，切换页面时不再重组整个导航外壳。
     val selectedIndexState = remember { mutableIntStateOf(0) }
+    var lastActiveTab by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(selectedIndexState.intValue) {
+        if (selectedIndexState.intValue != SEARCH_PAGE_INDEX) {
+            lastActiveTab = selectedIndexState.intValue
+        }
+    }
+
+    val isSearchExpanded by remember {
+        derivedStateOf { selectedIndexState.intValue == SEARCH_PAGE_INDEX }
+    }
+
+    val searchProgress by animateFloatAsState(
+        targetValue = if (isSearchExpanded) 1f else 0f,
+        animationSpec = spring(stiffness = 500f, dampingRatio = 0.8f),
+        label = "searchProgress"
+    )
+
+    val showGlassSlider = !isSearchExpanded && searchProgress < 0.01f
+    val sliderAlpha by animateFloatAsState(
+        targetValue = if (showGlassSlider) 1f else 0f,
+        animationSpec = if (isSearchExpanded) snap() else tween(durationMillis = 200),
+        label = "sliderAlpha"
+    )
+
+    BackHandler(enabled = isSearchExpanded) {
+        searchViewModel.onClearQuery()
+        selectedIndexState.intValue = lastActiveTab
+    }
 
     // 抽成共享布局参数，保证底栏和滑块按同一套比例计算。
     val horizontalPadding = 24.dp
@@ -435,34 +432,22 @@ fun AppNavigation(
                 }
         ) {
             val totalWidth = maxWidth
-            val collapsedWidth = navBarHeight
-            val expandedWidth = totalWidth - collapsedWidth - mainSearchGap
+            val ballSize = navBarHeight
+            val normalLeftWidth = totalWidth - ballSize - mainSearchGap
 
-            // 用 derivedStateOf 让它只在「是否处于搜索态」真正翻转时才失效：
-            // 首页 ↔ 我的 之间切换不会重组整个导航栏外壳。
-            val isSearchExpanded by remember {
-                derivedStateOf { selectedIndexState.value == SEARCH_PAGE_INDEX }
-            }
+            val leftWidth = lerpDp(normalLeftWidth, ballSize, searchProgress)
 
-            val leftWidth by animateDpAsState(
-                targetValue = if (isSearchExpanded) collapsedWidth else expandedWidth,
-                animationSpec = spring(stiffness = 500f, dampingRatio = 0.8f),
-                label = "leftWidth"
-            )
-            val rightWidth by animateDpAsState(
-                targetValue = if (isSearchExpanded) expandedWidth else collapsedWidth,
-                animationSpec = spring(stiffness = 500f, dampingRatio = 0.8f),
-                label = "rightWidth"
-            )
+            val searchGap = 10.dp
+            val searchBarStartX = totalWidth - ballSize
+            val searchBarTargetX = ballSize + searchGap
+            val searchBarTargetWidth = totalWidth - (ballSize * 2) - (searchGap * 2)
 
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .layerBackdrop(navBarContentBackdrop),
-                horizontalArrangement = Arrangement.spacedBy(mainSearchGap)
-            ) {
-            
-                // ============ 左侧主导航条 (包含主页、电台、我的) ============
+            val currentSearchBarX = lerpDp(searchBarStartX, searchBarTargetX, searchProgress)
+            val currentSearchBarWidth = lerpDp(ballSize, searchBarTargetWidth, searchProgress)
+
+            Box(modifier = Modifier.fillMaxSize()) {
+
+                // ============ 左侧主导航条 (包含主页、电台、我的，展开搜索时两边同步缩减为球状，只保留当前页图标并居中) ============
                 Box(
                     modifier = Modifier
                         .width(leftWidth)
@@ -489,49 +474,118 @@ fun AppNavigation(
                         )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
-                            indication = null
+                            indication = null,
+                            enabled = isSearchExpanded
                         ) {
-                            if (isSearchExpanded) {
-                                selectedIndexState.value = 0
-                            }
+                            searchViewModel.onClearQuery()
+                            selectedIndexState.intValue = lastActiveTab
                         }
                         .glassSegmentDrag(
                             itemCount = MainNavItems.size,
                             onDragOffsetChange = { dragOffsetXState.value = it },
-                            onSettle = { selectedIndexState.value = it },
+                            onSettle = {
+                                selectedIndexState.intValue = it
+                                lastActiveTab = it
+                            },
                             onPressChanged = { pressed ->
                                 mainBarAnimationScope.launch {
                                     mainBarProgressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
                                 }
                             },
-                            // 搜索展开时底栏交给 clickable 处理（点击复位到首页），不响应滑动切换
-                            enabled = !isSearchExpanded
+                            // 搜索展开时底栏交给 clickable 处理（点击复位到原先保留页面），不响应滑动切换
+                            enabled = !isSearchExpanded && searchProgress < 0.05f
                         )
                 ) {
-                    // 主导航栏内部负责均分三个一级入口。
-                    // 容器缩小时（圆按钮）不显示导航图标，避免挤压
-                    if (leftWidth > collapsedWidth * 1.5f) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            MainNavItems.forEachIndexed { index, item ->
-                                val isSelected = selectedIndexState.value == index
-                                val itemColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(cornerRadius))
+                    ) {
+                        LeftBarGlassThumb(
+                            backdrop = backdrop,
+                            containerWidth = normalLeftWidth,
+                            itemCount = MainNavItems.size,
+                            selectedIndex = lastActiveTab,
+                            dragOffsetX = dragOffsetXState,
+                            barHeight = navBarHeight,
+                            cornerRadius = cornerRadius,
+                            alpha = sliderAlpha,
+                            modifier = Modifier.align(Alignment.CenterStart)
+                        )
 
-                                Column(
+                        val slotWidth = normalLeftWidth / MainNavItems.size
+                        val inactiveAlpha = (1f - searchProgress * 3.5f).coerceIn(0f, 1f)
+                        val labelAlpha = (1f - searchProgress * 3.5f).coerceIn(0f, 1f)
+
+                        MainNavItems.forEachIndexed { index, item ->
+                            val isActiveTab = index == lastActiveTab
+                            val isSelected = selectedIndexState.intValue == index && !isSearchExpanded
+                            val iconAlpha = if (isActiveTab) 1f else inactiveAlpha
+
+                            if (iconAlpha > 0f) {
+                                val normalCenterX = slotWidth * (index + 0.5f)
+                                val targetCenterX = ballSize / 2
+                                val currentCenterX = if (isActiveTab) {
+                                    lerpDp(normalCenterX, targetCenterX, searchProgress)
+                                } else {
+                                    normalCenterX
+                                }
+
+                                val normalCenterY = 22.dp
+                                val targetCenterY = ballSize / 2
+                                val currentCenterY = if (isActiveTab) {
+                                    lerpDp(normalCenterY, targetCenterY, searchProgress)
+                                } else {
+                                    normalCenterY
+                                }
+
+                                val targetColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
+                                val iconColor = if (isActiveTab && isSearchExpanded) {
+                                    lerpColor(targetColor, Color.DarkGray, searchProgress)
+                                } else {
+                                    targetColor
+                                }
+
+                                val iconRes = if (isSelected && searchProgress < 0.5f) item.selectedIconRes else item.iconRes
+
+                                Box(
                                     modifier = Modifier
-                                        .weight(1f) // 使所有导航项等宽，实现 Apple Music 分段滑块风格
-                                        .fillMaxHeight(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically)
+                                        .offset {
+                                            IntOffset(
+                                                (currentCenterX - 13.dp).roundToPx(),
+                                                (currentCenterY - 13.dp).roundToPx()
+                                            )
+                                        }
+                                        .size(26.dp)
+                                        .graphicsLayer { alpha = iconAlpha },
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        painter = painterResource(id = if (isSelected) item.selectedIconRes else item.iconRes),
+                                        painter = painterResource(id = iconRes),
                                         contentDescription = item.title,
-                                        tint = itemColor,
-                                        modifier = Modifier.size(26.dp)
+                                        tint = iconColor,
+                                        modifier = Modifier.fillMaxSize()
                                     )
+                                }
+                            }
+
+                            if (labelAlpha > 0f) {
+                                val normalCenterX = slotWidth * (index + 0.5f)
+                                val isSelected = selectedIndexState.intValue == index
+                                val itemColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
+
+                                Box(
+                                    modifier = Modifier
+                                        .offset {
+                                            IntOffset(
+                                                (normalCenterX - 28.dp).roundToPx(),
+                                                37.dp.roundToPx()
+                                            )
+                                        }
+                                        .width(56.dp)
+                                        .graphicsLayer { alpha = labelAlpha },
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Text(
                                         text = item.title,
                                         color = itemColor,
@@ -541,20 +595,12 @@ fun AppNavigation(
                                 }
                             }
                         }
-                    } else {
-                        // 缩小成圆形按钮时显示返回或主页图标
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_nav_home),
-                            contentDescription = "返回主导航",
-                            tint = Color.DarkGray,
-                            modifier = Modifier.align(Alignment.Center).size(26.dp)
-                        )
                     }
                 }
 
-                // ============ 右侧独立的搜索按钮 / 搜索栏 ============
+                // ============ 搜索按钮 / 展开成长条的搜索栏 (从右圆球缓缓向左移动并展开成长条) ============
                 val searchInteractionSource = remember { MutableInteractionSource() }
-                
+
                 LaunchedEffect(searchInteractionSource) {
                     searchInteractionSource.interactions.collect { interaction ->
                         when (interaction) {
@@ -567,71 +613,96 @@ fun AppNavigation(
                         }
                     }
                 }
-                if (isSearchExpanded && rightWidth > collapsedWidth * 1.5f) {
+
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(currentSearchBarX.roundToPx(), 0) }
+                        .width(currentSearchBarWidth)
+                        .fillMaxHeight()
+                        .graphicsLayer {
+                            val progress = searchProgressAnimation.value
+                            val maxScale = (size.width + 4f.dp.toPx()) / size.width
+                            val scale = lerp(1f, maxScale, progress)
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .liquidGlass(
+                            backdrop = backdrop,
+                            cornerRadius = cornerRadius,
+                            surfaceAlpha = GlassDefaults.SurfaceAlphaBright
+                        )
+                        .clickable(
+                            interactionSource = searchInteractionSource,
+                            indication = null,
+                            enabled = !isSearchExpanded
+                        ) {
+                            lastActiveTab = selectedIndexState.intValue
+                            selectedIndexState.intValue = SEARCH_PAGE_INDEX
+                        }
+                ) {
+                    val iconStartPadding = lerpDp((ballSize - 22.dp) / 2, 16.dp, searchProgress)
+                    val iconSize = lerpDp(22.dp, 18.dp, searchProgress)
+                    val iconTint = lerpColor(Color.DarkGray, Color(0xFFFA233B), searchProgress)
+
                     Row(
                         modifier = Modifier
-                            .width(rightWidth)
-                            .fillMaxHeight(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            .fillMaxSize()
+                            .padding(start = iconStartPadding, end = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .graphicsLayer {
-                                    val progress = searchProgressAnimation.value
-                                    val maxScale = (size.width + 4f.dp.toPx()) / size.width
-                                    val scale = lerp(1f, maxScale, progress)
-                                    scaleX = scale
-                                    scaleY = scale
-                                }
-                                .liquidGlass(
-                                    backdrop = backdrop,
-                                    cornerRadius = cornerRadius,
-                                    surfaceAlpha = GlassDefaults.SurfaceAlphaBright
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            SearchQueryField(viewModel = searchViewModel)
-                        }
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_nav_search),
+                            contentDescription = "搜索",
+                            tint = iconTint,
+                            modifier = Modifier.size(iconSize)
+                        )
 
-                        Box(
-                            modifier = Modifier
-                                .size(navBarHeight)
-                                .liquidGlass(
-                                    backdrop = backdrop,
-                                    cornerRadius = cornerRadius,
-                                    surfaceAlpha = GlassDefaults.SurfaceAlphaBright
+                        if (searchProgress > 0.15f) {
+                            val inputAlpha = ((searchProgress - 0.2f) / 0.8f).coerceIn(0f, 1f)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .graphicsLayer { alpha = inputAlpha }
+                            ) {
+                                SearchQueryInputContent(
+                                    viewModel = searchViewModel,
+                                    enabled = isSearchExpanded
                                 )
-                                .clickable(
-                                    interactionSource = searchInteractionSource,
-                                    indication = null
-                                ) {
-                                    searchViewModel.onClearQuery()
-                                    selectedIndexState.value = 0
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_nav_close),
-                                contentDescription = "关闭搜索",
-                                tint = Color.Black,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            }
                         }
                     }
-                } else {
+                }
+
+                // ============ 右侧关闭按钮 (在原先搜索位置从小放大) ============
+                if (searchProgress > 0.01f) {
+                    val closeInteractionSource = remember { MutableInteractionSource() }
+
+                    LaunchedEffect(closeInteractionSource) {
+                        closeInteractionSource.interactions.collect { interaction ->
+                            when (interaction) {
+                                is PressInteraction.Press -> {
+                                    closeAnimationScope.launch { closeProgressAnimation.animateTo(1f, animationSpec) }
+                                }
+                                is PressInteraction.Release, is PressInteraction.Cancel -> {
+                                    closeAnimationScope.launch { closeProgressAnimation.animateTo(0f, animationSpec) }
+                                }
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
-                            .width(rightWidth)
-                            .fillMaxHeight()
+                            .offset { IntOffset((totalWidth - ballSize).roundToPx(), 0) }
+                            .size(ballSize)
                             .graphicsLayer {
-                                val progress = searchProgressAnimation.value
+                                val progress = closeProgressAnimation.value
                                 val maxScale = (size.width + 4f.dp.toPx()) / size.width
-                                val scale = lerp(1f, maxScale, progress)
-                                scaleX = scale
-                                scaleY = scale
+                                val pressScale = lerp(1f, maxScale, progress)
+                                val appearScale = searchProgress.coerceIn(0f, 1f)
+                                scaleX = appearScale * pressScale
+                                scaleY = appearScale * pressScale
+                                alpha = appearScale
                             }
                             .liquidGlass(
                                 backdrop = backdrop,
@@ -639,19 +710,19 @@ fun AppNavigation(
                                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright
                             )
                             .clickable(
-                                interactionSource = searchInteractionSource,
-                                indication = null
+                                interactionSource = closeInteractionSource,
+                                indication = null,
+                                enabled = isSearchExpanded
                             ) {
-                                if (!isSearchExpanded) {
-                                    selectedIndexState.value = SEARCH_PAGE_INDEX
-                                }
+                                searchViewModel.onClearQuery()
+                                selectedIndexState.intValue = lastActiveTab
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(id = R.drawable.ic_nav_search),
-                            contentDescription = "搜索",
-                            tint = Color.DarkGray,
+                            painter = painterResource(id = R.drawable.ic_nav_close),
+                            contentDescription = "关闭搜索",
+                            tint = Color.Black,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -719,30 +790,6 @@ fun AppNavigation(
                 .graphicsLayer {
                     // 下沉到更低的位置（76dp），而不是移出屏幕
                     translationY = sinkProgress * 76.dp.toPx()
-                }
-        )
-
-        GlassSlider(
-            backdrop = backdrop,
-            contentBackdrop = navBarContentBackdrop,
-            mainItemCount = MainNavItems.size,
-            selectedIndex = selectedIndexState,
-            dragOffsetX = dragOffsetXState,
-            navBarHeight = navBarHeight,
-            // asState() 返回 Animatable 内部缓存的 AnimationState（同一实例），
-            // 由 GlassSlider 在 draw 阶段读取，按压动画不再驱动整个外壳重组。
-            mainBarProgress = mainBarProgressAnimation.asState(),
-            horizontalPadding = horizontalPadding,
-            mainSearchGap = mainSearchGap,
-            searchButtonWidth = searchButtonWidth,
-            cornerRadius = cornerRadius,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(bottom = 24.dp + animatedImeOffset) // 底部导航栏间距 + 键盘偏移
-                .graphicsLayer {
-                    alpha = 1f - sinkProgress
-                    translationY = sinkProgress * 200.dp.toPx()
                 }
         )
 
@@ -1160,15 +1207,16 @@ private fun LargePageTitle(
  * 搜索模式底部迷你播放条。
  */
 /**
- * 顶部搜索输入框。
+ * 顶部/底部搜索输入框内容。
  *
  * 搜索状态在这里**独立订阅**，而不是在 [AppNavigation] 里读取：
  * `SearchViewModel.uiState` 每输入一个字符就会变化，若在外壳作用域读取，
  * 整个导航外壳（玻璃 Backdrop、导航项、各覆盖层）都会随每次按键一起重组。
  */
 @Composable
-private fun SearchQueryField(
+private fun SearchQueryInputContent(
     viewModel: SearchViewModel,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -1176,9 +1224,9 @@ private fun SearchQueryField(
     BasicTextField(
         value = uiState.query,
         onValueChange = { viewModel.onQueryChanged(it) },
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp)
             .onKeyEvent { keyEvent ->
                 if (keyEvent.key == Key.Enter) {
                     viewModel.onSearchSubmit()
@@ -1192,17 +1240,15 @@ private fun SearchQueryField(
         decorationBox = { innerTextField ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_nav_search),
-                    contentDescription = null,
-                    tint = Color(0xFFFA233B),
-                    modifier = Modifier.size(18.dp)
-                )
                 Box(modifier = Modifier.weight(1f)) {
                     if (uiState.query.isEmpty()) {
-                        Text("搜你想听的", color = Color.Gray)
+                        Text(
+                            text = "搜你想听的",
+                            color = Color.Gray,
+                            maxLines = 1
+                        )
                     }
                     innerTextField()
                 }
