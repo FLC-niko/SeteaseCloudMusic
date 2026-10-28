@@ -76,7 +76,8 @@ data class HomepageImageItemResponse(
 data class HomepageResourceExtInfoResponse(
     val artists: List<HomepageArtistItemResponse> = emptyList(),
     val songData: HomepageSongDataResponse? = null,
-    val songPrivilege: HomepageSongPrivilegeResponse? = null
+    val songPrivilege: HomepageSongPrivilegeResponse? = null,
+    val playCount: Long? = null
 )
 
 data class HomepageArtistItemResponse(

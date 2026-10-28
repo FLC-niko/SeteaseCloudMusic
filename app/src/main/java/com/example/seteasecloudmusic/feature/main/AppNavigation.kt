@@ -66,6 +66,7 @@ import com.example.seteasecloudmusic.feature.home.presentation.DailyRecommendDet
 import com.example.seteasecloudmusic.feature.home.presentation.HomeRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
 import com.example.seteasecloudmusic.feature.mine.presentation.MineRoute
+import com.example.seteasecloudmusic.feature.radio.presentation.RadioRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
@@ -949,7 +950,14 @@ private fun AppPageContent(
                             onPosterWallClick = onPosterWallClick
                         )
 
-                        1 -> AppPageBackground() // 电台（私人 FM 待实现）
+                        1 -> RadioRoute(
+                            topContentPadding = topContentPadding,
+                            bottomContentPadding = bottomContentPadding,
+                            avatarUrl = avatarUrl,
+                            displayName = displayName,
+                            onAvatarClick = onAccountClick,
+                            onArtistClick = onArtistClick
+                        )
 
                         2 -> MineRoute(
                             topContentPadding = topContentPadding,
@@ -995,7 +1003,7 @@ private fun AppTopArea(
     modifier: Modifier = Modifier
 ) {
     val index = selectedIndex.value
-    val hasCustomTopBar = index == 0 || index == 2
+    val hasCustomTopBar = index == 0 || index == 1 || index == 2
     if (hasCustomTopBar) return
 
     val pageTitle = when (index) {

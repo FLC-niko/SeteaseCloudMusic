@@ -64,6 +64,7 @@ data class ToplistItemResponse(
     val id: Long = 0L,
     val name: String? = null,
     val coverImgUrl: String? = null,
+    val playCount: Long? = null,
     val updateFrequency: String? = null,
     val tracks: List<ToplistTrackPreviewResponse> = emptyList()
 )

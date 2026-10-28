@@ -9,14 +9,14 @@ package com.example.seteasecloudmusic.core.common
  */
 fun String?.toCoverThumbnailUrl(size: Int = 180): String? {
     if (this.isNullOrBlank()) return this
-    // 本地 URI 或已包含尺寸参数的不做处理
-    if (startsWith("content:") || startsWith("file:") || contains("param=")) {
+    // 本地 URI 不做处理
+    if (startsWith("content:") || startsWith("file:")) {
         return this
     }
-    // 仅针对网络图片添加参数
+    // 仅针对网络图片添加参数，并清理原有带未转义管道符等可能引起解析异常的查询参数
     if (startsWith("http://") || startsWith("https://")) {
-        val sep = if (contains("?")) "&" else "?"
-        return "$this${sep}param=${size}y${size}"
+        val cleanBase = substringBefore("?").replace("http://", "https://")
+        return "$cleanBase?param=${size}y${size}"
     }
     return this
 }
