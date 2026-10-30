@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.network.NetworkMonitor
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
+import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetPlaylistDetailUseCase
 import com.example.seteasecloudmusic.feature.radio.domain.model.ArtistHotSectionData
 import com.example.seteasecloudmusic.feature.radio.domain.model.FollowedArtistSectionData
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioArtistHotItem
@@ -18,10 +20,12 @@ import com.example.seteasecloudmusic.feature.radio.domain.model.RadioToplistItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioTrendItem
 import com.example.seteasecloudmusic.feature.radio.domain.repository.RadioRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,6 +33,9 @@ data class RadioUiState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
+    // 歌单详情层 (类似我的喜欢歌单页面)
+    val activePlaylistDetail: PlaylistDetail? = null,
+    val isLoadingDetail: Boolean = false,
     // 1. 排行榜
     val toplists: List<RadioToplistItem> = emptyList(),
     // 2. 雷达歌单
@@ -52,12 +59,16 @@ data class RadioUiState(
 @HiltViewModel
 class RadioViewModel @Inject constructor(
     private val radioRepository: RadioRepository,
+    private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
     private val musicPlayerController: MusicPlayerController,
     private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RadioUiState(isLoading = true))
     val uiState = _uiState.asStateFlow()
+
+    private var playlistDetailJob: Job? = null
+    private var playlistDetailRequestId: Long = 0L
 
     init {
         loadAllSections()
@@ -120,6 +131,77 @@ class RadioViewModel @Inject constructor(
                     errorMessage = null
                 )
             }
+        }
+    }
+
+    // ==========================================
+    // 歌单详情层操作（类似我的喜欢歌单页面）
+    // ==========================================
+    fun openPlaylistDetail(playlistId: Long, name: String, coverUrl: String?) {
+        playlistDetailJob?.cancel()
+        val requestId = ++playlistDetailRequestId
+
+        val cached = getPlaylistDetailUseCase.getCachedPreview(playlistId)
+        val instantPreview = cached ?: PlaylistDetail(
+            id = playlistId,
+            name = name,
+            coverUrl = coverUrl,
+            description = null,
+            trackCount = 0,
+            playCount = 0L,
+            creatorName = null,
+            tracks = emptyList()
+        )
+
+        _uiState.update {
+            it.copy(
+                activePlaylistDetail = instantPreview,
+                isLoadingDetail = instantPreview.tracks.isEmpty()
+            )
+        }
+
+        playlistDetailJob = viewModelScope.launch {
+            val result = getPlaylistDetailUseCase(playlistId)
+            if (!isActive || requestId != playlistDetailRequestId) return@launch
+            result.fold(
+                onSuccess = { detail ->
+                    if (requestId != playlistDetailRequestId) return@fold
+                    _uiState.update { current ->
+                        if (current.activePlaylistDetail?.id == playlistId) {
+                            current.copy(
+                                activePlaylistDetail = detail,
+                                isLoadingDetail = false
+                            )
+                        } else current
+                    }
+                },
+                onFailure = {
+                    if (requestId != playlistDetailRequestId) return@fold
+                    _uiState.update { current ->
+                        if (current.activePlaylistDetail?.id == playlistId) {
+                            current.copy(isLoadingDetail = false)
+                        } else current
+                    }
+                }
+            )
+        }
+    }
+
+    fun closePlaylistDetail() {
+        playlistDetailJob?.cancel()
+        playlistDetailJob = null
+        playlistDetailRequestId++
+        _uiState.update { it.copy(activePlaylistDetail = null, isLoadingDetail = false) }
+    }
+
+    fun playTrackInPlaylist(track: Track, trackList: List<Track>) {
+        val index = trackList.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+        musicPlayerController.replaceQueueAndPlay(trackList, index)
+    }
+
+    fun playAllTracks(trackList: List<Track>) {
+        if (trackList.isNotEmpty()) {
+            musicPlayerController.replaceQueueAndPlay(trackList, 0)
         }
     }
 

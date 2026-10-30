@@ -2,8 +2,13 @@ package com.example.seteasecloudmusic.feature.radio.presentation
 
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,7 +35,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.WarningAmber
@@ -58,17 +62,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
+import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.feature.radio.domain.model.ArtistHotSectionData
 import com.example.seteasecloudmusic.feature.radio.domain.model.FollowedArtistSectionData
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioArtistHotItem
@@ -80,6 +87,8 @@ import com.example.seteasecloudmusic.feature.radio.domain.model.RadioRadarItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioRoamItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioToplistItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioTrendItem
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -109,6 +118,10 @@ fun RadioRoute(
         displayName = displayName,
         onAvatarClick = onAvatarClick,
         onArtistClick = onArtistClick,
+        onOpenPlaylistDetail = viewModel::openPlaylistDetail,
+        onClosePlaylistDetail = viewModel::closePlaylistDetail,
+        onPlayTrackInPlaylist = viewModel::playTrackInPlaylist,
+        onPlayAllTracks = viewModel::playAllTracks,
         onPlayToplist = viewModel::playToplist,
         onPlayRadar = viewModel::playRadar,
         onPlayRoam = viewModel::playRoam,
@@ -130,6 +143,10 @@ private fun RadioScreenContent(
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
     onArtistClick: ((artistId: Long, artistName: String, artistCoverUrl: String?) -> Unit)? = null,
+    onOpenPlaylistDetail: (playlistId: Long, name: String, coverUrl: String?) -> Unit,
+    onClosePlaylistDetail: () -> Unit,
+    onPlayTrackInPlaylist: (Track, List<Track>) -> Unit,
+    onPlayAllTracks: (List<Track>) -> Unit,
     onPlayToplist: (RadioToplistItem) -> Unit,
     onPlayRadar: (RadioRadarItem) -> Unit,
     onPlayRoam: (RadioRoamItem) -> Unit,
@@ -146,11 +163,15 @@ private fun RadioScreenContent(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
     )
+    val radioBackdrop = rememberLayerBackdrop {
+        drawContent()
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(RadioBackground)
+            .layerBackdrop(radioBackdrop)
     ) {
         LazyColumn(
             state = lazyListState,
@@ -232,25 +253,27 @@ private fun RadioScreenContent(
                 }
             }
 
-            // 1. 排行榜
+            // 1. 排行榜 (点击卡片打开歌单详情，点击右下角按钮直接播放)
             if (uiState.toplists.isNotEmpty()) {
                 item(key = "section_toplist") {
                     ToplistSection(
                         items = uiState.toplists,
-                        onItemClick = onPlayToplist,
+                        onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.name, item.coverUrl) },
+                        onPlayClick = onPlayToplist,
                         modifier = Modifier.padding(top = 12.dp)
                     )
                 }
             }
 
-            // 2. 雷达歌单
+            // 2. 雷达歌单 (点击卡片打开歌单详情，点击右下角按钮直接播放)
             if (uiState.radarPlaylists.isNotEmpty()) {
                 item(key = "section_radar") {
                     val radarTitle = if (!displayName.isNullOrBlank()) "${displayName} 的雷达歌单" else "雷达歌单"
                     RadarSection(
                         title = radarTitle,
                         items = uiState.radarPlaylists,
-                        onItemClick = onPlayRadar,
+                        onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
+                        onPlayClick = onPlayRadar,
                         modifier = Modifier.padding(top = 26.dp)
                     )
                 }
@@ -280,12 +303,13 @@ private fun RadioScreenContent(
                 }
             }
 
-            // 5. 推荐歌单
+            // 5. 推荐歌单 (点击卡片打开歌单详情，点击右下角按钮直接播放)
             if (uiState.recommendedPlaylists.isNotEmpty()) {
                 item(key = "section_recommended_playlists") {
                     RecommendedPlaylistsSection(
                         items = uiState.recommendedPlaylists,
-                        onItemClick = onPlayPlaylist,
+                        onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
+                        onPlayClick = onPlayPlaylist,
                         modifier = Modifier.padding(top = 26.dp)
                     )
                 }
@@ -302,29 +326,31 @@ private fun RadioScreenContent(
                 }
             }
 
-            // 7. 每周新热趋势
+            // 7. 每周新热趋势 (点击卡片打开歌单详情，点击右下角按钮直接播放)
             if (uiState.trends.isNotEmpty()) {
                 item(key = "section_trends") {
                     WeeklyTrendsSection(
                         items = uiState.trends,
-                        onItemClick = onPlayTrend,
+                        onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
+                        onPlayClick = onPlayTrend,
                         modifier = Modifier.padding(top = 26.dp)
                     )
                 }
             }
 
-            // 8. 心情氛围
+            // 8. 心情氛围 (点击卡片打开歌单详情，点击右下角按钮直接播放)
             if (uiState.moodPlaylists.isNotEmpty()) {
                 item(key = "section_mood") {
                     MoodSection(
                         items = uiState.moodPlaylists,
-                        onItemClick = onPlayMood,
+                        onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
+                        onPlayClick = onPlayMood,
                         modifier = Modifier.padding(top = 26.dp)
                     )
                 }
             }
 
-            // 9. 你关注的艺人新动向
+            // 9. 你关注的艺人新动向 (仅展示真正关注的歌手)
             if (uiState.followedArtistSection.items.isNotEmpty()) {
                 item(key = "section_followed_artists") {
                     FollowedArtistSection(
@@ -357,16 +383,36 @@ private fun RadioScreenContent(
                 )
             }
         )
+
+        // 歌单详情层（类似我的喜欢歌单页面）
+        AnimatedVisibility(
+            visible = uiState.activePlaylistDetail != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(20f)
+        ) {
+            uiState.activePlaylistDetail?.let { detail ->
+                PlaylistDetailScreen(
+                    detail = detail,
+                    isLoading = uiState.isLoadingDetail,
+                    backdrop = radioBackdrop,
+                    onClose = onClosePlaylistDetail,
+                    onPlayTrack = { track -> onPlayTrackInPlaylist(track, detail.tracks) },
+                    onPlayAll = { onPlayAllTracks(detail.tracks) }
+                )
+            }
+        }
     }
 }
 
 // =========================================================================
-// 标题通用组件
+// 标题通用组件 (全部移除末尾的 >)
 // =========================================================================
 @Composable
 private fun SectionHeader(
     title: String,
-    hasMore: Boolean = false,
     onClick: (() -> Unit)? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -385,29 +431,21 @@ private fun SectionHeader(
             fontWeight = FontWeight.Bold,
             color = RadioTextPrimary
         )
-        if (hasMore) {
-            Spacer(modifier = Modifier.width(3.dp))
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = RadioTextSecondary,
-                modifier = Modifier.size(19.dp)
-            )
-        }
     }
 }
 
 // =========================================================================
-// 1. 排行榜
+// 1. 排行榜 (热歌榜、飙升榜、新歌榜排序，固定副标题高度防跳动，点卡片开详情)
 // =========================================================================
 @Composable
 private fun ToplistSection(
     items: List<RadioToplistItem>,
-    onItemClick: (RadioToplistItem) -> Unit,
+    onOpenDetail: (RadioToplistItem) -> Unit,
+    onPlayClick: (RadioToplistItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        SectionHeader(title = "排行榜", hasMore = true)
+        SectionHeader(title = "排行榜")
         Spacer(modifier = Modifier.height(6.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -417,7 +455,7 @@ private fun ToplistSection(
                 Column(
                     modifier = Modifier
                         .width(140.dp)
-                        .clickable { onItemClick(item) }
+                        .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -462,13 +500,14 @@ private fun ToplistSection(
                             modifier = Modifier.align(Alignment.Center)
                         )
 
-                        // 播放图标
+                        // 独立播放图标快速播放
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.25f)),
+                                .background(Color.White.copy(alpha = 0.25f))
+                                .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -480,16 +519,23 @@ private fun ToplistSection(
                         }
                     }
 
-                    if (item.topSongs.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = item.topSongs.joinToString("、"),
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp,
-                            color = Color(0xFF333333),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    // 固定高度 36dp，确保划动到歌曲较少的项目时整体高度一致，下方内容绝不往上抬
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                    ) {
+                        if (item.topSongs.isNotEmpty()) {
+                            Text(
+                                text = item.topSongs.joinToString("、"),
+                                fontSize = 13.sp,
+                                lineHeight = 17.sp,
+                                color = Color(0xFF333333),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -498,17 +544,18 @@ private fun ToplistSection(
 }
 
 // =========================================================================
-// 2. 雷达歌单 (100% 真实封面与说明)
+// 2. 雷达歌单
 // =========================================================================
 @Composable
 private fun RadarSection(
     title: String,
     items: List<RadioRadarItem>,
-    onItemClick: (RadioRadarItem) -> Unit,
+    onOpenDetail: (RadioRadarItem) -> Unit,
+    onPlayClick: (RadioRadarItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        SectionHeader(title = title, hasMore = false)
+        SectionHeader(title = title)
         Spacer(modifier = Modifier.height(6.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -518,7 +565,7 @@ private fun RadarSection(
                 Column(
                     modifier = Modifier
                         .width(140.dp)
-                        .clickable { onItemClick(item) }
+                        .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -532,7 +579,6 @@ private fun RadarSection(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                        // 暗色渐变蒙层
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -547,7 +593,6 @@ private fun RadarSection(
                                 )
                         )
 
-                        // 顶部播放量
                         if (item.playCount != null && item.playCount > 0L) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -571,7 +616,6 @@ private fun RadarSection(
                             }
                         }
 
-                        // 底部雷达名称
                         Text(
                             text = item.title,
                             color = Color.White,
@@ -582,14 +626,14 @@ private fun RadarSection(
                                 .padding(start = 10.dp, bottom = 10.dp)
                         )
 
-                        // 底部播放键
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(8.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.25f)),
+                                .background(Color.White.copy(alpha = 0.25f))
+                                .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -627,7 +671,7 @@ private fun RoamSection(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        SectionHeader(title = "从你喜欢的歌曲开始漫游", hasMore = false)
+        SectionHeader(title = "从你喜欢的歌曲开始漫游")
         Spacer(modifier = Modifier.height(6.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -814,16 +858,17 @@ private fun RecommendedSingersSection(
 }
 
 // =========================================================================
-// 5. 推荐歌单
+// 5. 推荐歌单 (点击卡片打开歌单详情，点击右下角按钮直接播放)
 // =========================================================================
 @Composable
 private fun RecommendedPlaylistsSection(
     items: List<RadioPlaylistItem>,
-    onItemClick: (RadioPlaylistItem) -> Unit,
+    onOpenDetail: (RadioPlaylistItem) -> Unit,
+    onPlayClick: (RadioPlaylistItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        SectionHeader(title = "推荐歌单", hasMore = true)
+        SectionHeader(title = "推荐歌单")
         Spacer(modifier = Modifier.height(6.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -833,7 +878,7 @@ private fun RecommendedPlaylistsSection(
                 Column(
                     modifier = Modifier
                         .width(140.dp)
-                        .clickable { onItemClick(item) }
+                        .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -867,14 +912,15 @@ private fun RecommendedPlaylistsSection(
                             }
                         }
 
-                        // 播放图标
+                        // 播放图标快速播放
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(8.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f)),
+                                .background(Color.White.copy(alpha = 0.28f))
+                                .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -913,7 +959,6 @@ private fun ArtistHotSection(
     Column(modifier = modifier) {
         SectionHeader(
             title = "${sectionData.leadArtistName} 等艺人热门金曲",
-            hasMore = true,
             leadingContent = {
                 if (!sectionData.leadArtistAvatarUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -1034,16 +1079,17 @@ private fun ArtistHotSection(
 }
 
 // =========================================================================
-// 7. 每周新热趋势
+// 7. 每周新热趋势 (点击卡片打开歌单详情，点击右下角按钮直接播放)
 // =========================================================================
 @Composable
 private fun WeeklyTrendsSection(
     items: List<RadioTrendItem>,
-    onItemClick: (RadioTrendItem) -> Unit,
+    onOpenDetail: (RadioTrendItem) -> Unit,
+    onPlayClick: (RadioTrendItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        SectionHeader(title = "每周新热趋势", hasMore = true)
+        SectionHeader(title = "每周新热趋势")
         Spacer(modifier = Modifier.height(6.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -1053,7 +1099,7 @@ private fun WeeklyTrendsSection(
                 Column(
                     modifier = Modifier
                         .width(140.dp)
-                        .clickable { onItemClick(item) }
+                        .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -1116,14 +1162,15 @@ private fun WeeklyTrendsSection(
                                 .padding(start = 10.dp, bottom = 10.dp)
                         )
 
-                        // 播放图标
+                        // 播放图标快速播放
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(8.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f)),
+                                .background(Color.White.copy(alpha = 0.28f))
+                                .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -1151,16 +1198,17 @@ private fun WeeklyTrendsSection(
 }
 
 // =========================================================================
-// 8. 心情氛围
+// 8. 心情氛围 (点击卡片打开歌单详情，点击右下角按钮直接播放)
 // =========================================================================
 @Composable
 private fun MoodSection(
     items: List<RadioMoodItem>,
-    onItemClick: (RadioMoodItem) -> Unit,
+    onOpenDetail: (RadioMoodItem) -> Unit,
+    onPlayClick: (RadioMoodItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        SectionHeader(title = "心情氛围", hasMore = false)
+        SectionHeader(title = "心情氛围")
         Spacer(modifier = Modifier.height(6.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -1170,7 +1218,7 @@ private fun MoodSection(
                 Column(
                     modifier = Modifier
                         .width(140.dp)
-                        .clickable { onItemClick(item) }
+                        .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -1233,14 +1281,15 @@ private fun MoodSection(
                                 .padding(start = 10.dp, bottom = 10.dp)
                         )
 
-                        // 播放图标
+                        // 播放图标快速播放
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(8.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f)),
+                                .background(Color.White.copy(alpha = 0.28f))
+                                .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -1268,7 +1317,7 @@ private fun MoodSection(
 }
 
 // =========================================================================
-// 9. 你关注的艺人新动向
+// 9. 你关注的艺人新动向 (严格只展示关注歌手)
 // =========================================================================
 @Composable
 private fun FollowedArtistSection(
@@ -1279,7 +1328,6 @@ private fun FollowedArtistSection(
     Column(modifier = modifier) {
         SectionHeader(
             title = "你关注的艺人新动向",
-            hasMore = true,
             leadingContent = {
                 if (sectionData.artistAvatars.isNotEmpty()) {
                     Box(

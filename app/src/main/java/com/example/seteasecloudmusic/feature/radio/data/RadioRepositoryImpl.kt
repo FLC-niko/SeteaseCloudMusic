@@ -24,6 +24,9 @@ import com.example.seteasecloudmusic.feature.radio.domain.repository.RadioReposi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,6 +39,11 @@ class RadioRepositoryImpl @Inject constructor(
 ) : RadioRepository {
 
     private fun hasLoginCookie(): Boolean {
+        val authCookies = context.getSharedPreferences("auth_cookies", Context.MODE_PRIVATE)
+            .getString("cookie_string", null)
+        if (!authCookies.isNullOrBlank() && (authCookies.contains("MUSIC_U") || authCookies.contains("__csrf"))) {
+            return true
+        }
         val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
         val cookie = prefs.getString("cookie", null)
         val musicU = prefs.getString("music_u", null)
@@ -43,26 +51,62 @@ class RadioRepositoryImpl @Inject constructor(
     }
 
     // ==========================================
-    // 1. 排行榜 (完全使用 /toplist/detail 真实数据)
+    // 1. 排行榜 (严格按 热歌榜、飙升榜、新歌榜 顺序，全真实歌曲补齐)
     // ==========================================
     override suspend fun getToplists(): Result<List<RadioToplistItem>> = withContext(Dispatchers.IO) {
         try {
             val response = radioService.getToplistDetail()
             if (response.code == 200 && response.list.isNotEmpty()) {
-                val items = response.list.map { item ->
-                    val name = item.name ?: "排行榜"
-                    val colors = pickToplistGradient(name)
-                    val songs = item.tracks.mapNotNull { it.first?.takeIf { s -> s.isNotBlank() } }
-                    RadioToplistItem(
-                        id = item.id,
-                        name = name,
-                        playCount = item.playCount,
-                        coverUrl = item.coverImgUrl,
-                        topSongs = songs,
-                        gradientColors = colors
-                    )
+                val allList = response.list
+
+                // 严格确定前三位榜单：1. 热歌榜 2. 飙升榜 3. 新歌榜
+                val rege = allList.firstOrNull { it.id == 3778678L }
+                    ?: allList.firstOrNull { (it.name ?: "").contains("热歌") && !(it.name ?: "").contains("网络") && !(it.name ?: "").contains("欧美") && !(it.name ?: "").contains("黑胶") }
+                val biaosheng = allList.firstOrNull { it.id == 19723756L }
+                    ?: allList.firstOrNull { (it.name ?: "").contains("飙升") }
+                val xinge = allList.firstOrNull { it.id == 3779629L }
+                    ?: allList.firstOrNull { (it.name ?: "").contains("新歌") && !(it.name ?: "").contains("高分") && !(it.name ?: "").contains("黑胶") && !(it.name ?: "").contains("欧美") }
+
+                val topThree = listOfNotNull(rege, biaosheng, xinge)
+                val topThreeIds = topThree.map { it.id }.toSet()
+
+                // 其他精选热门榜单（如原创榜、民谣榜、国风榜、摇滚榜、古典榜等）
+                val remaining = allList.filter { it.id !in topThreeIds }
+
+                // 组合榜单列表：前三名严格保证为 [热歌榜, 飙升榜, 新歌榜]
+                val orderedList = (topThree + remaining).take(12)
+
+                // 并行补齐歌曲名：解决部分分类榜单 /toplist/detail 中 tracks 字段为空的问题
+                val toplistItems = coroutineScope {
+                    orderedList.map { item ->
+                        async {
+                            val name = item.name ?: "排行榜"
+                            val colors = pickToplistGradient(name)
+                            var songs = item.tracks.mapNotNull { it.first?.takeIf { s -> s.isNotBlank() } }
+                            if (songs.isEmpty()) {
+                                try {
+                                    val detail = radioService.getPlaylistDetail(item.id)
+                                    val fetchedSongs = detail.playlist?.tracks?.take(3)?.mapNotNull {
+                                        it.name?.takeIf { n -> n.isNotBlank() }
+                                    } ?: emptyList()
+                                    if (fetchedSongs.isNotEmpty()) {
+                                        songs = fetchedSongs
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                            RadioToplistItem(
+                                id = item.id,
+                                name = name,
+                                playCount = item.playCount,
+                                coverUrl = item.coverImgUrl,
+                                topSongs = songs,
+                                gradientColors = colors
+                            )
+                        }
+                    }.awaitAll()
                 }
-                return@withContext Result.success(items)
+
+                return@withContext Result.success(toplistItems)
             }
             Result.success(emptyList())
         } catch (e: CancellationException) {
@@ -74,13 +118,17 @@ class RadioRepositoryImpl @Inject constructor(
 
     private fun pickToplistGradient(name: String): List<Color> {
         return when {
-            name.contains("民谣") -> listOf(Color(0xFFFFB347), Color(0xFFFFCC33))
-            name.contains("国风") || name.contains("古风") -> listOf(Color(0xFFF2994A), Color(0xFFF2C94C))
             name.contains("热歌") -> listOf(Color(0xFFFF5E62), Color(0xFFFF9966))
             name.contains("飙升") -> listOf(Color(0xFF4CA1AF), Color(0xFF2C3E50))
             name.contains("新歌") -> listOf(Color(0xFF11998E), Color(0xFF38EF7D))
-            name.contains("欧美") -> listOf(Color(0xFFB06AB3), Color(0xFF4568DC))
             name.contains("原创") -> listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+            name.contains("民谣") -> listOf(Color(0xFFFFB347), Color(0xFFFFCC33))
+            name.contains("国风") || name.contains("古风") -> listOf(Color(0xFFF2994A), Color(0xFFF2C94C))
+            name.contains("古典") -> listOf(Color(0xFFFF758C), Color(0xFFFF7EB3))
+            name.contains("电音") -> listOf(Color(0xFF7F00FF), Color(0xFFE100FF))
+            name.contains("说唱") -> listOf(Color(0xFFE52D27), Color(0xFFB31217))
+            name.contains("欧美") -> listOf(Color(0xFFB06AB3), Color(0xFF4568DC))
+            name.contains("摇滚") -> listOf(Color(0xFF232526), Color(0xFF414345))
             else -> listOf(Color(0xFFFF758C), Color(0xFFFF7EB3))
         }
     }
@@ -428,39 +476,44 @@ class RadioRepositoryImpl @Inject constructor(
     }
 
     // ==========================================
-    // 9. 你关注的艺人新动向 (真实关注歌手头像与真实新发单曲)
+    // 9. 你关注的艺人新动向 (严格仅展示用户真正关注的歌手及其新动向)
     // ==========================================
     override suspend fun getFollowedArtistSection(): Result<FollowedArtistSectionData> = withContext(Dispatchers.IO) {
         try {
-            var avatars = emptyList<String>()
+            if (!hasLoginCookie()) {
+                // 用户未登录，不展示「你关注的艺人新动向」
+                return@withContext Result.success(FollowedArtistSectionData())
+            }
+
+            // 1. 获取用户真正关注的歌手列表 (/artist/sublist)
+            val sublistResp = try {
+                radioService.getArtistSublist(limit = 20)
+            } catch (_: Exception) {
+                null
+            }
+
+            val followedArtists = sublistResp?.data ?: emptyList()
+            if (followedArtists.isEmpty()) {
+                // 用户未关注任何歌手，绝不伪造或推荐未关注歌手
+                return@withContext Result.success(FollowedArtistSectionData())
+            }
+
+            // 提取关注歌手头像（取前3位已关注艺人头像）
+            val avatars = followedArtists.take(3).mapNotNull { it.picUrl ?: it.img1v1Url }
+            val followedArtistIds = followedArtists.map { it.id }.toSet()
+
             val items = mutableListOf<RadioFollowedArtistNewSongItem>()
 
-            // 1. 头像：登录态优先查已关注歌手，未登录查热门歌手榜头像
-            if (hasLoginCookie()) {
-                try {
-                    val sublistResp = radioService.getArtistSublist(limit = 5)
-                    if (sublistResp.code == 200 && sublistResp.data.isNotEmpty()) {
-                        avatars = sublistResp.data.take(3).mapNotNull { it.picUrl ?: it.img1v1Url }
-                    }
-                } catch (_: Exception) {}
-            }
-            if (avatars.isEmpty()) {
-                try {
-                    val topArtists = radioService.getTopArtists(limit = 3)
-                    if (topArtists.code == 200) {
-                        avatars = topArtists.artists.take(3).mapNotNull { it.picUrl ?: it.img1v1Url }
-                    }
-                } catch (_: Exception) {}
-            }
-
-            // 2. 歌曲：登录态优先查关注歌手新歌，未登录查 /personalized/newsong
-            if (hasLoginCookie()) {
-                try {
-                    val newSongResp = radioService.getArtistNewSong(limit = 6)
-                    if (newSongResp.code == 200 && newSongResp.data.isNotEmpty()) {
-                        for (item in newSongResp.data) {
-                            val song = item.song ?: continue
-                            val artistName = song.artists.firstOrNull()?.name ?: "艺人"
+            // 2. 尝试从关注歌手新歌接口获取 (/artist/new/song)
+            try {
+                val newSongResp = radioService.getArtistNewSong(limit = 10)
+                if (newSongResp.code == 200 && newSongResp.data.isNotEmpty()) {
+                    for (item in newSongResp.data) {
+                        val song = item.song ?: continue
+                        // 严格校验：必须是用户实际关注的歌手！
+                        val matchedArtist = song.artists.firstOrNull { it.id != null && it.id in followedArtistIds }
+                        if (matchedArtist != null) {
+                            val artistName = matchedArtist.name ?: (song.artists.firstOrNull()?.name ?: "艺人")
                             val albumName = song.album?.name ?: song.name
                             val track = mapSongItemToTrack(song)
                             items.add(
@@ -476,32 +529,41 @@ class RadioRepositoryImpl @Inject constructor(
                             )
                         }
                     }
-                } catch (_: Exception) {}
-            }
+                }
+            } catch (_: Exception) {}
 
-            if (items.isEmpty()) {
-                try {
-                    val newsongResp = radioService.getPersonalizedNewsong(limit = 8)
-                    if (newsongResp.code == 200 && newsongResp.result.isNotEmpty()) {
-                        for (item in newsongResp.result) {
-                            val song = item.song
-                            val artistName = song?.artists?.firstOrNull()?.name ?: "音乐人"
-                            val albumName = song?.album?.name ?: (item.name ?: "单曲")
-                            val track = mapNewsongItemToTrack(item)
-                            items.add(
-                                RadioFollowedArtistNewSongItem(
-                                    songId = item.id,
-                                    title = item.name ?: (song?.name ?: "单曲"),
-                                    artistName = artistName,
-                                    albumName = albumName,
-                                    coverUrl = item.picUrl,
-                                    tag = "新单曲",
-                                    track = track
-                                )
-                            )
+            // 3. 若关注歌手近期没有新单曲，直接获取关注歌手本人的最新精选单曲，绝不向用户展示未关注的歌手！
+            if (items.size < 3) {
+                coroutineScope {
+                    val deferredSongs = followedArtists.take(5).map { artist ->
+                        async {
+                            try {
+                                val topResp = radioService.getArtistTopSongs(artist.id)
+                                if (topResp.code == 200 && topResp.songs.isNotEmpty()) {
+                                    val topSong = topResp.songs.first()
+                                    val track = mapSongItemToTrack(topSong)
+                                    RadioFollowedArtistNewSongItem(
+                                        songId = topSong.id,
+                                        title = topSong.name,
+                                        artistName = artist.name,
+                                        albumName = topSong.album?.name ?: topSong.name,
+                                        coverUrl = topSong.album?.picUrl ?: track.coverUrl,
+                                        tag = "关注歌手",
+                                        track = track
+                                    )
+                                } else null
+                            } catch (_: Exception) {
+                                null
+                            }
                         }
                     }
-                } catch (_: Exception) {}
+                    val fetchedItems = deferredSongs.awaitAll().filterNotNull()
+                    for (newItem in fetchedItems) {
+                        if (items.none { it.songId == newItem.songId }) {
+                            items.add(newItem)
+                        }
+                    }
+                }
             }
 
             Result.success(FollowedArtistSectionData(avatars, items))
