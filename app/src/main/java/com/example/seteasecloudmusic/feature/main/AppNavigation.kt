@@ -165,7 +165,6 @@ private data class SelectedArtist(
 
 private data class DailyRecommendState(
     val tracks: List<Track>,
-    val posterBounds: Rect,
     val title: String = "每日推荐"
 )
 
@@ -267,7 +266,7 @@ fun AppNavigation(
 
     LaunchedEffect(dailyRecommendState) {
         if (dailyRecommendState != null) {
-            expandProgress.animateTo(1f, spring(dampingRatio = 0.82f, stiffness = 400f))
+            expandProgress.animateTo(1f, tween(durationMillis = 320, easing = FastOutSlowInEasing))
         }
     }
 
@@ -391,8 +390,8 @@ fun AppNavigation(
                 displayName = authUiState.authSession?.nickname,
                 searchViewModel = searchViewModel,
                 onAccountClick = { showAccountSheet = true },
-                onPosterWallClick = { tracks, bounds, title ->
-                    dailyRecommendState = DailyRecommendState(tracks, bounds, title)
+                onPosterWallClick = { tracks, title ->
+                    dailyRecommendState = DailyRecommendState(tracks, title)
                 },
                 onArtistClick = { artistId, artistName, artistCoverUrl ->
                     selectedArtist = SelectedArtist(
@@ -738,13 +737,7 @@ fun AppNavigation(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val startScaleX = state.posterBounds.width / size.width
-                            val startScaleY = state.posterBounds.height / size.height
-                            scaleX = lerp(startScaleX, 1f, progress)
-                            scaleY = lerp(startScaleY, 1f, progress)
-                            translationX = lerp(state.posterBounds.left, 0f, progress)
-                            translationY = lerp(state.posterBounds.top, 0f, progress)
-                            transformOrigin = TransformOrigin(0f, 0f)
+                            translationY = (1f - progress) * 24.dp.toPx()
                             alpha = progress
                         }
                 ) {
@@ -754,7 +747,7 @@ fun AppNavigation(
                         title = state.title,
                         onClose = {
                             expandScope.launch {
-                                expandProgress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = 500f))
+                                expandProgress.animateTo(0f, tween(durationMillis = 220, easing = FastOutSlowInEasing))
                                 dailyRecommendState = null
                             }
                         }
@@ -902,7 +895,7 @@ private fun AppPageContent(
     displayName: String?,
     searchViewModel: SearchViewModel,
     onAccountClick: () -> Unit,
-    onPosterWallClick: (tracks: List<Track>, posterBounds: Rect, title: String) -> Unit,
+    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit
 ) {
     val index = selectedIndex.value

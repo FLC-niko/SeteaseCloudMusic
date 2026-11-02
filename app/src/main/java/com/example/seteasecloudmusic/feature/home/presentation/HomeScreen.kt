@@ -1,5 +1,11 @@
 package com.example.seteasecloudmusic.feature.home.presentation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,9 +23,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -42,18 +50,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -81,7 +85,7 @@ private val HomePrimary = Color(0xFF111111)
 private val HomeSecondary = Color(0xFF8F8F95)
 private val HomeDivider = Color(0xFFE2E2E6)
 private val HomeAccent = Color(0xFFFA233B)
-private val PosterWallSurface = Color(0xFFF6F6F8)
+private val PosterWallSurface = Color(0xFF1C1C22)
 
 @Composable
 fun HomeRoute(
@@ -90,7 +94,7 @@ fun HomeRoute(
     avatarUrl: String? = null,
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
-    onPosterWallClick: (tracks: List<Track>, posterBounds: Rect, title: String) -> Unit,
+    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -133,7 +137,7 @@ private fun HomeScreenContent(
     onCardPlayClick: (BigCardItem) -> Unit,
     onRetryClick: () -> Unit,
     onRefreshClick: () -> Unit,
-    onPosterWallClick: (tracks: List<Track>, posterBounds: Rect, title: String) -> Unit
+    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val lazyListState = rememberLazyListState()
@@ -141,9 +145,6 @@ private fun HomeScreenContent(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
     )
-    var posterWallBounds by remember { mutableStateOf(Rect.Zero) }
-    var radarCardBounds by remember { mutableStateOf(Rect.Zero) }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -231,8 +232,7 @@ private fun HomeScreenContent(
             item(key = "daily_recommend_wall") {
                 DailyRecommendPosterWall(
                     tracks = uiState.tracks,
-                    onClick = { onPosterWallClick(uiState.tracks, posterWallBounds, "每日推荐") },
-                    onBoundsChanged = { posterWallBounds = it },
+                    onClick = { onPosterWallClick(uiState.tracks, "每日推荐") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 10.dp)
@@ -262,12 +262,11 @@ private fun HomeScreenContent(
                     privateDjCoverUrl = uiState.privateDjCoverUrl,
                     onCardClick = { card ->
                         when (card.type) {
-                            BigCardType.RADAR_PLAYLIST -> onPosterWallClick(uiState.radarTracks, radarCardBounds, "雷达歌单")
+                            BigCardType.RADAR_PLAYLIST -> onPosterWallClick(uiState.radarTracks, "雷达歌单")
                             else -> onCardPlayClick(card)
                         }
                     },
                     onCardPlayClick = onCardPlayClick,
-                    onRadarCardPositioned = { radarCardBounds = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 28.dp, bottom = 16.dp)
@@ -317,80 +316,111 @@ private fun HomeCollapsedTopBar(
 private fun DailyRecommendPosterWall(
     tracks: List<Track>,
     onClick: () -> Unit,
-    onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val wallCovers = remember(tracks) {
         tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
     }
 
-    Column(
+    Box(
         modifier = modifier
-            .onGloballyPositioned { coordinates ->
-                val pos = coordinates.positionInWindow()
-                val sz = coordinates.size
-                onBoundsChanged(
-                    Rect(
-                        left = pos.x,
-                        top = pos.y,
-                        right = pos.x + sz.width,
-                        bottom = pos.y + sz.height
-                    )
-                )
-            }
-            .clickable(onClick = onClick),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .aspectRatio(1.08f)
+            .clip(RoundedCornerShape(24.dp))
+            .background(PosterWallSurface)
+            .clickable(onClick = onClick)
     ) {
+        ScrollingPosterWall(
+            covers = wallCovers,
+            modifier = Modifier.fillMaxSize()
+        )
+
         Box(
             modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.40f),
+                        0.42f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.86f)
+                    )
+                )
+        )
+
+        Text(
+            text = "为你精选",
+            color = Color.White.copy(alpha = 0.90f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 20.dp, top = 20.dp)
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .aspectRatio(0.78f)
-                .clip(RoundedCornerShape(26.dp))
-                .background(PosterWallSurface)
+                .padding(start = 20.dp, end = 20.dp, bottom = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            PosterCoverGrid(
-                covers = wallCovers,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.46f)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Black.copy(alpha = 0.68f),
-                                Color.Transparent
-                            )
-                        )
-                    )
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.40f)
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.72f)
-                            )
-                        )
-                    )
-            )
-
             Text(
                 text = "每日推荐",
                 color = Color.White,
-                fontSize = 42.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 18.dp, top = 18.dp)
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.5f).sp
             )
+            Text(
+                text = "今天，听点喜欢的",
+                color = Color.White.copy(alpha = 0.82f),
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScrollingPosterWall(
+    covers: List<String>,
+    modifier: Modifier = Modifier
+) {
+    if (covers.isEmpty()) return
+
+    val transition = rememberInfiniteTransition(label = "posterWallScroll")
+    val scrollProgress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 28000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "posterWallOffset"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        // 覆盖旋转后露出的四角；两块相同的方形拼贴首尾相接，循环点不会跳帧。
+        val tileSize = maxWidth + maxHeight
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .requiredSize(tileSize)
+                .graphicsLayer { rotationZ = 45f }
+        ) {
+            Row(
+                modifier = Modifier
+                    .wrapContentSize(unbounded = true, align = Alignment.TopStart)
+                    .requiredSize(width = tileSize * 2, height = tileSize)
+                    .graphicsLayer {
+                        translationX = -scrollProgress * tileSize.toPx()
+                    }
+            ) {
+                repeat(2) {
+                    PosterCoverGrid(
+                        covers = covers,
+                        modifier = Modifier.size(tileSize)
+                    )
+                }
+            }
         }
     }
 }
@@ -400,18 +430,18 @@ private fun PosterCoverGrid(
     covers: List<String>,
     modifier: Modifier = Modifier
 ) {
-    val slotCount = 20
+    val slotCount = 16
     val displayItems = remember(covers) {
-        List(slotCount) { index -> covers.getOrNull(index).toCoverThumbnailUrl(180) }
+        List(slotCount) { index ->
+            covers[index % covers.size].toCoverThumbnailUrl(240)
+        }
     }
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(1.dp),
         modifier = modifier.fillMaxSize()
     ) {
-        repeat(5) { rowIndex ->
+        repeat(4) { rowIndex ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(1.dp),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -423,6 +453,7 @@ private fun PosterCoverGrid(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
+                            .padding(2.dp)
                     )
                 }
             }
@@ -437,12 +468,13 @@ private fun PosterGridCell(
 ) {
     Box(
         modifier = modifier
-            .background(Color(0xFFDCDDE2))
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF33343B))
     ) {
         if (!imageUrl.isNullOrBlank()) {
             AsyncImage(
                 model = imageUrl,
-                contentDescription = "推荐封面",
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -874,7 +906,6 @@ private fun BigCardPlaylistsSection(
     privateDjCoverUrl: String?,
     onCardClick: (BigCardItem) -> Unit,
     onCardPlayClick: (BigCardItem) -> Unit,
-    onRadarCardPositioned: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val simiTrackCover = favoriteTracks.firstOrNull()?.coverUrl
@@ -947,20 +978,7 @@ private fun BigCardPlaylistsSection(
                     card = card,
                     onClick = { onCardClick(card) },
                     onPlayClick = { onCardPlayClick(card) },
-                    modifier = if (card.type == BigCardType.RADAR_PLAYLIST) {
-                        Modifier.onGloballyPositioned { coordinates ->
-                            val pos = coordinates.positionInWindow()
-                            val sz = coordinates.size
-                            onRadarCardPositioned(
-                                Rect(
-                                    left = pos.x,
-                                    top = pos.y,
-                                    right = pos.x + sz.width,
-                                    bottom = pos.y + sz.height
-                                )
-                            )
-                        }
-                    } else Modifier
+                    modifier = Modifier
                 )
             }
         }
