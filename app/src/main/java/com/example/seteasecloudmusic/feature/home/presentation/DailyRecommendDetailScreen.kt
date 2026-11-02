@@ -1,6 +1,10 @@
 package com.example.seteasecloudmusic.feature.home.presentation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -76,16 +80,45 @@ fun DailyRecommendDetailRoute(
 }
 
 @Composable
-fun DailyRecommendDetailScreen(
+fun DailyRecommendDetailScreen(tracks: List<Track>, title: String = "每日推荐", onClose: () -> Unit, onTrackClick: (Track) -> Unit) {
+    val window = LocalAdaptiveWindow.current
+    val bottom = LocalContentBottomPadding.current
+    val listState = rememberLazyListState()
+    BoxWithConstraints(Modifier.fillMaxSize().background(DetailPageBg)) {
+        if ((maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop) {
+            BackHandler(onBack = onClose)
+            AdaptiveTwoPane(Modifier.fillMaxSize().statusBarsPadding(), primaryFraction = 0.44f,
+                primary = {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+                        MusicPaneHeader(title, "每天都有值得期待的声音", onClose)
+                        Box(Modifier.clip(RoundedCornerShape(28.dp))) { DetailHeroSection(tracks, title) }
+                        Text("为你精选 · ${tracks.size} 首", Modifier.padding(20.dp), color = DetailSecondary, fontSize = 14.sp)
+                    }
+                },
+                secondary = {
+                    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 20.dp, bottom = bottom)) {
+                        item(key = "recommend_heading") { MusicPaneHeader("为你推荐", "从熟悉的旋律，到下一首惊喜") }
+                        items(tracks, key = { it.id }) { track ->
+                            DetailTrackRow(track) { onTrackClick(track) }
+                            HorizontalDivider(Modifier.padding(start = 84.dp, end = 16.dp), color = DetailDivider)
+                        }
+                    }
+                })
+        } else CompactDailyRecommendDetailScreen(tracks, title, onTrackClick, onClose, listState)
+    }
+}
+
+@Composable
+private fun CompactDailyRecommendDetailScreen(
     tracks: List<Track>,
     title: String = "每日推荐",
     onTrackClick: (Track) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    lazyListState: androidx.compose.foundation.lazy.LazyListState
 ) {
     BackHandler(onBack = onClose)
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val lazyListState = rememberLazyListState()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 220.dp
@@ -101,7 +134,7 @@ fun DailyRecommendDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalElasticOverscroll(),
-            contentPadding = PaddingValues(bottom = 120.dp)
+            contentPadding = PaddingValues(bottom = LocalContentBottomPadding.current)
         ) {
             item {
                 DetailHeroSection(tracks = tracks, title = title)
@@ -191,7 +224,7 @@ private fun DetailHeroSection(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(420.dp)
+            .height((LocalAdaptiveWindow.current.height * 0.5f).coerceIn(220.dp, 420.dp))
             .background(PosterWallSurface)
     ) {
         DetailPosterCoverGrid(
@@ -231,7 +264,8 @@ private fun DetailHeroSection(
         Text(
             text = title,
             color = Color.White,
-            fontSize = 42.sp,
+            fontSize = 36.sp,
+            lineHeight = 42.sp,
             fontWeight = FontWeight.ExtraBold,
             modifier = Modifier
                 .align(Alignment.TopStart)

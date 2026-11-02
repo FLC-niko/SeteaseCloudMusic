@@ -1,6 +1,10 @@
 package com.example.seteasecloudmusic.feature.artist.presentation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -100,140 +104,58 @@ fun ArtistDetailScreen(
     onMoreSimilarArtistsClick: () -> Unit
 ) {
     BackHandler(onBack = onClose)
-
-    val previewSongs = uiState.songs.take(ArtistDetailViewModel.PREVIEW_LIMIT)
-    val previewAlbums = uiState.albums.take(ArtistDetailViewModel.PREVIEW_LIMIT)
-    val previewSimilar = uiState.similarArtists.take(ArtistDetailViewModel.PREVIEW_LIMIT)
-
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val lazyListState = rememberLazyListState()
-    val collapseFractionState = rememberAppleMusicCollapseFraction(
-        lazyListState = lazyListState,
-        collapseThresholdDp = 200.dp
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ArtistPageBg)
-    ) {
-        if (uiState.isLoading && previewSongs.isEmpty() && previewAlbums.isEmpty()) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = ArtistAccent,
-                strokeWidth = 2.dp
-            )
-        }
-
-        LazyColumn(
-            state = lazyListState,
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalElasticOverscroll(),
-            contentPadding = PaddingValues(bottom = 120.dp)
-        ) {
-            item {
-                ArtistHeroSection(
-                    artistName = uiState.artistName,
-                    artistCoverUrl = uiState.artistCoverUrl,
-                    onPlayFirstSong = onPlayFirstSong
-                )
-            }
-
-            if (!uiState.errorMessage.isNullOrBlank()) {
-                item {
-                    Text(
-                        text = uiState.errorMessage,
-                        color = Color(0xFFB52438),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    )
+    val window = LocalAdaptiveWindow.current
+    val bottom = LocalContentBottomPadding.current
+    val listState = rememberLazyListState()
+    val collapse = rememberAppleMusicCollapseFraction(listState, 200.dp)
+    BoxWithConstraints(Modifier.fillMaxSize().background(ArtistPageBg)) {
+        val split = (maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop
+        val works: @Composable () -> Unit = {
+            LazyColumn(Modifier.fillMaxSize(), state = listState,
+                contentPadding = PaddingValues(top = if (split) 20.dp else 0.dp, bottom = bottom),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!split) item(key = "artist_hero") { ArtistHeroSection(uiState.artistName, uiState.artistCoverUrl, onPlayFirstSong) }
+                else item(key = "artist_title") { MusicPaneHeader(uiState.artistName, "精选作品与音乐旅程") }
+                if (uiState.isLoading) item(key = "loading") { Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = ArtistAccent) } }
+                if (uiState.errorMessage != null) item(key = "error") { Text(uiState.errorMessage, Modifier.padding(24.dp), color = ArtistAccent) }
+                item(key = "songs") {
+                    Column {
+                        SectionHeader("歌曲", uiState.isSongsLoadingMore, onMoreSongsClick)
+                        SongSection(uiState.songs.take(ArtistDetailViewModel.PREVIEW_LIMIT), onSongClick)
+                    }
                 }
-            }
-
-            item {
-                SectionHeader(
-                    title = "歌曲",
-                    isLoadingMore = uiState.isSongsLoadingMore,
-                    onMoreClick = onMoreSongsClick
-                )
-            }
-            item {
-                SongSection(
-                    songs = previewSongs,
-                    onSongClick = onSongClick
-                )
-            }
-
-            item {
-                SectionHeader(
-                    title = "专辑",
-                    isLoadingMore = uiState.isAlbumsLoadingMore,
-                    onMoreClick = onMoreAlbumsClick
-                )
-            }
-            item {
-                AlbumSection(albums = previewAlbums)
-            }
-
-            item {
-                SectionHeader(
-                    title = "音乐视频",
-                    isLoadingMore = false,
-                    onMoreClick = {}
-                )
-            }
-            item {
-                PlaceholderSection(
-                    titlePrefix = "MV",
-                    fallbackImageUrl = uiState.artistCoverUrl,
-                    fallbackSubtitle = "Coming soon"
-                )
-            }
-
-            item {
-                SectionHeader(
-                    title = "艺人歌单",
-                    isLoadingMore = false,
-                    onMoreClick = {}
-                )
-            }
-            item {
-                PlaceholderSection(
-                    titlePrefix = "Playlist",
-                    fallbackImageUrl = previewAlbums.firstOrNull()?.coverUrl,
-                    fallbackSubtitle = "Coming soon"
-                )
-            }
-
-            item {
-                SectionHeader(
-                    title = "相似歌手",
-                    isLoadingMore = uiState.isSimilarLoadingMore,
-                    onMoreClick = onMoreSimilarArtistsClick
-                )
-            }
-            item {
-                SimilarArtistsSection(artists = previewSimilar)
-            }
-
-            if (!uiState.description?.brief.isNullOrBlank() || uiState.description?.sections?.isNotEmpty() == true) {
-                item {
-                    DescriptionSection(uiState = uiState)
+                item(key = "albums") {
+                    Column {
+                        SectionHeader("专辑", uiState.isAlbumsLoadingMore, onMoreAlbumsClick)
+                        AlbumSection(uiState.albums.take(ArtistDetailViewModel.PREVIEW_LIMIT))
+                    }
                 }
+                item(key = "videos") { Column { SectionHeader("音乐视频", false, {}); PlaceholderSection("MV", uiState.artistCoverUrl, "Coming soon") } }
+                item(key = "playlists") { Column { SectionHeader("艺人歌单", false, {}); PlaceholderSection("Playlist", uiState.albums.firstOrNull()?.coverUrl, "Coming soon") } }
+                item(key = "similar") {
+                    Column {
+                        SectionHeader("相似歌手", uiState.isSimilarLoadingMore, onMoreSimilarArtistsClick)
+                        SimilarArtistsSection(uiState.similarArtists.take(ArtistDetailViewModel.PREVIEW_LIMIT))
+                    }
+                }
+                if (!split && uiState.description != null) item(key = "description") { DescriptionSection(uiState) }
             }
         }
-
-        // 统一的 Apple Music 风格渐变磨砂返回顶栏
-        AppleMusicCollapsedTopBar(
-            title = uiState.artistName,
-            collapseFraction = collapseFractionState.value,
-            statusBarHeight = statusBarHeight,
-            backdrop = null,
-            showBackButton = true,
-            onBackClick = onClose,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
+        if (split) {
+            AdaptiveTwoPane(Modifier.fillMaxSize().statusBarsPadding(), primaryFraction = 0.38f,
+                primary = {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+                        MusicPaneHeader("艺人", "走近你喜欢的声音", onClose)
+                        Box(Modifier.clip(RoundedCornerShape(28.dp))) { ArtistHeroSection(uiState.artistName, uiState.artistCoverUrl, onPlayFirstSong) }
+                        if (uiState.description != null) DescriptionSection(uiState)
+                    }
+                }, secondary = works)
+        } else {
+            works()
+            AppleMusicCollapsedTopBar(uiState.artistName, collapse.value,
+                WindowInsets.statusBars.asPaddingValues().calculateTopPadding(), backdrop = null,
+                showBackButton = true, onBackClick = onClose, modifier = Modifier.align(Alignment.TopCenter))
+        }
     }
 }
 
@@ -246,7 +168,7 @@ private fun ArtistHeroSection(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(430.dp)
+            .height((LocalAdaptiveWindow.current.height * 0.52f).coerceIn(220.dp, 430.dp))
             .background(Color.White)
     ) {
         AsyncImage(
@@ -280,7 +202,8 @@ private fun ArtistHeroSection(
                 text = artistName.ifBlank { "Unknown Artist" },
                 color = Color.White,
                 fontWeight = FontWeight.Black,
-                fontSize = 46.sp,
+                fontSize = 40.sp,
+                lineHeight = 46.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -322,8 +245,8 @@ private fun SectionHeader(
         Text(
             text = title,
             color = ArtistPrimaryText,
-            fontSize = 42.sp,
-            lineHeight = 44.sp,
+            fontSize = if (LocalAdaptiveWindow.current.width >= 600.dp) 28.sp else 34.sp,
+            lineHeight = 36.sp,
             letterSpacing = (-1).sp,
             fontWeight = FontWeight.Black
         )

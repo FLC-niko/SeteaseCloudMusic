@@ -44,7 +44,7 @@ import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
 import com.example.seteasecloudmusic.core.settings.PlayerStyle
-import androidx.compose.material3.AlertDialog
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -261,7 +261,7 @@ fun AccountLoginSheetContent(
         }
 
         if (uiState.showLogoutConfirmDialog) {
-            AlertDialog(
+            AdaptiveAlertDialog(
                 onDismissRequest = { viewModel.onDismissLogoutConfirm() },
                 title = {
                     Text(
@@ -1120,7 +1120,7 @@ private fun CaptchaPanel(
 }
 
 @Composable
-private fun QrPanel(
+internal fun QrPanel(
     red: Color,
     secondary: Color,
     qrHint: String,
@@ -1304,7 +1304,7 @@ private fun PlayerStyleSelectionDialog(
     onSelect: (PlayerStyle) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(

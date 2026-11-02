@@ -39,6 +39,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
@@ -169,18 +172,6 @@ private val MainNavItems = listOf(
 /** 左侧主导航条只承载 0~2，3 是右侧搜索按钮对应的页面。 */
 private const val SEARCH_PAGE_INDEX = 3
 
-private data class SelectedArtist(
-    val id: Long,
-    val name: String,
-    val coverUrl: String?
-)
-
-private data class DailyRecommendState(
-    val tracks: List<Track>,
-    val title: String = "每日推荐"
-)
-
-
 private fun lerpDp(start: Dp, stop: Dp, fraction: Float): Dp = start + (stop - start) * fraction
 private fun lerpColor(start: Color, stop: Color, fraction: Float): Color = androidx.compose.ui.graphics.lerp(start, stop, fraction)
 
@@ -230,6 +221,10 @@ fun AppNavigation(
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null
 ) {
+    val window = LocalAdaptiveWindow.current
+    val useRail = window.useNavigationRail && !window.isBook
+    val railPadding = if (useRail) 88.dp else 0.dp
+    val navigationState: AppNavigationState = viewModel()
     val searchViewModel: SearchViewModel = hiltViewModel()
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
@@ -245,20 +240,32 @@ fun AppNavigation(
     val dialogTitle by mainViewModel.dialogTitle.collectAsStateWithLifecycle()
     val dialogDescription by mainViewModel.dialogDescription.collectAsStateWithLifecycle()
 
-    var showNowPlaying by remember { mutableStateOf(false) }
-    var showPlaylistQueueSheet by remember { mutableStateOf(false) }
+    var showNowPlaying by rememberSaveable { mutableStateOf(false) }
+    var showPlaylistQueueSheet by rememberSaveable { mutableStateOf(false) }
     var miniPlayerArtworkBounds by remember { mutableStateOf<Rect?>(null) }
     var nowPlayingArtworkBounds by remember { mutableStateOf<Rect?>(null) }
     var nowPlayingArtworkUrl by remember { mutableStateOf<String?>(null) }
     val nowPlayingProgress = remember { Animatable(0f) }
     val nowPlayingScope = rememberCoroutineScope()
-    var showAccountSheet by remember { mutableStateOf(false) }
-    var mountAccountOverlay by remember { mutableStateOf(false) }
-    var selectedArtist by remember { mutableStateOf<SelectedArtist?>(null) }
-    var dailyRecommendState by remember { mutableStateOf<DailyRecommendState?>(null) }
-    val expandProgress = remember { Animatable(0f) }
+    var showAccountSheet by rememberSaveable { mutableStateOf(false) }
+    var mountAccountOverlay by remember { mutableStateOf(showAccountSheet) }
+    var selectedArtist by navigationState::selectedArtist
+    var dailyRecommendState by navigationState::dailyRecommend
+    val expandProgress = remember { Animatable(if (dailyRecommendState != null) 1f else 0f) }
     val expandScope = rememberCoroutineScope()
 
+    fun closePlayer() {
+        nowPlayingScope.launch {
+            nowPlayingProgress.animateTo(0f, tween(durationMillis = 440, easing = FastOutSlowInEasing))
+            showNowPlaying = false
+            nowPlayingArtworkBounds = null
+        }
+    }
+
+    LaunchedEffect(window.width, window.height, window.separatingFold) {
+        miniPlayerArtworkBounds = null
+        nowPlayingArtworkBounds = null
+    }
     LaunchedEffect(showNowPlaying) {
         if (showNowPlaying) {
             nowPlayingProgress.snapTo(0f)
@@ -323,8 +330,8 @@ fun AppNavigation(
 
     // 记录当前选中的导航项：
     // 0~2 对应左侧主导航条，3 对应右侧搜索按钮。
-    val selectedIndexState = remember { mutableIntStateOf(0) }
-    var lastActiveTab by remember { mutableIntStateOf(0) }
+    val selectedIndexState = rememberSaveable { mutableIntStateOf(0) }
+    var lastActiveTab by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(selectedIndexState.intValue) {
         if (selectedIndexState.intValue != SEARCH_PAGE_INDEX) {
@@ -399,10 +406,10 @@ fun AppNavigation(
 
     val navigationScroll = rememberNavigationScrollState(
         viewport = activeViewport,
-        enabled = !isSearchExpanded && !showNowPlaying && dailyRecommendState == null
+        enabled = !useRail && !isSearchExpanded && !showNowPlaying && dailyRecommendState == null
     )
 
-    val shouldCompactMiniPlayer = navigationScroll.compactTarget && !isSearchExpanded && !showNowPlaying
+    val shouldCompactMiniPlayer = !useRail && navigationScroll.compactTarget && !isSearchExpanded && !showNowPlaying
     val miniPlayerCenterTravel = navBarHeight + miniPlayerNavGap
     val miniPlayerChromeMotion = rememberMiniPlayerChromeMotion(
         compact = shouldCompactMiniPlayer,
@@ -413,12 +420,16 @@ fun AppNavigation(
     val hintScale = 1f - 0.05f * hintProgress
 
     // 2. 【舞台】：整个屏幕的根容器，使用 Box 以支持 Z 轴方向的层叠排列
+    CompositionLocalProvider(LocalContentBottomPadding provides (if (useRail) 88.dp else 150.dp)) {
     Box(modifier = Modifier.fillMaxSize()) {
-        
+        if (useRail) {
+            MusicNavigationRail(selectedIndexState.intValue) { selectedIndexState.intValue = it }
+        }
         // --- 底层内容区域 ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(start = railPadding)
                 // 监听列表滚动驱动底栏与迷你播放器变动
                 .nestedScroll(navigationScroll.nestedScrollConnection)
                 // 这里是毛玻璃的“取景层”。
@@ -449,6 +460,7 @@ fun AppNavigation(
             )
         }
 
+        Box(Modifier.fillMaxWidth().padding(start = railPadding)) {
         AppTopArea(
             selectedIndex = selectedIndexState,
             sinkProgress = sinkProgress,
@@ -460,7 +472,16 @@ fun AppNavigation(
             }
         )
 
+        }
+        if (useRail && isSearchExpanded) {
+            Box(Modifier.fillMaxWidth().padding(start = railPadding + 24.dp, end = 24.dp)
+                .statusBarsPadding().padding(top = 68.dp).height(48.dp).background(Color(0xFFF1F1F5), RoundedCornerShape(16.dp))) {
+                SearchQueryInputContent(searchViewModel, enabled = true, modifier = Modifier.padding(horizontal = 16.dp))
+            }
+        }
         // --- 顶层悬浮导航栏及独立搜索按钮 ---
+        if (!useRail) {
+        AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(2f)) {
         BoxWithConstraints(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -793,6 +814,8 @@ fun AppNavigation(
             }
         }
 
+        }
+        }
         dailyRecommendState?.let { state ->
             val progress = expandProgress.value
             if (progress > 0f) {
@@ -819,7 +842,7 @@ fun AppNavigation(
             }
         }
 
-        val normalMiniPlayerBottom = 6.dp + navBarHeight + miniPlayerNavGap + animatedImeOffset
+        val normalMiniPlayerBottom = 6.dp + (if (useRail) 0.dp else navBarHeight + miniPlayerNavGap) + animatedImeOffset
         val compactMiniPlayerBottom = 6.dp + animatedImeOffset
         val currentMiniPlayerBottom = lerpDp(
             normalMiniPlayerBottom,
@@ -843,16 +866,17 @@ fun AppNavigation(
 
         val currentMiniPlayerHeight = navBarHeight
 
-        val searchFadeOut = (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
+        val searchFadeOut = if (useRail) 1f else (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
         val isMiniPlayerVisible = searchFadeOut > 0.001f && (1f - sinkProgress) > 0.001f
 
         if (isMiniPlayerVisible) {
+            AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(1f)) {
             SearchMiniPlayerBar(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
                 playbackStateFlow = playerViewModel.playbackState,
                 contentProgress = miniPlayerChromeMotion.contentProgress,
-                enabled = !isSearchExpanded && searchProgress < 0.01f && !showNowPlaying,
+                enabled = (useRail || (!isSearchExpanded && searchProgress < 0.01f)) && !showNowPlaying,
                 onPlayPauseClick = { playerViewModel.onPlayPause() },
                 onPlaylistClick = { showPlaylistQueueSheet = true },
                 onNextClick = { playerViewModel.onNext() },
@@ -875,15 +899,16 @@ fun AppNavigation(
                     .zIndex(1f)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(
-                        start = currentStartPadding,
+                        start = currentStartPadding + railPadding,
                         end = currentEndPadding,
                         bottom = currentMiniPlayerBottom
                     )
+                    .widthIn(max = 1100.dp)
                     .fillMaxWidth()
                     .height(currentMiniPlayerHeight)
                     .graphicsLayer {
                         alpha = searchFadeOut * (1f - sinkProgress)
-                        translationY = (searchProgress * 60.dp.toPx()) + (sinkProgress * 76.dp.toPx())
+                        translationY = (if (useRail) 0f else searchProgress * 60.dp.toPx()) + (sinkProgress * 76.dp.toPx())
                         scaleX = hintScale
                         scaleY = hintScale
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -891,6 +916,7 @@ fun AppNavigation(
             )
         }
 
+        }
         if (showNowPlaying) {
             NowPlayingTransitionLayer(
                 playerViewModel = playerViewModel,
@@ -903,19 +929,7 @@ fun AppNavigation(
                         nowPlayingArtworkBounds = bounds
                     }
                 },
-                onClose = {
-                    nowPlayingScope.launch {
-                        nowPlayingProgress.animateTo(
-                            targetValue = 0f,
-                            animationSpec = tween(
-                                durationMillis = 440,
-                                easing = FastOutSlowInEasing
-                            )
-                        )
-                        showNowPlaying = false
-                        nowPlayingArtworkBounds = null
-                    }
-                }
+                onClose = { closePlayer() }
             )
         }
 
@@ -960,6 +974,8 @@ fun AppNavigation(
             )
         }
 
+        BackHandler(enabled = showNowPlaying) { closePlayer() }
+
         // 依据 iOS 26 解析图复刻的液态玻璃断网重试小弹窗（物理采样底层真实的动态 Backdrop）
         Ios26NetworkOfflineDialog(
             isVisible = showOfflineDialog,
@@ -970,6 +986,7 @@ fun AppNavigation(
             onRetry = { mainViewModel.retry() },
             onDismiss = { mainViewModel.dismissOfflineDialog() }
         )
+    }
     }
 }
 
@@ -1006,7 +1023,7 @@ private fun AppPageContent(
     mineListState: LazyListState
 ) {
     val index = selectedIndex.value
-    val bottomContentPadding = 150.dp + imeOffset
+    val bottomContentPadding = LocalContentBottomPadding.current + imeOffset
     val pageBackgroundColor = when (index) {
         2 -> Color(0xFFF7F7FA)
         else -> Color.White
@@ -1070,7 +1087,7 @@ private fun AppPageContent(
 
                         3 -> SearchRoute(
                             viewModel = searchViewModel,
-                            topContentPadding = topContentPadding,
+                            topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 48.dp else 0.dp),
                             bottomContentPadding = bottomContentPadding,
                             onArtistClick = onArtistClick
                         )
@@ -1164,7 +1181,8 @@ private fun AccountFullScreenOverlay(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val hostHeightPx = with(density) { maxHeight.toPx() }
-        val panelHeightPx = hostHeightPx * 0.95f
+        var measuredPanelHeightPx by remember { mutableFloatStateOf(0f) }
+        val panelHeightPx = measuredPanelHeightPx.takeIf { it > 0f } ?: (hostHeightPx * 0.95f)
         val hiddenOffsetPx = panelHeightPx + with(density) { 24.dp.toPx() }
 
         val panelOffsetFraction = remember { Animatable(1f) }
@@ -1198,7 +1216,8 @@ private fun AccountFullScreenOverlay(
             }
         }
 
-        val panelShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
+        val centeredPanel = LocalAdaptiveWindow.current.useNavigationRail
+        val panelShape = if (centeredPanel) RoundedCornerShape(30.dp) else RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
 
         // 遮罩层：模糊 + 压暗只在绘制阶段计算，Animatable 每帧只让 RenderNode 失效，不触发重组。
         Box(
@@ -1230,12 +1249,15 @@ private fun AccountFullScreenOverlay(
                 )
         )
 
+        AdaptiveOverlayPane(Modifier.fillMaxSize()) {
         // 主抽屉卡片：位移与缩放全部在 draw 阶段读取状态，既不触发重组也不触发布局。
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(if (centeredPanel) Alignment.Center else Alignment.BottomCenter)
+                .widthIn(max = if (LocalAdaptiveWindow.current.useNavigationRail) 560.dp else Dp.Unspecified)
                 .fillMaxWidth()
-                .fillMaxHeight(0.95f)
+                .fillMaxHeight(if (centeredPanel) 0.88f else 0.95f)
+                .onGloballyPositioned { measuredPanelHeightPx = it.size.height.toFloat() }
                 .graphicsLayer {
                     // 抽屉整体位移（收起 + 下拉拖动）统一走 RenderNode 的 translationY
                     val offsetFraction = panelOffsetFraction.value
@@ -1295,6 +1317,7 @@ private fun AccountFullScreenOverlay(
                 )
             }
         }
+    }
     }
 }
 

@@ -2,6 +2,10 @@ package com.example.seteasecloudmusic.feature.search.presentation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -199,6 +204,7 @@ fun SearchScreenContent(
             else -> {
                 SearchResultsList(
                     items = items,
+                    artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
                     onRowClick = onSuggestionClick,
                     onArtistClick = onArtistClick,
                     onTrackClick = onTrackClick,
@@ -243,13 +249,16 @@ private fun SearchTabsRow(
 @Composable
 private fun SearchResultsList(
     items: List<SearchRowItem>,
+    artworkGrid: Boolean,
     onRowClick: (String) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     onTrackClick: (Track) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyColumn(modifier = modifier.verticalElasticOverscroll()) {
-        itemsIndexed(items = items, key = { _, item -> item.key }) { index, item ->
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val window = LocalAdaptiveWindow.current
+    val renderRow: @Composable (SearchRowItem) -> Unit = { item ->
             when (item) {
                 is SearchRowItem.Song -> SongRow(
                     track = item.track,
@@ -283,14 +292,70 @@ private fun SearchResultsList(
                     onClick = { onRowClick(item.keyword) }
                 )
             }
-
-            if (index != items.lastIndex) {
-                HorizontalDivider(
-                    color = DividerColor,
-                    modifier = Modifier.padding(start = 84.dp)
-                )
+    }
+    BoxWithConstraints(modifier) {
+        val useGrid = artworkGrid && maxWidth >= 500.dp
+        var previousGrid by rememberSaveable { mutableStateOf(useGrid) }
+        LaunchedEffect(useGrid) {
+            if (previousGrid != useGrid) {
+                if (useGrid) gridState.scrollToItem(listState.firstVisibleItemIndex.coerceAtMost((items.size - 1).coerceAtLeast(0)), listState.firstVisibleItemScrollOffset)
+                else listState.scrollToItem(gridState.firstVisibleItemIndex.coerceAtMost((items.size - 1).coerceAtLeast(0)), gridState.firstVisibleItemScrollOffset)
+            }
+            previousGrid = useGrid
+        }
+        val mixedResults = items.any { it is SearchRowItem.Song } && items.any { it is SearchRowItem.Artist || it is SearchRowItem.Album || it is SearchRowItem.Playlist }
+        val resultsList: @Composable (List<SearchRowItem>) -> Unit = { results ->
+            LazyColumn(Modifier.fillMaxSize().verticalElasticOverscroll(), state = listState) {
+                items(results, key = { it.key }) { item ->
+                    renderRow(item)
+                    HorizontalDivider(Modifier.padding(start = 84.dp, end = 20.dp), color = DividerColor)
+                }
             }
         }
+        if (window.isBook || window.isTabletop || (maxWidth >= 720.dp && mixedResults && !artworkGrid)) {
+            val leading = if (mixedResults) items.filterNot { it is SearchRowItem.Song } else items.take((items.size + 1) / 2)
+            val trailing = if (mixedResults) items.filterIsInstance<SearchRowItem.Song>() else items.drop((items.size + 1) / 2)
+            AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.42f,
+                primary = {
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(leading, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
+                    }
+                },
+                secondary = { resultsList(trailing) })
+        } else if (useGrid) {
+            LazyVerticalGrid(GridCells.Adaptive(168.dp), Modifier.fillMaxSize(), state = gridState,
+                contentPadding = PaddingValues(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                items(items, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
+            }
+        } else {
+            AdaptiveContent(maxWidth = 900.dp) { resultsList(items) }
+        }
+    }
+
+}
+
+@Composable
+private fun SearchArtworkCard(item: SearchRowItem, onQuery: (String) -> Unit, onArtist: (Long, String, String?) -> Unit, onTrack: (Track) -> Unit) {
+    val image: String?
+    val title: String
+    val subtitle: String
+    val action: () -> Unit
+    when (item) {
+        is SearchRowItem.Artist -> { image = item.coverUrl; title = item.name; subtitle = "艺人"; action = { onArtist(item.id, item.name, image) } }
+        is SearchRowItem.Album -> { image = item.coverUrl; title = item.title; subtitle = item.artistName; action = { onQuery(title) } }
+        is SearchRowItem.Playlist -> { image = item.coverUrl; title = item.name; subtitle = "${item.trackCount} 首歌曲"; action = { onQuery(title) } }
+        is SearchRowItem.Song -> { image = item.track.coverUrl; title = item.track.title; subtitle = item.track.artists.joinToString(" / ") { it.name }; action = { onTrack(item.track) } }
+        is SearchRowItem.Suggestion -> { image = null; title = item.keyword; subtitle = "搜索建议"; action = { onQuery(title) } }
+    }
+    Column(Modifier.fillMaxWidth().clickable(onClick = action).padding(4.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(if (item is SearchRowItem.Artist) CircleShape else RoundedCornerShape(20.dp)).background(Color(0xFFF2F2F6)), contentAlignment = Alignment.Center) {
+            if (image != null) AsyncImage(image, title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            else Icon(Icons.Filled.Search, null, tint = SecondaryText)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, color = PrimaryText)
+        Spacer(Modifier.height(4.dp))
+        Text(subtitle, fontSize = 13.sp, color = SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

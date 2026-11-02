@@ -1,6 +1,10 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,12 +73,57 @@ fun PlaylistDetailScreen(
     onPlayTrack: (Track) -> Unit,
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    embedded: Boolean = false,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState()
+) {
+    val bottom = LocalContentBottomPadding.current
+    val window = LocalAdaptiveWindow.current
+    BoxWithConstraints(modifier.fillMaxSize().background(PlaylistPageBg)) {
+        val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop)
+        if (embedded || split) {
+            BackHandler(onBack = onClose)
+            val songs: @Composable () -> Unit = {
+                LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 12.dp, bottom = bottom + 16.dp)) {
+                    item(key = "detail_title") { MusicPaneHeader(if (embedded) detail.name else "歌曲", "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", onClose) }
+                    if (embedded) item(key = "playlist_hero") { Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { PlaylistHeroSection(detail, onPlayAll) } }
+                    if (isLoading && detail.tracks.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PlaylistAccentColor) } }
+                    itemsIndexed(detail.tracks, key = { _, track -> track.id }) { index, track ->
+                        Box(Modifier.padding(horizontal = 12.dp)) {
+                            PlaylistDetailTrackRow(index + 1, track, { onPlayTrack(track) })
+                        }
+                        HorizontalDivider(Modifier.padding(start = 88.dp, end = 20.dp), color = PlaylistDividerColor)
+                    }
+                }
+            }
+            Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                if (split) AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.38f,
+                    primary = {
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+                            MusicPaneHeader("歌单", "为此刻，挑选喜欢的声音", onClose)
+                            PlaylistHeroSection(detail, onPlayAll)
+                        }
+                    }, secondary = songs)
+                else songs()
+            }
+        } else CompactPlaylistDetailScreen(detail, backdrop, onClose, onPlayTrack, onPlayAll, isLoading = isLoading, lazyListState = listState)
+    }
+}
+
+@Composable
+private fun CompactPlaylistDetailScreen(
+    detail: PlaylistDetail,
+    backdrop: Backdrop,
+    onClose: () -> Unit,
+    onPlayTrack: (Track) -> Unit,
+    onPlayAll: () -> Unit,
+    modifier: Modifier = Modifier,
+    isLoading: Boolean = false,
+    lazyListState: androidx.compose.foundation.lazy.LazyListState
 ) {
     BackHandler(onBack = onClose)
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val lazyListState = rememberLazyListState()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 140.dp
@@ -104,7 +153,7 @@ fun PlaylistDetailScreen(
                     .verticalElasticOverscroll(),
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 14.dp,
-                    bottom = 160.dp,
+                    bottom = LocalContentBottomPadding.current + 16.dp,
                     start = 20.dp,
                     end = 20.dp
                 ),
