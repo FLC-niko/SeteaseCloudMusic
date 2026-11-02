@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -18,7 +19,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.RoundedRectangle
 import kotlin.math.absoluteValue
 
@@ -53,6 +56,9 @@ object GlassSliderDefaults {
 
     /** Gooey 拉伸强度：0f 关闭拉丝效果 */
     const val STRETCH_FACTOR = 0.35f
+
+    /** 滑块的高斯模糊半径：略高于底部导航栏的模糊度（底栏为 1.dp），保持透通感同时略带磨砂 */
+    val BlurRadius: Dp = 3.dp
 }
 
 /**
@@ -186,10 +192,12 @@ fun GlassThumb(
     geometry: GlassThumbGeometry,
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
-    surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha
+    surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha,
+    blurRadius: Dp = GlassSliderDefaults.BlurRadius
 ) {
-    if (geometry.width <= 0.dp || geometry.height <= 0.dp) return
+    if (geometry.width <= 0.dp || geometry.height <= 0.dp || alpha <= 0f) return
 
+    val innerCornerRadius = geometry.innerCornerRadius
     Box(
         modifier
             .graphicsLayer {
@@ -205,17 +213,26 @@ fun GlassThumb(
             }
             .drawBackdrop(
                 backdrop = backdrop,
-                shape = { RoundedRectangle(geometry.innerCornerRadius) },
+                shape = { RoundedRectangle(innerCornerRadius) },
+                shadow = null,
                 effects = {
+                    vibrancy()
+                    if (blurRadius > 0.dp) {
+                        blur(blurRadius.toPx())
+                    }
                     lens(
-                        refractionHeight = 6f.dp.toPx(),
-                        refractionAmount = 12f.dp.toPx(),
+                        refractionHeight = 8f.dp.toPx(),
+                        refractionAmount = 16f.dp.toPx(),
                         chromaticAberration = true
                     )
                 },
                 onDrawSurface = {
                     if (surfaceAlpha > 0f) {
-                        drawRect(Color.White.copy(alpha = surfaceAlpha))
+                        val rPx = innerCornerRadius.toPx()
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = surfaceAlpha),
+                            cornerRadius = CornerRadius(rPx, rPx)
+                        )
                     }
                 }
             )

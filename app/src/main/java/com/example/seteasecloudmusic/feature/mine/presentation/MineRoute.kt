@@ -1,5 +1,7 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -13,7 +15,8 @@ fun MineRoute(
     bottomContentPadding: Dp,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: MineViewModel = hiltViewModel()
+    viewModel: MineViewModel = hiltViewModel(),
+    lazyListState: LazyListState = rememberLazyListState()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -30,6 +33,7 @@ fun MineRoute(
         onPlayAll = viewModel::playAll,
         onScanLocal = viewModel::scanLocalMusic,
         onSetLocalDirectory = viewModel::setLocalDirectoryAndScan,
-        modifier = modifier
+        modifier = modifier,
+        lazyListState = lazyListState
     )
 }

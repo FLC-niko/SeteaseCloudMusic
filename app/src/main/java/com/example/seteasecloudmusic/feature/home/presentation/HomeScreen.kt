@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -95,7 +96,8 @@ fun HomeRoute(
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
     onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HomeViewModel = hiltViewModel(),
+    lazyListState: LazyListState = rememberLazyListState()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -120,7 +122,8 @@ fun HomeRoute(
         },
         onRetryClick = viewModel::onRetryClick,
         onRefreshClick = viewModel::onRefreshClick,
-        onPosterWallClick = onPosterWallClick
+        onPosterWallClick = onPosterWallClick,
+        lazyListState = lazyListState
     )
 }
 
@@ -137,10 +140,10 @@ private fun HomeScreenContent(
     onCardPlayClick: (BigCardItem) -> Unit,
     onRetryClick: () -> Unit,
     onRefreshClick: () -> Unit,
-    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit
+    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
+    lazyListState: LazyListState = rememberLazyListState()
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val lazyListState = rememberLazyListState()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
