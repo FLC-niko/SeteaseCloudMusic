@@ -109,7 +109,7 @@ fun ArtistDetailScreen(
     val listState = rememberLazyListState()
     val collapse = rememberAppleMusicCollapseFraction(listState, 200.dp)
     BoxWithConstraints(Modifier.fillMaxSize().background(ArtistPageBg)) {
-        val split = (maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop
+        val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
         val works: @Composable () -> Unit = {
             LazyColumn(Modifier.fillMaxSize(), state = listState,
                 contentPadding = PaddingValues(top = if (split) 20.dp else 0.dp, bottom = bottom),

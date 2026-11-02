@@ -34,6 +34,7 @@ fun AdaptiveSectionColumn(
     var anchor by rememberSaveable { mutableStateOf<String?>(null) }
     var anchorOffset by rememberSaveable { mutableIntStateOf(0) }
     var restoring by remember { mutableStateOf(false) }
+    var secondaryWasActive by rememberSaveable { mutableStateOf(false) }
     BoxWithConstraints(modifier) {
         val split = !LocalPaneAlreadySplit.current && (window.isBook || window.isTabletop)
         val columns = if (maxWidth >= 720.dp) 2 else 1
@@ -71,14 +72,29 @@ fun AdaptiveSectionColumn(
             restoring = false
         }
         LaunchedEffect(state, secondaryState, split) {
+            var previousPrimary: Pair<String?, Int>? = null
+            var previousSecondary: Pair<String?, Int>? = null
             snapshotFlow {
-                val active = if (split && secondaryState.isScrollInProgress) secondaryState else state
-                Triple(active.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString(), active.firstVisibleItemScrollOffset, active.isScrollInProgress)
-            }.collect { (key, offset, scrolling) ->
-                if (!restoring && key != null) {
-                    anchor = key
-                    anchorOffset = offset
+                val primary = state.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to state.firstVisibleItemScrollOffset
+                val secondary = secondaryState.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to secondaryState.firstVisibleItemScrollOffset
+                Triple(primary, secondary, state.isScrollInProgress to secondaryState.isScrollInProgress)
+            }.collect { (primary, secondary, scrolling) ->
+                val primaryChanged = previousPrimary != null && primary != previousPrimary
+                val secondaryChanged = previousSecondary != null && secondary != previousSecondary
+                if (!restoring) {
+                    if (split) {
+                        if (scrolling.second || (secondaryChanged && !primaryChanged)) secondaryWasActive = true
+                        else if (scrolling.first || (primaryChanged && !secondaryChanged)) secondaryWasActive = false
+                    }
+                    // Keep the last interacted pane after scrolling ends; an idle pane must not replace its anchor.
+                    val active = if (split && secondaryWasActive) secondary else primary
+                    if (active.first != null && (anchor == null || primaryChanged || secondaryChanged || scrolling.first || scrolling.second)) {
+                        anchor = active.first
+                        anchorOffset = active.second
+                    }
                 }
+                previousPrimary = primary
+                previousSecondary = secondary
             }
         }
         if (split) {

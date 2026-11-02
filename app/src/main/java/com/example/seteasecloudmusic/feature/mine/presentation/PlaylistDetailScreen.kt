@@ -80,12 +80,12 @@ fun PlaylistDetailScreen(
     val bottom = LocalContentBottomPadding.current
     val window = LocalAdaptiveWindow.current
     BoxWithConstraints(modifier.fillMaxSize().background(PlaylistPageBg)) {
-        val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop)
+        val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
         if (embedded || split) {
             BackHandler(onBack = onClose)
             val songs: @Composable () -> Unit = {
                 LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 12.dp, bottom = bottom + 16.dp)) {
-                    item(key = "detail_title") { MusicPaneHeader(if (embedded) detail.name else "歌曲", "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", onClose) }
+                    item(key = "detail_title") { MusicPaneHeader(if (embedded) detail.name else "歌曲", "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", if (embedded) onClose else null) }
                     if (embedded) item(key = "playlist_hero") { Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { PlaylistHeroSection(detail, onPlayAll) } }
                     if (isLoading && detail.tracks.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PlaylistAccentColor) } }
                     itemsIndexed(detail.tracks, key = { _, track -> track.id }) { index, track ->

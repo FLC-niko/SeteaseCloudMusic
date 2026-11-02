@@ -190,7 +190,7 @@ fun MineScreen(
     // 代价高于系统拉伸。
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
     val window = LocalAdaptiveWindow.current
-    val split = (maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop
+    val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
     val libraryContent: @Composable () -> Unit = {
     Box(Modifier.fillMaxSize()) {
         Box(

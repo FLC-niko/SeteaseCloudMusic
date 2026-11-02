@@ -176,7 +176,7 @@ internal fun RadioScreenContent(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val window = LocalAdaptiveWindow.current
-    val split = uiState.activePlaylistDetail != null && ((maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop)
+    val split = uiState.activePlaylistDetail != null && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
     val feed: @Composable () -> Unit = {
     Box(
         modifier = Modifier

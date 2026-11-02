@@ -85,7 +85,7 @@ fun DailyRecommendDetailScreen(tracks: List<Track>, title: String = "每日推�
     val bottom = LocalContentBottomPadding.current
     val listState = rememberLazyListState()
     BoxWithConstraints(Modifier.fillMaxSize().background(DetailPageBg)) {
-        if ((maxWidth >= 720.dp && maxHeight >= 480.dp) || window.isBook || window.isTabletop) {
+        if ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop) {
             BackHandler(onBack = onClose)
             AdaptiveTwoPane(Modifier.fillMaxSize().statusBarsPadding(), primaryFraction = 0.44f,
                 primary = {
