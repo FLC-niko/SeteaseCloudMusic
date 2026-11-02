@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.unit.Dp
@@ -82,7 +83,11 @@ fun Modifier.liquidGlass(
     layerBlock = layerBlock ?: {},
     onDrawSurface = {
         if (surfaceAlpha > 0f) {
-            drawRect(Color.White.copy(alpha = surfaceAlpha))
+            val rPx = cornerRadius.toPx()
+            drawRoundRect(
+                color = Color.White.copy(alpha = surfaceAlpha),
+                cornerRadius = CornerRadius(rPx, rPx)
+            )
         }
     }
 )

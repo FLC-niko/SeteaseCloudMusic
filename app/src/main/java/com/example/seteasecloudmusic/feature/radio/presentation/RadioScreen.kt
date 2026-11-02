@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -106,7 +107,8 @@ fun RadioRoute(
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
     onArtistClick: ((artistId: Long, artistName: String, artistCoverUrl: String?) -> Unit)? = null,
-    viewModel: RadioViewModel = hiltViewModel()
+    viewModel: RadioViewModel = hiltViewModel(),
+    lazyListState: LazyListState = rememberLazyListState()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -130,7 +132,8 @@ fun RadioRoute(
         onPlayTrend = viewModel::playTrend,
         onPlayMood = viewModel::playMood,
         onPlayFollowedNewSong = viewModel::playFollowedNewSong,
-        onRetryClick = viewModel::onRetryClick
+        onRetryClick = viewModel::onRetryClick,
+        lazyListState = lazyListState
     )
 }
 
@@ -155,10 +158,10 @@ private fun RadioScreenContent(
     onPlayTrend: (RadioTrendItem) -> Unit,
     onPlayMood: (RadioMoodItem) -> Unit,
     onPlayFollowedNewSong: (RadioFollowedArtistNewSongItem) -> Unit,
-    onRetryClick: () -> Unit
+    onRetryClick: () -> Unit,
+    lazyListState: LazyListState = rememberLazyListState()
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val lazyListState = rememberLazyListState()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
