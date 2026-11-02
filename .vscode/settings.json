@@ -15,9 +15,8 @@
         "**/local.properties": true
     },
 
-    // Android iOS Emulator 扩展配置
-    "android-emulator.emulatorPath": "${env:ANDROID_HOME}/emulator",
-    "android-emulator.adbPath": "${env:ANDROID_HOME}/platform-tools/adb",
+    // Android iOS Emulator 扩展在 Windows 上使用的 SDK 模拟器目录
+    "emulator.emulatorPathWindows": "D:/Android/Sdk/emulator",
 
     "chat.mcp.serverSampling": {
         "SeteaseCloudMusic/.vscode/mcp.json: my-mcp-server-de9b4ab9": {
