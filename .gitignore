@@ -21,3 +21,7 @@ node_modules/
 **/node_modules/
 **/dist/
 applemusic-like-lyrics-main/
+/artifacts/
+/fold-build.log
+
+**/__pycache__/
