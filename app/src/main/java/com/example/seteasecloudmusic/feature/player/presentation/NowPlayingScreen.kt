@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -8,6 +9,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.State
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -25,13 +30,16 @@ fun NowPlayingScreen(
     artworkAlpha: State<Float>,
     onArtworkBoundsChanged: (Rect) -> Unit,
 ) {
+    PlayerSystemBars()
     val playerStyle by playerViewModel.playerSettingsManager.playerStyle.collectAsStateWithLifecycle()
 
+    var showQueue by rememberSaveable { mutableStateOf(false) }
     when (playerStyle) {
         PlayerStyle.AMLL_WEB -> {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF141419)).systemBarsPadding()) {
                 WebPlayerScreen(
                     musicPlayerController = playerViewModel.controller,
+                    onQueueClick = { showQueue = true },
                     ttmlProvider = { songId ->
                         try {
                             playerViewModel.getLyricDataDirectly(songId.toLong())
@@ -66,4 +74,10 @@ fun NowPlayingScreen(
             )
         }
     }
+    if (showQueue) {
+        val state by playerViewModel.playbackState.collectAsStateWithLifecycle()
+        PlaylistQueueSheet(state, playerViewModel::playQueueTrackAt, playerViewModel::removeQueueTrackAt,
+            playerViewModel::clearQueue, playerViewModel::togglePlaybackMode, { showQueue = false })
+    }
+
 }
