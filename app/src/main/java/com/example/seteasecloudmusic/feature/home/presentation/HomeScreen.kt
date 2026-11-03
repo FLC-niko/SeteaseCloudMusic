@@ -26,7 +26,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -58,10 +60,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
@@ -348,21 +353,11 @@ private fun DailyRecommendPosterWall(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.40f),
-                        0.42f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.86f)
+                        0f to Color.Transparent,
+                        0.50f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.72f)
                     )
                 )
-        )
-
-        Text(
-            text = "为你精选",
-            color = Color.White.copy(alpha = 0.90f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 20.dp, top = 20.dp)
         )
 
         Column(
@@ -400,34 +395,100 @@ private fun ScrollingPosterWall(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 28000, easing = LinearEasing),
+            animation = tween(durationMillis = 64000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "posterWallOffset"
     )
 
-    BoxWithConstraints(modifier = modifier) {
-        // 覆盖旋转后露出的四角；两块相同的方形拼贴首尾相接，循环点不会跳帧。
-        val tileSize = maxWidth + maxHeight
+    BoxWithConstraints(
+        modifier = modifier.clipToBounds()
+    ) {
+        val density = LocalDensity.current
+        val distinctCovers = remember(covers) { covers.distinct() }
+
+        // 5 列，列宽为卡片宽度的 38%
+        val colWidth = maxWidth * 0.38f
+        val colCount = 5
+
+        // 中间 3 列均分所有封面池
+        val cycleCount = remember(distinctCovers) {
+            maxOf(distinctCovers.size / 3, 4).coerceAtMost(8)
+        }
+        val cycleHeight = colWidth * cycleCount
+        val cycleHeightPx = with(density) { cycleHeight.toPx() }
+
+        // 重复 3 组循环，总高度充足覆盖倾斜视口与滑动偏移
+        val totalRepetitions = 3
+        val totalRows = cycleCount * totalRepetitions
+        val canvasWidth = colWidth * colCount
+        val canvasHeight = colWidth * totalRows
+
         Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .requiredSize(tileSize)
-                .graphicsLayer { rotationZ = 45f }
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .wrapContentSize(unbounded = true, align = Alignment.TopStart)
-                    .requiredSize(width = tileSize * 2, height = tileSize)
+                    .wrapContentSize(unbounded = true, align = Alignment.Center)
+                    .requiredSize(width = canvasWidth, height = canvasHeight)
                     .graphicsLayer {
-                        translationX = -scrollProgress * tileSize.toPx()
+                        rotationZ = 30f
                     }
             ) {
-                repeat(2) {
-                    PosterCoverGrid(
-                        covers = covers,
-                        modifier = Modifier.size(tileSize)
-                    )
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    repeat(colCount) { colIndex ->
+                        val columnCovers = remember(distinctCovers, colIndex, cycleCount) {
+                            if (distinctCovers.isEmpty()) emptyList()
+                            else {
+                                val count = distinctCovers.size
+                                List(cycleCount) { i ->
+                                    val index = if (colIndex in 1..3) {
+                                        // 中间三列（colIndex 1、2、3）：均分所有去重封面，互不重复
+                                        val midIndex = colIndex - 1
+                                        (midIndex * cycleCount + i) % count
+                                    } else {
+                                        // 边上两列（colIndex 0、4）：重新均分到这两列
+                                        val outerIndex = if (colIndex == 0) 0 else 1
+                                        (outerIndex * (count / 2) + i) % count
+                                    }
+                                    distinctCovers[index].toCoverThumbnailUrl(280)
+                                }
+                            }
+                        }
+
+                        // 5 列交替滚动（倾斜方向为右上到左下）：
+                        // colIndex 1（左侧列）和 colIndex 3（右侧列）沿列往左下滚动
+                        // colIndex 2（中间列）沿列往右上滚动
+                        // 外侧两列（colIndex 0、4）配合交替
+                        val isScrollingDown = (colIndex % 2 == 1)
+
+                        Column(
+                            modifier = Modifier
+                                .requiredWidth(colWidth)
+                                .requiredHeight(canvasHeight)
+                                .graphicsLayer {
+                                    translationY = if (isScrollingDown) {
+                                        (scrollProgress - 1f) * cycleHeightPx
+                                    } else {
+                                        -scrollProgress * cycleHeightPx
+                                    }
+                                },
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
+                            repeat(totalRepetitions) {
+                                columnCovers.forEach { url ->
+                                    PosterCoverCell(
+                                        imageUrl = url,
+                                        modifier = Modifier.requiredSize(colWidth)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -435,54 +496,28 @@ private fun ScrollingPosterWall(
 }
 
 @Composable
-private fun PosterCoverGrid(
-    covers: List<String>,
-    modifier: Modifier = Modifier
-) {
-    val slotCount = 16
-    val displayItems = remember(covers) {
-        List(slotCount) { index ->
-            covers[index % covers.size].toCoverThumbnailUrl(240)
-        }
-    }
-
-    Column(
-        modifier = modifier.fillMaxSize()
-    ) {
-        repeat(4) { rowIndex ->
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                repeat(4) { colIndex ->
-                    val itemIndex = rowIndex * 4 + colIndex
-                    PosterGridCell(
-                        imageUrl = displayItems[itemIndex],
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(2.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PosterGridCell(
+private fun PosterCoverCell(
     imageUrl: String?,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val imageRequest = remember(imageUrl) {
+        if (imageUrl.isNullOrBlank()) null
+        else {
+            ImageRequest.Builder(context)
+                .data(imageUrl)
+                .crossfade(true)
+                .build()
+        }
+    }
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(Color(0xFF33343B))
+            .background(Color(0xFF26262E))
     ) {
-        if (!imageUrl.isNullOrBlank()) {
+        if (imageRequest != null) {
             AsyncImage(
-                model = imageUrl,
+                model = imageRequest,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
