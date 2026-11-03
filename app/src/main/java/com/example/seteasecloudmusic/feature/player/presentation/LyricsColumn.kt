@@ -77,9 +77,9 @@ fun LyricsColumn(
     onLineClick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    BoxWithConstraints(modifier = modifier) {
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val screenWidthDp = configuration.screenWidthDp.toFloat()
+    val screenWidthDp = maxWidth.value
 
     // 字号：按 `CSS px → dp → sp` 换算。中间过一道 dp 是为了让最终的**物理像素**
     // 与 WebView 的 CSS px 完全一致，即使系统字体缩放被调过也不会跑偏。
@@ -148,12 +148,12 @@ fun LyricsColumn(
     }
 
     // 已测量过的行高，用于估算焦点切换时需要补间的像素距离
-    val measuredLineHeights = remember { mutableStateMapOf<Int, Int>() }
+    val measuredLineHeights = remember(lyrics, screenWidthDp, density.fontScale) { mutableStateMapOf<Int, Int>() }
 
     // 弹簧残差：列表先瞬移到目标位置，视觉上再"退回旧位置"，由弹簧归零 → 平滑滚动
     val scrollResidual = remember { Animatable(0f) }
 
-    LaunchedEffect(activeLineIndex, autoFollow, lyrics.lines.size) {
+    LaunchedEffect(activeLineIndex, autoFollow, lyrics, screenWidthDp, maxHeight) {
         if (!autoFollow || activeLineIndex !in lyrics.lines.indices) return@LaunchedEffect
 
         val fallbackStep = max(
@@ -181,7 +181,7 @@ fun LyricsColumn(
         }
     }
 
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         // AMLL：焦点行的中心落在视口 35% 高度处（LayoutConfig.alignPosition = 0.35）
         val topPadding = with(density) {
             (maxHeight.toPx() * AmllLyricSpec.ALIGN_POSITION - mainLineHeightPx / 2f)
@@ -224,6 +224,7 @@ fun LyricsColumn(
                 )
             }
         }
+    }
     }
 }
 

@@ -3,6 +3,7 @@ package com.example.seteasecloudmusic.feature.discover.presentation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,7 +77,7 @@ fun DiscoverScreen(
             .background(DiscoverBackground)
             .padding(top = topContentPadding, bottom = bottomContentPadding)
     ) {
-        LazyColumn(
+        AdaptiveSectionColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -101,35 +102,33 @@ fun DiscoverScreen(
             }
 
             item {
+                Column {
                 DiscoverSectionHeader(
                     title = "推荐新歌",
                     subtitle = "近期值得听的新鲜声音"
                 )
-            }
-
-            item {
                 DiscoverSongSection(
                     tracks = uiState.newsongs,
                     isLoading = uiState.isNewsongsLoading,
                     errorMessage = uiState.newsongsErrorMessage,
                     onRetry = onRetryNewsongs
                 )
+                }
             }
 
             item {
+                Column {
                 DiscoverSectionHeader(
                     title = "热门歌单",
                     subtitle = "持续更新的流行内容"
                 )
-            }
-
-            item {
                 DiscoverPlaylistListSection(
                     playlists = uiState.hotPlaylists,
                     isLoading = uiState.isHotPlaylistsLoading,
                     errorMessage = uiState.hotPlaylistsErrorMessage,
                     onRetry = onRetryHotPlaylists
                 )
+                }
             }
         }
     }

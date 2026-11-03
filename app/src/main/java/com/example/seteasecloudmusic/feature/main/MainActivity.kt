@@ -39,13 +39,15 @@ class MainActivity : ComponentActivity() {
             val maxMode = modes?.maxByOrNull { it.refreshRate }
             if (maxMode != null) {
                 val params = window.attributes
-                params.preferredDisplayModeId = maxMode.modeId
+                params.preferredRefreshRate = maxMode.refreshRate
                 window.attributes = params
             }
         }
 
         setContent {
-            AppNavigation()
+            com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
+                AppNavigation()
+            }
         }
     }
 }

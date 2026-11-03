@@ -16,6 +16,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -157,8 +160,18 @@ fun NativePlayerScreen(
                 (track?.id != null && track.id < 0)
     }
 
-    var showQualitySheet by remember { mutableStateOf(false) }
-    var showQueueSheet by remember { mutableStateOf(false) }
+    var showQualitySheet by rememberSaveable { mutableStateOf(false) }
+    var showQueueSheet by rememberSaveable { mutableStateOf(false) }
+    val adaptiveWindow = com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow.current
+    if (adaptiveWindow.width >= 600.dp || (adaptiveWindow.width >= 480.dp && adaptiveWindow.height < 480.dp) || adaptiveWindow.isTabletop || adaptiveWindow.isBook) {
+        ExpandedNativePlayer(playerViewModel, onClose, artworkAlpha, onArtworkBoundsChanged,
+            onQuality = { if (hasTrack) showQualitySheet = true }, onQueue = { showQueueSheet = true })
+        if (showQueueSheet) PlaylistQueueSheet(playbackState, playerViewModel::playQueueTrackAt, playerViewModel::removeQueueTrackAt,
+            playerViewModel::clearQueue, playerViewModel::togglePlaybackMode, { showQueueSheet = false })
+        if (showQualitySheet) AudioQualitySelectionSheet(currentAudioQuality,
+            { playerViewModel.selectAudioQuality(it) }, { showQualitySheet = false })
+        return
+    }
 
     // 解析歌词
     val parsedLyrics: ParsedLyrics = remember(lyricResponseResult) {
@@ -368,9 +381,8 @@ fun NativePlayerScreen(
 
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxWidth()
                                             .padding(horizontal = sidePad)
-                                            .aspectRatio(1f)
+                                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
                                             // 与歌词页顶部迷你封面共享同一元素：切页时封面平滑缩小飞入/飞回
                                             .sharedElementWithCallerManagedVisibility(
                                                 sharedContentState = rememberSharedContentState(
@@ -430,9 +442,8 @@ fun NativePlayerScreen(
                                     // 未在播放：Apple Music 经典圆角毛玻璃微质感音符占位封面
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxWidth()
                                             .padding(horizontal = 16.dp)
-                                            .aspectRatio(1f)
+                                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
                                             .onGloballyPositioned { coordinates ->
                                                 onArtworkBoundsChanged(coordinates.boundsInRoot())
                                             }
@@ -709,21 +720,19 @@ fun NativePlayerScreen(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AudioQualitySelectionSheet(
+internal fun AudioQualitySelectionSheet(
     currentQuality: OnlineAudioQuality,
     onSelectQuality: (OnlineAudioQuality) -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(
+    AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFF1E1E24),
-        scrimColor = Color.Black.copy(alpha = 0.6f),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        containerColor = Color(0xFF1E1E24)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 8.dp)
                 .padding(bottom = 32.dp)
         ) {

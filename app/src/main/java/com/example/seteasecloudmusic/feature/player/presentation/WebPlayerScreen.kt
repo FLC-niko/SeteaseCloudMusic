@@ -1,5 +1,16 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
+
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -59,9 +70,16 @@ private class WebPlayerSession {
 @Composable
 fun WebPlayerScreen(
     musicPlayerController: MusicPlayerController,
-    ttmlProvider: (suspend (songId: String) -> String?)? = null
+    ttmlProvider: (suspend (songId: String) -> String?)? = null,
+    onQueueClick: () -> Unit = {}
 ) {
     val session = remember { WebPlayerSession() }
+    val adaptiveWindow = LocalAdaptiveWindow.current
+    val density = LocalDensity.current.density
+    val fontZoom = (LocalDensity.current.fontScale * 100).toInt()
+    val ready by session.webReady.collectAsStateWithLifecycle()
+    var viewBounds by remember { mutableStateOf(Rect.Zero) }
+    val currentQueueClick by rememberUpdatedState(onQueueClick)
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentTtmlProvider by rememberUpdatedState(ttmlProvider)
@@ -115,8 +133,23 @@ fun WebPlayerScreen(
         )
     }
 
+    LaunchedEffect(adaptiveWindow, viewBounds, ready) {
+        if (ready && viewBounds.width > 0f && viewBounds.height > 0f) {
+            val payload = JSONObject().put("width", viewBounds.width / density).put("height", viewBounds.height / density)
+            adaptiveWindow.separatingFold?.let { fold ->
+                payload.put("fold", JSONObject()
+                    .put("horizontal", adaptiveWindow.horizontalFold)
+                    .put("left", (fold.left - viewBounds.left) / density)
+                    .put("top", (fold.top - viewBounds.top) / density)
+                    .put("right", (fold.right - viewBounds.left) / density)
+                    .put("bottom", (fold.bottom - viewBounds.top) / density))
+            }
+            dispatchToWeb("SET_LAYOUT", payload)
+        }
+    }
+
     AndroidView(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onGloballyPositioned { viewBounds = it.boundsInWindow() },
         factory = { context ->
             WebView.setWebContentsDebuggingEnabled(true)
             val assetLoader = WebViewAssetLoader.Builder()
@@ -127,18 +160,27 @@ fun WebPlayerScreen(
                 .build()
 
             WebView(context).apply {
+                tag = "amll_player"
                 session.webView = this
                 session.webReady.value = false
                 setBackgroundColor(Color.BLACK)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.textZoom = fontZoom
                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                 // 强制 WebView 读取前端的 Viewport 视口配置
                 settings.useWideViewPort = false
                 settings.loadWithOverviewMode = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
-                webChromeClient = WebChromeClient()
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+                        if (com.example.seteasecloudmusic.BuildConfig.DEBUG && message.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                            android.util.Log.e("AmlWeb", message.message())
+                        }
+                        return true
+                    }
+                }
                 webViewClient = object : WebViewClientCompat() {
                     override fun shouldInterceptRequest(
                         view: WebView,
@@ -172,6 +214,8 @@ fun WebPlayerScreen(
                                     }
                                 }
 
+                                "SHOW_QUEUE" -> currentQueueClick()
+                                "TOGGLE_MODE" -> musicPlayerController.togglePlaybackMode()
                                 "NEXT_TRACK" -> musicPlayerController.playNext()
                                 "PREV_TRACK" -> musicPlayerController.playPrevious()
                                 "SEEK_TO" -> {
@@ -199,6 +243,7 @@ fun WebPlayerScreen(
         update = { webView ->
             // AndroidView 重组时保持当前实例引用，销毁流程仍能准确释放它。
             session.webView = webView
+            if (webView.settings.textZoom != fontZoom) webView.settings.textZoom = fontZoom
         }
     )
 
@@ -256,9 +301,9 @@ fun WebPlayerScreen(
                     session.webReady
                 ) { track, ready -> track to ready }
                     .collectLatest { (track, ready) ->
-                        if (ready && track != null && !session.disposed) {
-                            // track 变化或 WebView 再次 ready 都会触发，防止页面刷新后停留在空白歌词。
-                            dispatchTrackToWeb(track)
+                        if (ready && !session.disposed) {
+                            if (track != null) dispatchTrackToWeb(track)
+                            else dispatchToWeb("SET_TRACK", JSONObject())
                         }
                     }
             }

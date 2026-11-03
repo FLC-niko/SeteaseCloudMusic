@@ -1,255 +1,117 @@
-import React, { useEffect, useState } from "react";
-import { useSetAtom, useAtomValue } from "jotai";
-import * as AMLL from "@applemusic-like-lyrics/react-full";
-import "@applemusic-like-lyrics/react-full/style.css";
+import React, { useEffect, useRef, useState } from "react";
+import { LyricPlayer } from "@applemusic-like-lyrics/react";
+import "@applemusic-like-lyrics/core/style.css";
 import { parseLrc, parseYrc } from "@applemusic-like-lyrics/lyric";
 import { parseTTML } from "@applemusic-like-lyrics/ttml";
-import { postToNative, createBridge } from "./bridge";
-import { Theme } from "@radix-ui/themes";
-import "@radix-ui/themes/styles.css";
+import { createBridge, postToNative } from "./bridge";
+import { resolvePlayerLayout, playbackPosition, formatTime } from "./adaptive";
+import "./player.css";
 
-const demoLrc = `[00:00.00]Setease Cloud Music
-[00:04.00]空间扭曲魔法 2.0 部署完毕！
-[00:08.00]按钮尺寸恢复，封面呈现！`;
-
-// 绝美底层毛玻璃背景
-const AppleMusicBackground = () => {
-  const coverUrl = useAtomValue(AMLL.musicCoverAtom);
-  return (
-    <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden", zIndex: 0 }}>
-      <div style={{
-        position: "absolute", top: "-20%", left: "-20%", width: "140%", height: "140%",
-        backgroundImage: `url(${coverUrl})`, backgroundSize: "cover", backgroundPosition: "center",
-        filter: "blur(60px) saturate(180%)", transition: "background-image 0.5s ease"
-      }} />
-      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0, 0, 0, 0.35)" }} />
-    </div>
-  );
+const emptyTrack = { title: "未在播放", artist: "从音乐库中挑选喜欢的音乐", coverUrl: "", id: null };
+const paths = {
+  play: "M8 5v14l11-7z", pause: "M6 5h4v14H6zm8 0h4v14h-4z",
+  previous: "M6 5h2v14H6zm3 7 11 7V5z", next: "M16 5h2v14h-2zM4 5v14l11-7z",
+  queue: "M4 5h16v2H4zm0 5h12v2H4zm0 5h8v2H4zm12-1v7l6-3.5z",
+  mode: "M7 4 3 8l4 4V9h10v3l4-4-4-4v3H7zm10 8v3H7v-3l-4 4 4 4v-3h10v3l4-4z",
 };
+function Glyph({ name }) { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} /></svg>; }
+function parseLyrics(raw = "") {
+  if (!raw.trim()) return [];
+  try {
+    if (raw.includes("<tt") || raw.includes("<tt:")) return parseTTML(raw).lines;
+    return /^\[\d+,\d+\]/m.test(raw) ? parseYrc(raw) : parseLrc(raw);
+  } catch { return []; }
+}
 
 export default function PlayerApp() {
-  const setLyricLines = useSetAtom(AMLL.musicLyricLinesAtom);
-  const setCurrentTimeMs = useSetAtom(AMLL.musicPlayingPositionAtom);
-  const setPlaying = useSetAtom(AMLL.musicPlayingAtom);
-  const setMusicName = useSetAtom(AMLL.musicNameAtom);
-  const setMusicArtists = useSetAtom(AMLL.musicArtistsAtom);
-  const setMusicCover = useSetAtom(AMLL.musicCoverAtom);
-
-  const setOnPlayOrResume = useSetAtom(AMLL.onPlayOrResumeAtom);
-  const setOnRequestNextSong = useSetAtom(AMLL.onRequestNextSongAtom);
-  const setOnRequestPrevSong = useSetAtom(AMLL.onRequestPrevSongAtom);
-  const setOnSeekPosition = useSetAtom(AMLL.onSeekPositionAtom);
-  const setOnLyricLineClick = useSetAtom(AMLL.onLyricLineClickAtom);
-
-  const setStaticMode = useSetAtom(AMLL.lyricBackgroundStaticModeAtom);
-  const setIsLyricPageOpened = useSetAtom(AMLL.isLyricPageOpenedAtom);
-  const setShowBottomControl = useSetAtom(AMLL.showBottomControlAtom);
-  const setPlayerControlsType = useSetAtom(AMLL.playerControlsTypeAtom);
-  const setLyricSizePreset = useSetAtom(AMLL.lyricSizePresetAtom);
-  const setLyricFontWeight = useSetAtom(AMLL.lyricFontWeightAtom);
-
-  const [mounted, setMounted] = useState(false);
-
-  const currentTimeRef = React.useRef(0);
-  const syncTimeOffsetRef = React.useRef(0);
-  const isPlayingRef = React.useRef(false);
+  const [track, setTrack] = useState(emptyTrack);
+  const [lyrics, setLyrics] = useState([]);
+  const [position, setPosition] = useState(0);
+  const [playback, setPlayback] = useState({ playing: false, durationMs: 0 });
+  const [layout, setLayout] = useState({ width: window.innerWidth, height: window.innerHeight, fold: null });
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [seeking, setSeeking] = useState(null);
+  const sync = useRef({ position: 0, duration: 0, playing: false, at: performance.now() });
+  const mode = resolvePlayerLayout(layout.width, layout.height, layout.fold);
 
   useEffect(() => {
-    let frameId;
-    const ticker = () => {
-      if (isPlayingRef.current) {
-        const now = performance.now();
-        const delta = now - syncTimeOffsetRef.current;
-        setCurrentTimeMs(currentTimeRef.current + delta);
-      }
-      frameId = requestAnimationFrame(ticker);
-    };
-    frameId = requestAnimationFrame(ticker);
-    return () => cancelAnimationFrame(frameId);
-  }, [setCurrentTimeMs]);
-
-  useEffect(() => {
-    setMounted(true);
-    setStaticMode(true);
-    setIsLyricPageOpened(true); // 默认打开歌词页面
-    setShowBottomControl(false);
-    setPlayerControlsType("none");
-
-    // 设置超大字号与极粗字重 (900 Black)，完美契合 Apple Music 移动端超大粗体歌词
-    setLyricSizePreset(AMLL.LyricSizePreset.Huge);
-    setLyricFontWeight(900);
-
-    setOnPlayOrResume(() => () => postToNative({ type: "TOGGLE_PLAY" }));
-    setOnRequestNextSong(() => () => postToNative({ type: "NEXT_TRACK" }));
-    setOnRequestPrevSong(() => () => postToNative({ type: "PREV_TRACK" }));
-    setOnSeekPosition(() => (timeMs) => postToNative({ type: "SEEK_TO", payload: { timeMs } }));
-    setOnLyricLineClick(() => (evt) => {
-      const timeMs = evt?.line?.getLine()?.startTime;
-      if (typeof timeMs === "number") {
-        postToNative({ type: "SEEK_TO", payload: { timeMs } });
+    const resize = () => setLayout(value => ({ ...value, width: window.innerWidth, height: window.innerHeight }));
+    window.addEventListener("resize", resize);
+    const dispose = createBridge(message => {
+      const payload = message?.payload ?? {};
+      if (message.type === "SET_TRACK") {
+        setTrack({ ...emptyTrack, ...payload });
+        setLyrics(parseLyrics(payload.lrc));
+      } else if (message.type === "SET_PLAYBACK") {
+        sync.current = { position: payload.currentTimeMs ?? 0, duration: payload.durationMs ?? 0, playing: !!payload.playing, at: performance.now() };
+        setPlayback(payload);
+        setPosition(sync.current.position);
+      } else if (message.type === "SET_LAYOUT") {
+        setLayout({ width: payload.width, height: payload.height, fold: payload.fold ?? null });
       }
     });
-
-    setLyricLines(parseLrc(demoLrc));
-    setMusicName("Setease Player");
-    setMusicArtists(["Zhao Haixiang"]);
-    setMusicCover("https://picsum.photos/500/500");
-
-    const dispose = createBridge((msg) => {
-      if (!msg?.type) return;
-      switch (msg.type) {
-        case "SET_PLAYBACK":
-          currentTimeRef.current = (msg.payload?.currentTimeMs ?? 0) | 0;
-          syncTimeOffsetRef.current = performance.now();
-          isPlayingRef.current = !!msg.payload?.playing;
-
-          setPlaying(isPlayingRef.current);
-          setCurrentTimeMs(currentTimeRef.current);
-          break;
-        case "SET_TRACK":
-          currentTimeRef.current = 0;
-          syncTimeOffsetRef.current = performance.now();
-          setCurrentTimeMs(0);
-
-          if (typeof msg.payload?.lrc === "string") {
-            const raw = msg.payload.lrc.trim();
-            if (raw) {
-              if (raw.startsWith("<tt") || raw.includes("<tt ") || raw.includes("<div")) {
-                try {
-                  setLyricLines(parseTTML(raw));
-                } catch {
-                  setLyricLines(parseLrc(raw));
-                }
-              } else if (raw.includes("(") && raw.includes(")") && raw.includes("[")) {
-                try {
-                  setLyricLines(parseYrc(raw));
-                } catch {
-                  setLyricLines(parseLrc(raw));
-                }
-              } else {
-                setLyricLines(parseLrc(raw));
-              }
-            } else {
-              setLyricLines(parseLrc(demoLrc));
-            }
-          }
-          if (msg.payload?.title) setMusicName(msg.payload.title);
-          if (msg.payload?.artist) setMusicArtists([msg.payload.artist]);
-          if (msg.payload?.coverUrl) setMusicCover(msg.payload.coverUrl);
-          break;
-      }
-    });
-
     postToNative({ type: "WEB_READY" });
-    return () => dispose();
+    return () => { dispose(); window.removeEventListener("resize", resize); };
   }, []);
 
-  return (
-    <Theme appearance="dark" style={{ width: "100%", height: "100%" }}>
-      <style>{`
-        html, body, #root {
-          width: 100vw;
-          height: 100vh;
-          margin: 0;
-          padding: 0;
-          overflow: hidden;
-          background: #000;
-          touch-action: none;
-        }
+  useEffect(() => {
+    if (!playback.playing) return;
+    let frame;
+    const tick = () => { setPosition(playbackPosition(sync.current, performance.now())); frame = requestAnimationFrame(tick); };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playback.playing]);
 
-        /* 隐藏 react-full 内置的重型 Pixi 背景以提升 WebView 渲染性能 */
-        ._8f42YG_background {
-          display: none !important;
-          opacity: 0 !important;
-        }
-
-        /* 全局穿透强制设置超大歌词字号与极致加粗 (900 Heavy) */
-        :root {
-          --amll-lp-font-size: clamp(30px, 4.2vh, 42px) !important;
-        }
-
-        .amll-lyric-player {
-          --amll-lp-font-size: clamp(30px, 4.2vh, 42px) !important;
-          font-size: clamp(30px, 4.2vh, 42px) !important;
-          font-weight: 900 !important;
-          -webkit-text-stroke: 0.5px currentColor;
-          letter-spacing: -0.015em !important;
-        }
-
-        .amll-lyric-player * {
-          box-sizing: border-box !important;
-        }
-
-        /* 舒展适中的行距与内边距控制 */
-        [class*="lyricLine"],
-        .FmKaba_lyricLine,
-        .KxF9Iq_lyricLine {
-          font-size: clamp(30px, 4.2vh, 42px) !important;
-          font-weight: 900 !important;
-          -webkit-text-stroke: 0.5px currentColor;
-          line-height: 1.22em !important;
-          padding: 5px 18px !important;
-          margin: 0 !important;
-          height: auto !important;
-          min-height: 0 !important;
-        }
-
-        [class*="lyricMainLine"],
-        .FmKaba_lyricMainLine,
-        .KxF9Iq_lyricMainLine {
-          font-size: inherit !important;
-          font-weight: inherit !important;
-          line-height: 1.22em !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-
-        /* 彻底清除 AMLL 原生样式中 span 的 1em 外扩边距（杜绝容器被撑高） */
-        [class*="lyricMainLine"] span,
-        [class*="lyricMainLine"] > span,
-        .FmKaba_lyricMainLine span,
-        .FmKaba_wordBody,
-        .FmKaba_emphasizeWrapper,
-        .FmKaba_emphasize,
-        .KxF9Iq_lyricMainLine span {
-          margin: 0 !important;
-          padding: 0 !important;
-          line-height: inherit !important;
-        }
-
-        /* 隐藏无内容的副歌词（翻译/音译行），杜绝幽灵高度 */
-        [class*="lyricSubLine"]:empty,
-        .FmKaba_lyricSubLine:empty,
-        .KxF9Iq_lyricSubLine:empty {
-          display: none !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          height: 0 !important;
-          min-height: 0 !important;
-        }
-
-        [class*="lyricSubLine"]:not(:empty),
-        .FmKaba_lyricSubLine:not(:empty),
-        .KxF9Iq_lyricSubLine:not(:empty) {
-          font-size: clamp(15px, 2.2vh, 22px) !important;
-          font-weight: 600 !important;
-          line-height: 1.2em !important;
-          opacity: 0.75 !important;
-          margin-top: 4px !important;
-          padding: 0 !important;
-        }
-      `}</style>
-
-      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-        <AppleMusicBackground />
-        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 1 }}>
-          {mounted && (
-            <AMLL.PrebuiltLyricPlayer
-              style={{ width: "100%", height: "100%" }}
-            />
-          )}
-        </div>
-      </div>
-    </Theme>
-  );
+  const seek = timeMs => {
+    sync.current = { ...sync.current, position: timeMs, at: performance.now() };
+    setPosition(timeMs);
+    postToNative({ type: "SEEK_TO", payload: { timeMs } });
+  };
+  const controls = <div className="controls">
+    <input className="seek" aria-label="播放进度" type="range" min="0" max={Math.max(1, playback.durationMs ?? 0)}
+      value={seeking ?? position} disabled={!track.id || !playback.durationMs}
+      onChange={event => setSeeking(Number(event.target.value))}
+      onPointerCancel={() => setSeeking(null)}
+      onPointerUp={event => { seek(Number(event.currentTarget.value)); setSeeking(null); }}
+      onKeyUp={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { seek(Number(event.currentTarget.value)); setSeeking(null); } }} />
+    <div className="times"><span>{formatTime(seeking ?? position)}</span><span>-{formatTime(Math.max(0, (playback.durationMs ?? 0) - (seeking ?? position)))}</span></div>
+    <div className="transport">
+      <button aria-label="切换播放模式" disabled={!track.id} onClick={() => postToNative({ type: "TOGGLE_MODE" })}><Glyph name="mode" /></button>
+      <button aria-label="上一首" disabled={!track.id} onClick={() => postToNative({ type: "PREV_TRACK" })}><Glyph name="previous" /></button>
+      <button className="play" aria-label={playback.playing ? "暂停" : "播放"} disabled={!track.id} onClick={() => postToNative({ type: "TOGGLE_PLAY" })}><Glyph name={playback.playing ? "pause" : "play"} /></button>
+      <button aria-label="下一首" disabled={!track.id} onClick={() => postToNative({ type: "NEXT_TRACK" })}><Glyph name="next" /></button>
+      <button aria-label="播放队列" onClick={() => postToNative({ type: "SHOW_QUEUE" })}><Glyph name="queue" /></button>
+    </div>
+  </div>;
+  const paneStyle = side => {
+    const fold = layout.fold;
+    if (mode === "book") return side === "primary"
+      ? { left: 0, top: 0, width: Math.max(0, fold.left - 12), height: "100%" }
+      : { left: fold.right + 12, top: 0, right: 0, height: "100%" };
+    if (mode === "tabletop") return side === "primary"
+      ? { left: 0, top: 0, width: "100%", height: Math.max(0, fold.top - 12) }
+      : { left: 0, top: fold.bottom + 12, width: "100%", bottom: 0 };
+    return undefined;
+  };
+  return <main className={`player ${mode} ${showLyrics ? "show-lyrics" : ""}`} data-layout={mode}>
+    <div className="player-background" style={{ backgroundImage: track.coverUrl ? `url(${JSON.stringify(track.coverUrl)})` : undefined }} />
+    <div className="player-content">
+      <section className="album-pane" style={paneStyle("primary")} aria-label="封面与播放控制">
+        <p className="eyebrow">NOW PLAYING · 正在播放</p>
+        <div className="artwork-space">{track.coverUrl ? <img className="artwork" src={track.coverUrl} alt="专辑封面" /> : <div className="artwork artwork-placeholder">♫</div>}</div>
+        <div className="track-caption"><h1>{track.title}</h1><p>{track.artist}</p></div>
+        {mode !== "tabletop" && controls}
+        <button className="mobile-toggle" onClick={() => setShowLyrics(true)}>查看歌词</button>
+      </section>
+      <section className="lyrics-pane" style={paneStyle("secondary")} aria-label="歌词">
+        <p className="lyrics-heading">LYRICS · 歌词</p>
+        {mode === "tabletop" && controls}
+        {lyrics.length > 0 ? <LyricPlayer className="lyrics-viewport" lyricLines={lyrics} currentTime={Math.round(position)} playing={!!playback.playing}
+          alignAnchor="center" alignPosition={0.35} enableSpring enableScale enableBlur
+          onLyricLineClick={event => seek(event.line.getLine().startTime)} /> : <div className="empty-lyrics">{track.id ? "暂无歌词" : "选择一首音乐，开始聆听"}</div>}
+        {mode === "compact" && controls}
+        <button className="mobile-toggle" onClick={() => setShowLyrics(false)}>返回封面</button>
+      </section>
+    </div>
+  </main>;
 }

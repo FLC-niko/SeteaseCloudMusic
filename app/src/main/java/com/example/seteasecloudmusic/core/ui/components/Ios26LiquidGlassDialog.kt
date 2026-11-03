@@ -28,6 +28,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveOverlayPane
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -111,10 +115,12 @@ fun Ios26LiquidGlassDialog(
                 },
             contentAlignment = Alignment.Center
         ) {
+            AdaptiveOverlayPane(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
             // 弹窗主卡片容器（阻止事件穿透）
             Box(
                 modifier = modifier
-                    .width(320.dp)
+                    .widthIn(max = 360.dp).fillMaxWidth().verticalScroll(rememberScrollState())
                     .pointerInput(Unit) {
                         detectTapGestures { /* 拦截点击，防止点击弹窗关闭 */ }
                     }
@@ -257,6 +263,8 @@ fun Ios26LiquidGlassDialog(
                 }
             }
         }
+    }
+    }
     }
 }
 

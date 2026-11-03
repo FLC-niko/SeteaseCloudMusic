@@ -16,6 +16,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.seteasecloudmusic.core.ui.adaptive.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -48,7 +50,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material3.AlertDialog
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -135,7 +137,7 @@ fun MineScreen(
 ) {
     val context = LocalContext.current
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    var showDirectoryDialog by remember { mutableStateOf(false) }
+    var showDirectoryDialog by rememberSaveable { mutableStateOf(false) }
 
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -176,6 +178,7 @@ fun MineScreen(
     // 不要在 AppNavigation 的全局 layerBackdrop 中再次采样同一个 Backdrop。
     // “我的”页面只采集自己的静态氛围背景，玻璃卡片从这张局部纹理取景，
     // 这样既保留液态玻璃效果，也避免渲染反馈导致点击页面后主线程/渲染线程卡死。
+    val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
     val mineBackdrop = rememberLayerBackdrop {
         drawRect(MinePageBase)
         drawContent()
@@ -185,7 +188,11 @@ fun MineScreen(
     // 关掉系统边缘拉伸。实测为负优化（50 分位帧耗时 13ms → 17ms）：关掉后本页的
     // verticalElasticOverscroll 才开始生效，而它用 graphicsLayer 平移整个 LazyColumn，
     // 代价高于系统拉伸。
-    Box(modifier = modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    val window = LocalAdaptiveWindow.current
+    val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
+    val libraryContent: @Composable () -> Unit = {
+    Box(Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -424,6 +431,7 @@ fun MineScreen(
         )
     }
 
+    if (!split) {
     AnimatedVisibility(
         visible = uiState.activePlaylistDetail != null,
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -434,6 +442,7 @@ fun MineScreen(
             PlaylistDetailScreen(
                 detail = detail,
                 isLoading = uiState.isLoadingDetail,
+                listState = detailListState,
                 backdrop = mineBackdrop,
                 onClose = onCloseDetail,
                 onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
@@ -441,7 +450,26 @@ fun MineScreen(
             )
         }
     }
+    }    }
     }
+    if (split) {
+        AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.4f, gap = 12.dp,
+            primary = libraryContent,
+            secondary = {
+                val detail = uiState.activePlaylistDetail
+                if (detail != null) {
+                    PlaylistDetailScreen(detail = detail, backdrop = mineBackdrop, onClose = onCloseDetail,
+                        onPlayTrack = { onPlayTrack(it, detail.tracks) }, onPlayAll = { onPlayAll(detail.tracks) },
+                        isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
+                } else {
+                    Box(Modifier.fillMaxSize().padding(top = statusBarHeight + 12.dp, bottom = bottomContentPadding)) {
+                        MusicDetailPlaceholder()
+                    }
+                }
+            })
+    } else libraryContent()
+    }
+
 }
 
 /**
@@ -1035,7 +1063,7 @@ private fun ChangeLocalDirectoryDialog(
         "/sdcard/Music"
     )
 
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "设置音乐扫描目录", fontWeight = FontWeight.Bold) },
         text = {

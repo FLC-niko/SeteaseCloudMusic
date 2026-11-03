@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
-    "postinstall": "patch-package"
+    "build": "node build.mjs",
+    "postinstall": "patch-package",
+    "test": "node --test src/player/*.test.js"
   },
   "dependencies": {
     "@applemusic-like-lyrics/core": "^0.4.1",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
+    "patch-package": "^8.0.1",
     "vite": "^5.4.10"
   }
 }

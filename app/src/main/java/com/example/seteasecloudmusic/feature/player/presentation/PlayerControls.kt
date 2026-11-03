@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,228 +91,58 @@ fun PlayerControls(
         0
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp)
-    ) {
-        // 1. 丝滑可点可拖进度条（零延迟跟手 + 拖拽时两端时间实时高频联动）
-        SmoothProgressBar(
-            progress = displayProgress,
-            isDragging = isDragging,
-            durationMs = durationMs,
-            enabled = hasTrack && durationMs > 0,
-            onSeekTo = onSeekTo,
-            onDragUpdate = { dragging, frac ->
-                isDragging = dragging
-                dragProgress = frac
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val narrow = maxWidth < 340.dp
+        val modeButton: @Composable () -> Unit = {
+            IconButton(onTogglePlaybackMode, enabled = hasTrack, modifier = Modifier.size(48.dp)) {
+                Icon(if (playbackMode == PlaybackMode.SHUFFLE) Icons.Filled.Shuffle else Icons.Filled.Repeat,
+                    "切换播放模式", tint = Color.White.copy(alpha = if (hasTrack) 0.72f else 0.25f), modifier = Modifier.size(22.dp))
             }
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 2. 时间指示（当前时间 / 剩余时间）
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = if (hasTrack) formatTime(displayCurrentMs) else "00:00",
-                color = if (isDragging && hasTrack) Color.White else Color.White.copy(alpha = if (hasTrack) 0.65f else 0.40f),
-                fontSize = 12.sp,
-                fontWeight = if (isDragging && hasTrack) FontWeight.Bold else FontWeight.Normal
-            )
-            Text(
-                text = if (hasTrack && durationMs > 0) {
-                    "-" + formatTime((durationMs - displayCurrentMs).coerceAtLeast(0))
-                } else {
-                    "--:--"
-                },
-                color = if (isDragging && hasTrack) Color.White else Color.White.copy(alpha = if (hasTrack) 0.65f else 0.40f),
-                fontSize = 12.sp,
-                fontWeight = if (isDragging && hasTrack) FontWeight.Bold else FontWeight.Normal
-            )
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 3. 核心主控制按键（播放模式切换、上一首、播放/暂停、下一首、音质选择胶囊）
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 播放模式切换按钮（顺序循环 / 随机播放）
-            IconButton(
-                onClick = onTogglePlaybackMode,
-                enabled = hasTrack,
-                modifier = Modifier.size(46.dp)
-            ) {
-                Icon(
-                    imageVector = if (playbackMode == PlaybackMode.SHUFFLE) Icons.Filled.Shuffle else Icons.Filled.Repeat,
-                    contentDescription = if (playbackMode == PlaybackMode.SHUFFLE) "当前：随机播放" else "当前：顺序播放",
-                    tint = if (!hasTrack) {
-                        Color.White.copy(alpha = 0.35f)
-                    } else if (playbackMode == PlaybackMode.SHUFFLE) {
-                        Color(0xFFFA233B)
-                    } else {
-                        Color.White.copy(alpha = 0.85f)
-                    },
-                    modifier = Modifier.size(24.dp)
-                )
+        val qualityButton: @Composable () -> Unit = {
+            IconButton(onSelectQualityClick, enabled = hasTrack && !isLocalTrack, modifier = Modifier.size(48.dp)) {
+                Text(if (isLocalTrack) "本地" else currentQuality.title, color = Color.White.copy(alpha = if (hasTrack) 0.72f else 0.25f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-
-            // 上一首
-            IconButton(
-                onClick = onPrevious,
-                enabled = hasTrack,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SkipPrevious,
-                    contentDescription = "上一首",
-                    tint = if (hasTrack) Color.White else Color.White.copy(alpha = 0.25f),
-                    modifier = Modifier.size(34.dp)
-                )
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal = if (narrow) 12.dp else 24.dp, vertical = 8.dp)) {
+            SmoothProgressBar(displayProgress, isDragging, durationMs, hasTrack && durationMs > 0, onSeekTo) { dragging, fraction ->
+                isDragging = dragging
+                dragProgress = fraction
             }
-
-            // 播放 / 暂停
-            val playScale by animateFloatAsState(
-                targetValue = if (isPlaying) 1.0f else 1.05f,
-                animationSpec = spring(stiffness = 400f),
-                label = "playScale"
-            )
-            Box(
-                modifier = Modifier
-                    .size(68.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f))
-                    .padding(4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.size(60.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
-                        tint = Color.White,
-                        modifier = Modifier.size(38.dp)
-                    )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(if (hasTrack) formatTime(displayCurrentMs) else "00:00", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp)
+                Text(if (hasTrack && durationMs > 0) "-" + formatTime((durationMs - displayCurrentMs).coerceAtLeast(0)) else "--:--", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                if (!narrow) modeButton()
+                IconButton(onPrevious, enabled = hasTrack, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.SkipPrevious, "上一首", Modifier.size(32.dp), tint = Color.White.copy(alpha = if (hasTrack) 1f else 0.25f))
+                }
+                IconButton(onPlayPause, enabled = hasTrack, modifier = Modifier.size(60.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f))) {
+                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (isPlaying) "暂停" else "播放", Modifier.size(36.dp), tint = Color.White.copy(alpha = if (hasTrack) 1f else 0.25f))
+                }
+                IconButton(onNext, enabled = hasTrack, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.SkipNext, "下一首", Modifier.size(32.dp), tint = Color.White.copy(alpha = if (hasTrack) 1f else 0.25f))
+                }
+                if (!narrow) qualityButton()
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                if (narrow) modeButton()
+                IconButton({ onToggleLyrics?.invoke() }, enabled = hasTrack && onToggleLyrics != null,
+                    modifier = Modifier.size(48.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(if (isLyricsPage) Color.White.copy(alpha = 0.12f) else Color.Transparent)) {
+                    Icon(Icons.Filled.ChatBubble, "歌词", Modifier.size(21.dp), tint = Color.White.copy(alpha = if (hasTrack) 0.75f else 0.25f))
+                }
+                if (narrow) qualityButton()
+                else Icon(Icons.Filled.Headphones, "音频输出", Modifier.size(21.dp), tint = Color.White.copy(alpha = 0.35f))
+                IconButton({ onQueueClick?.invoke() }, enabled = onQueueClick != null, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.QueueMusic, "待播清单", Modifier.size(23.dp), tint = Color.White.copy(alpha = 0.75f))
                 }
             }
-
-            // 下一首
-            IconButton(
-                onClick = onNext,
-                enabled = hasTrack,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SkipNext,
-                    contentDescription = "下一首",
-                    tint = if (hasTrack) Color.White else Color.White.copy(alpha = 0.25f),
-                    modifier = Modifier.size(34.dp)
-                )
-            }
-
-            // 4. 音质显示与切换纯文字按钮（本地播放时显示“本地”且不可点击；在线播放时显示当前音质并支持点击切换）
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .then(
-                        if (!isLocalTrack && hasTrack) {
-                            Modifier
-                                .clip(CircleShape)
-                                .clickable(onClick = onSelectQualityClick)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (isLocalTrack) "本地" else currentQuality.title,
-                    color = if (!hasTrack) {
-                        Color.White.copy(alpha = 0.35f)
-                    } else if (isLocalTrack) {
-                        Color.White.copy(alpha = 0.50f)
-                    } else {
-                        Color.White.copy(alpha = 0.90f)
-                    },
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
         }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // 4. Apple Music 底部操作栏（歌词切换按钮、音频输出指示、待播清单按钮）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 歌词切换按键 (Apple Music 风格气泡按键)
-            IconButton(
-                onClick = { onToggleLyrics?.invoke() },
-                enabled = hasTrack && onToggleLyrics != null,
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                    .background(
-                        if (isLyricsPage) Color.White.copy(alpha = 0.22f) else Color.Transparent
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.ChatBubble,
-                    contentDescription = "歌词",
-                    tint = if (!hasTrack) {
-                        Color.White.copy(alpha = 0.25f)
-                    } else if (isLyricsPage) {
-                        Color.White
-                    } else {
-                        Color.White.copy(alpha = 0.65f)
-                    },
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // 中间音频输出指示 (Apple Music 风格耳机/AirPlay)
-            IconButton(
-                onClick = {},
-                enabled = false,
-                modifier = Modifier.size(38.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Headphones,
-                    contentDescription = "音频输出",
-                    tint = Color.White.copy(alpha = 0.40f),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            // 右侧待播清单列表按键
-            IconButton(
-                onClick = { onQueueClick?.invoke() },
-                enabled = onQueueClick != null,
-                modifier = Modifier.size(38.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                    contentDescription = "待播清单",
-                    tint = Color.White.copy(alpha = if (onQueueClick != null) 0.65f else 0.40f),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
     }
+
 }
 
 /**

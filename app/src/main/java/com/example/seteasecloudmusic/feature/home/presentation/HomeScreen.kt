@@ -8,6 +8,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.example.seteasecloudmusic.core.ui.adaptive.*
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -133,7 +136,7 @@ fun HomeRoute(
 }
 
 @Composable
-private fun HomeScreenContent(
+internal fun HomeScreenContent(
     uiState: HomeUiState,
     topContentPadding: Dp,
     bottomContentPadding: Dp,
@@ -158,7 +161,8 @@ private fun HomeScreenContent(
             .fillMaxSize()
             .background(HomeBackground)
     ) {
-        LazyColumn(
+        AdaptiveContent {
+        AdaptiveSectionColumn(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
@@ -168,7 +172,7 @@ private fun HomeScreenContent(
                 bottom = bottomContentPadding
             )
         ) {
-            item(key = "large_page_title") {
+            item(key = "large_page_title", fullSpan = true) {
                 AppleMusicLargeTitle(
                     title = "首页",
                     collapseFraction = collapseFractionState.value,
@@ -183,7 +187,7 @@ private fun HomeScreenContent(
             }
 
             if (uiState.isLoading && uiState.tracks.isEmpty()) {
-                item(key = "home_top_loading") {
+                item(key = "home_top_loading", fullSpan = true) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -200,7 +204,7 @@ private fun HomeScreenContent(
             }
 
             if (!uiState.errorMessage.isNullOrBlank()) {
-                item(key = "home_error_message") {
+                item(key = "home_error_message", fullSpan = true) {
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
@@ -260,7 +264,7 @@ private fun HomeScreenContent(
             }
 
             // 2. 最下面区域：「推荐歌单」—— 始终展示
-            item(key = "big_card_playlists_section") {
+            item(key = "big_card_playlists_section", fullSpan = true) {
                 BigCardPlaylistsSection(
                     tracks = uiState.tracks,
                     favoriteTracks = uiState.favoriteTracks,
@@ -282,6 +286,7 @@ private fun HomeScreenContent(
             }
         }
 
+        }
         // 覆盖在顶部的 Apple Music 风格渐变模糊导航栏（轻量级磨砂玻璃，滑动零开销）
         HomeCollapsedTopBar(
             collapseFractionProvider = { collapseFractionState.value },
@@ -332,6 +337,7 @@ private fun DailyRecommendPosterWall(
 
     Box(
         modifier = modifier
+            .heightIn(max = if (LocalAdaptiveWindow.current.width >= 600.dp) 380.dp else Dp.Unspecified)
             .aspectRatio(1.08f)
             .clip(RoundedCornerShape(24.dp))
             .background(PosterWallSurface)
@@ -784,6 +790,12 @@ private fun FavoriteRecommendedSongsSection(
 
         HorizontalPager(
             state = pagerState,
+            pageSize = object : PageSize {
+                override fun androidx.compose.ui.unit.Density.calculateMainAxisPageSize(availableSpace: Int, pageSpacing: Int): Int {
+                    val columns = (availableSpace / 300.dp.roundToPx()).coerceAtLeast(1)
+                    return (availableSpace - pageSpacing * (columns - 1)) / columns
+                }
+            },
             contentPadding = PaddingValues(start = 20.dp, end = 44.dp),
             pageSpacing = 16.dp,
             modifier = Modifier.fillMaxWidth()

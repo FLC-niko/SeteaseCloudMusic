@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.radio.presentation
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.AnimatedVisibility
@@ -12,6 +13,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -138,7 +141,7 @@ fun RadioRoute(
 }
 
 @Composable
-private fun RadioScreenContent(
+internal fun RadioScreenContent(
     uiState: RadioUiState,
     topContentPadding: Dp,
     bottomContentPadding: Dp,
@@ -166,17 +169,22 @@ private fun RadioScreenContent(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
     )
+    val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
     val radioBackdrop = rememberLayerBackdrop {
         drawContent()
     }
 
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val window = LocalAdaptiveWindow.current
+    val split = uiState.activePlaylistDetail != null && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
+    val feed: @Composable () -> Unit = {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(RadioBackground)
             .layerBackdrop(radioBackdrop)
     ) {
-        LazyColumn(
+        AdaptiveSectionColumn(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
@@ -187,7 +195,7 @@ private fun RadioScreenContent(
             )
         ) {
             // 大标题
-            item(key = "radio_large_title") {
+            item(key = "radio_large_title", fullSpan = true) {
                 AppleMusicLargeTitle(
                     title = "电台",
                     collapseFraction = collapseFractionState.value,
@@ -202,7 +210,7 @@ private fun RadioScreenContent(
             }
 
             if (uiState.isLoading) {
-                item(key = "radio_loading") {
+                item(key = "radio_loading", fullSpan = true) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -219,7 +227,7 @@ private fun RadioScreenContent(
             }
 
             if (!uiState.errorMessage.isNullOrBlank()) {
-                item(key = "radio_error") {
+                item(key = "radio_error", fullSpan = true) {
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
@@ -263,7 +271,7 @@ private fun RadioScreenContent(
                         items = uiState.toplists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.name, item.coverUrl) },
                         onPlayClick = onPlayToplist,
-                        modifier = Modifier.padding(top = 12.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 12.dp)
                     )
                 }
             }
@@ -277,7 +285,7 @@ private fun RadioScreenContent(
                         items = uiState.radarPlaylists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayRadar,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -288,7 +296,7 @@ private fun RadioScreenContent(
                     RoamSection(
                         items = uiState.roamItems,
                         onItemClick = onPlayRoam,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -301,7 +309,7 @@ private fun RadioScreenContent(
                         onSingerClick = { artist ->
                             onArtistClick?.invoke(artist.id, artist.name, artist.avatarUrl)
                         },
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -313,7 +321,7 @@ private fun RadioScreenContent(
                         items = uiState.recommendedPlaylists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayPlaylist,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -324,7 +332,7 @@ private fun RadioScreenContent(
                     ArtistHotSection(
                         sectionData = uiState.artistHotSection,
                         onItemClick = onPlayArtistHot,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -336,7 +344,7 @@ private fun RadioScreenContent(
                         items = uiState.trends,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayTrend,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -348,7 +356,7 @@ private fun RadioScreenContent(
                         items = uiState.moodPlaylists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayMood,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
@@ -359,13 +367,13 @@ private fun RadioScreenContent(
                     FollowedArtistSection(
                         sectionData = uiState.followedArtistSection,
                         onItemClick = onPlayFollowedNewSong,
-                        modifier = Modifier.padding(top = 26.dp)
+                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
                     )
                 }
             }
 
             // 底部间距
-            item(key = "radio_bottom_spacer") {
+            item(key = "radio_bottom_spacer", fullSpan = true) {
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }
@@ -388,6 +396,7 @@ private fun RadioScreenContent(
         )
 
         // 歌单详情层（类似我的喜欢歌单页面）
+        if (!split) {
         AnimatedVisibility(
             visible = uiState.activePlaylistDetail != null,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -400,6 +409,7 @@ private fun RadioScreenContent(
                 PlaylistDetailScreen(
                     detail = detail,
                     isLoading = uiState.isLoadingDetail,
+                    listState = detailListState,
                     backdrop = radioBackdrop,
                     onClose = onClosePlaylistDetail,
                     onPlayTrack = { track -> onPlayTrackInPlaylist(track, detail.tracks) },
@@ -407,7 +417,21 @@ private fun RadioScreenContent(
                 )
             }
         }
+    }    }
     }
+    if (split) {
+        AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.44f, gap = 12.dp,
+            primary = feed,
+            secondary = {
+                uiState.activePlaylistDetail?.let { detail ->
+                    PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
+                        { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
+                        isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
+                }
+            })
+    } else AdaptiveContent { feed() }
+    }
+
 }
 
 // =========================================================================

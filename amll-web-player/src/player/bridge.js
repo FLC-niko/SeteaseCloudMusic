@@ -37,8 +37,10 @@ export function createBridge(onNativeMessage) {
     onNativeMessage(e.data);
   };
   window.addEventListener("message", onWindowMessage);
+  window.__scmBridgeReady = true;
 
   return () => {
+    window.__scmBridgeReady = false;
     window.removeEventListener("scm-native-message", onCustomEvent);
     window.removeEventListener("message", onWindowMessage);
   };
