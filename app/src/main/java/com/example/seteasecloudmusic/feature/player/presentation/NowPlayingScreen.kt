@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -22,6 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
 import com.example.seteasecloudmusic.core.settings.PlayerStyle
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun NowPlayingScreen(
@@ -34,6 +41,13 @@ fun NowPlayingScreen(
     val playerStyle by playerViewModel.playerSettingsManager.playerStyle.collectAsStateWithLifecycle()
 
     var showQueue by rememberSaveable { mutableStateOf(false) }
+    val trackFlow = remember(playerViewModel) { playerViewModel.playbackState.map { it.currentTrack }.distinctUntilChanged() }
+    val track by trackFlow.collectAsStateWithLifecycle(initialValue = playerViewModel.playbackState.value.currentTrack)
+    val background = rememberLayerBackdrop { drawContent() }
+    Box(Modifier.fillMaxSize()) {
+    PlayerBackdrop(track, Modifier.layerBackdrop(background))
+    // Menus opened above playback sample the album light, not the home page hidden underneath it.
+    CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
     when (playerStyle) {
         PlayerStyle.AMLL_WEB -> {
             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF141419)).systemBarsPadding()) {
@@ -79,5 +93,6 @@ fun NowPlayingScreen(
         PlaylistQueueSheet(state, playerViewModel::playQueueTrackAt, playerViewModel::removeQueueTrackAt,
             playerViewModel::clearQueue, playerViewModel::togglePlaybackMode, { showQueue = false })
     }
-
+    }
+    }
 }

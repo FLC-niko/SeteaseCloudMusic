@@ -973,7 +973,8 @@ fun AppNavigation(
                 backdrop = backdrop,
                 onDismissRequest = { showAccountSheet = false },
                 onDismissed = { mountAccountOverlay = false },
-                viewModel = authViewModel
+                viewModel = authViewModel,
+                modifier = Modifier.zIndex(12f)
             )
         }
 

@@ -14,6 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -71,14 +75,21 @@ fun AdaptiveModalSheet(
             modifier = modifier) { content() }
     } else {
         Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(
+            var appeared by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { appeared = true }
+            val reveal by animateFloatAsState(if (appeared) 1f else 0f,
+                spring(dampingRatio = 0.82f, stiffness = 500f), label = "glassSheetReveal")
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismissRequest)) {
                 AdaptiveOverlayPane(Modifier.fillMaxSize().systemBarsPadding()) {
-                    Surface(modifier.align(Alignment.CenterEnd).padding(20.dp).widthIn(max = 520.dp)
-                        .fillMaxWidth().fillMaxHeight(0.92f).clickable(
-                            interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
-                        shape = RoundedCornerShape(28.dp), color = containerColor, shadowElevation = 24.dp) {
-                        content()
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        LiquidGlassPanel(modifier.align(Alignment.CenterEnd).padding(20.dp).widthIn(max = 460.dp)
+                            .fillMaxWidth().heightIn(max = (maxHeight - 40.dp).coerceAtLeast(0.dp))
+                            .graphicsLayer { alpha = reveal; scaleX = 0.94f + 0.06f * reveal; scaleY = scaleX }
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+                            containerColor = containerColor) {
+                            content()
+                        }
                     }
                 }
             }
@@ -99,7 +110,7 @@ fun AdaptiveAlertDialog(
     Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         AdaptiveOverlayPane(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
-                Surface(Modifier.widthIn(max = 440.dp).fillMaxWidth(), shape = shape, color = containerColor, tonalElevation = 6.dp) {
+                val body: @Composable () -> Unit = {
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         title?.invoke()
                         text?.invoke()
@@ -108,6 +119,11 @@ fun AdaptiveAlertDialog(
                             confirmButton()
                         }
                     }
+                }
+                if (LocalAdaptiveWindow.current.width >= 600.dp || LocalAdaptiveWindow.current.separatingFold != null) {
+                    LiquidGlassPanel(Modifier.widthIn(max = 440.dp).fillMaxWidth(), containerColor = containerColor) { body() }
+                } else {
+                    Surface(Modifier.widthIn(max = 440.dp).fillMaxWidth(), shape = shape, color = containerColor, tonalElevation = 6.dp) { body() }
                 }
             }
         }
