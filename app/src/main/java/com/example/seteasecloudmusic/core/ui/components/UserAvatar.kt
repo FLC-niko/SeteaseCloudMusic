@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -154,6 +156,7 @@ fun UserAvatarButton(
     Box(
         modifier = modifier
             .size(size)
+            .semantics { contentDescription = "打开账户" }
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale

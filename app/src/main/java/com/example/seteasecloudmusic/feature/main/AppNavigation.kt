@@ -87,6 +87,9 @@ import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
 import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
 import com.example.seteasecloudmusic.core.ui.components.Ios26NetworkOfflineDialog
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
+import com.example.seteasecloudmusic.core.ui.components.liquidGlassPanel
 import com.example.seteasecloudmusic.core.ui.components.GlassDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
@@ -223,7 +226,7 @@ fun AppNavigation(
 ) {
     val window = LocalAdaptiveWindow.current
     val useRail = window.useNavigationRail && !window.isBook
-    val railPadding = if (useRail) 88.dp else 0.dp
+    val railPadding = if (useRail) 104.dp else 0.dp
     val navigationState: AppNavigationState = viewModel()
     val searchViewModel: SearchViewModel = hiltViewModel()
     val playerViewModel: PlayerViewModel = hiltViewModel()
@@ -420,22 +423,21 @@ fun AppNavigation(
     val hintScale = 1f - 0.05f * hintProgress
 
     // 2. 【舞台】：整个屏幕的根容器，使用 Box 以支持 Z 轴方向的层叠排列
-    CompositionLocalProvider(LocalContentBottomPadding provides (if (useRail) 88.dp else 150.dp)) {
+    CompositionLocalProvider(LocalGlassBackdrop provides backdrop,
+        LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp)) {
     Box(modifier = Modifier.fillMaxSize()) {
-        if (useRail) {
-            MusicNavigationRail(selectedIndexState.intValue) { selectedIndexState.intValue = it }
-        }
         // --- 底层内容区域 ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = railPadding)
                 // 监听列表滚动驱动底栏与迷你播放器变动
                 .nestedScroll(navigationScroll.nestedScrollConnection)
                 // 这里是毛玻璃的“取景层”。
                 // 被包进来的内容会先渲染到底层纹理，再提供给上面的导航栏做模糊采样。
                 .layerBackdrop(backdrop)
         ) {
+            if (useRail) ExpandedChromeBackground()
+            Box(Modifier.fillMaxSize().padding(start = railPadding)) {
             AppPageContent(
                 selectedIndex = selectedIndexState,
                 topContentPadding = searchContentTopPadding,
@@ -458,6 +460,10 @@ fun AppNavigation(
                 radioListState = radioListState,
                 mineListState = mineListState
             )
+            }
+        }
+        if (useRail && dailyRecommendState == null && selectedArtist == null && !showNowPlaying) {
+            MusicNavigationRail(selectedIndexState.intValue, { selectedIndexState.intValue = it }, backdrop)
         }
 
         Box(Modifier.fillMaxWidth().padding(start = railPadding)) {
@@ -474,9 +480,15 @@ fun AppNavigation(
 
         }
         if (useRail && isSearchExpanded) {
-            Box(Modifier.fillMaxWidth().padding(start = railPadding + 24.dp, end = 24.dp)
-                .statusBarsPadding().padding(top = 68.dp).height(48.dp).background(Color(0xFFF1F1F5), RoundedCornerShape(16.dp))) {
-                SearchQueryInputContent(searchViewModel, enabled = true, modifier = Modifier.padding(horizontal = 16.dp))
+            Box(Modifier.fillMaxWidth().padding(start = railPadding + 20.dp, end = 20.dp)
+                .statusBarsPadding().padding(top = 68.dp), contentAlignment = Alignment.TopCenter) {
+                LiquidGlassPanel(Modifier.widthIn(max = 680.dp).fillMaxWidth().height(54.dp), cornerRadius = 27.dp) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_nav_search), null, Modifier.size(20.dp), tint = Color(0xFFFA233B))
+                        Spacer(Modifier.width(10.dp))
+                        SearchQueryInputContent(searchViewModel, enabled = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
             }
         }
         // --- 顶层悬浮导航栏及独立搜索按钮 ---
@@ -842,7 +854,7 @@ fun AppNavigation(
             }
         }
 
-        val normalMiniPlayerBottom = 6.dp + (if (useRail) 0.dp else navBarHeight + miniPlayerNavGap) + animatedImeOffset
+        val normalMiniPlayerBottom = (if (useRail) 18.dp else 6.dp + navBarHeight + miniPlayerNavGap) + animatedImeOffset
         val compactMiniPlayerBottom = 6.dp + animatedImeOffset
         val currentMiniPlayerBottom = lerpDp(
             normalMiniPlayerBottom,
@@ -864,7 +876,7 @@ fun AppNavigation(
             miniPlayerChromeMotion.horizontalProgress.value
         )
 
-        val currentMiniPlayerHeight = navBarHeight
+        val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
         val searchFadeOut = if (useRail) 1f else (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
         val isMiniPlayerVisible = searchFadeOut > 0.001f && (1f - sinkProgress) > 0.001f
@@ -873,7 +885,7 @@ fun AppNavigation(
             AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(1f)) {
             SearchMiniPlayerBar(
                 backdrop = backdrop,
-                cornerRadius = cornerRadius,
+                cornerRadius = if (useRail) 30.dp else cornerRadius,
                 playbackStateFlow = playerViewModel.playbackState,
                 contentProgress = miniPlayerChromeMotion.contentProgress,
                 enabled = (useRail || (!isSearchExpanded && searchProgress < 0.01f)) && !showNowPlaying,
@@ -903,7 +915,7 @@ fun AppNavigation(
                         end = currentEndPadding,
                         bottom = currentMiniPlayerBottom
                     )
-                    .widthIn(max = 1100.dp)
+                    .widthIn(max = if (useRail) 620.dp else 1100.dp)
                     .fillMaxWidth()
                     .height(currentMiniPlayerHeight)
                     .graphicsLayer {
@@ -1087,7 +1099,7 @@ private fun AppPageContent(
 
                         3 -> SearchRoute(
                             viewModel = searchViewModel,
-                            topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 48.dp else 0.dp),
+                            topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 60.dp else 0.dp),
                             bottomContentPadding = bottomContentPadding,
                             onArtistClick = onArtistClick
                         )
@@ -1178,6 +1190,7 @@ private fun AccountFullScreenOverlay(
 ) {
     val density = LocalDensity.current
     val scrimInteractionSource = remember { MutableInteractionSource() }
+    BackHandler(enabled = visible, onBack = onDismissRequest)
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val hostHeightPx = with(density) { maxHeight.toPx() }
@@ -1216,8 +1229,8 @@ private fun AccountFullScreenOverlay(
             }
         }
 
-        val centeredPanel = LocalAdaptiveWindow.current.useNavigationRail
-        val panelShape = if (centeredPanel) RoundedCornerShape(30.dp) else RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
+        val centeredPanel = LocalAdaptiveWindow.current.width >= 600.dp || LocalAdaptiveWindow.current.separatingFold != null
+        val panelShape = if (centeredPanel) RoundedRectangle(30.dp) else RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
 
         // 遮罩层：模糊 + 压暗只在绘制阶段计算，Animatable 每帧只让 RenderNode 失效，不触发重组。
         Box(
@@ -1254,7 +1267,7 @@ private fun AccountFullScreenOverlay(
         Box(
             modifier = Modifier
                 .align(if (centeredPanel) Alignment.Center else Alignment.BottomCenter)
-                .widthIn(max = if (LocalAdaptiveWindow.current.useNavigationRail) 560.dp else Dp.Unspecified)
+                .widthIn(max = if (centeredPanel) 560.dp else Dp.Unspecified)
                 .fillMaxWidth()
                 .fillMaxHeight(if (centeredPanel) 0.88f else 0.95f)
                 .onGloballyPositioned { measuredPanelHeightPx = it.size.height.toFloat() }
@@ -1273,8 +1286,8 @@ private fun AccountFullScreenOverlay(
                     shape = panelShape,
                     clip = false
                 )
-                .clip(panelShape)
-                .background(Color(0xFFF2F2F7))
+                .then(if (centeredPanel) Modifier.liquidGlassPanel(backdrop, Color(0xFFF2F2F7), 30.dp, 0.dp)
+                    else Modifier.clip(panelShape).background(Color(0xFFF2F2F7)))
         ) {
             AccountLoginSheetContent(
                 onDismiss = onDismissRequest,

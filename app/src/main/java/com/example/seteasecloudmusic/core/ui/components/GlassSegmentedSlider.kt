@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -193,7 +194,8 @@ fun GlassThumb(
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
     surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha,
-    blurRadius: Dp = GlassSliderDefaults.BlurRadius
+    blurRadius: Dp = GlassSliderDefaults.BlurRadius,
+    orientation: Orientation = Orientation.Horizontal
 ) {
     if (geometry.width <= 0.dp || geometry.height <= 0.dp || alpha <= 0f) return
 
@@ -202,10 +204,17 @@ fun GlassThumb(
         modifier
             .graphicsLayer {
                 this.alpha = alpha
-                translationX = geometry.offsetX.toPx()
-                scaleX = geometry.stretchScale
+                if (orientation == Orientation.Vertical) {
+                    translationY = geometry.offsetX.toPx()
+                    scaleY = geometry.stretchScale
+                } else {
+                    translationX = geometry.offsetX.toPx()
+                    scaleX = geometry.stretchScale
+                }
                 // 拉伸锚点随运动方向切换，保证“前导边外伸、尾部边固定”
-                transformOrigin = if (geometry.anchorAtEnd) {
+                transformOrigin = if (orientation == Orientation.Vertical) {
+                    TransformOrigin(0.5f, if (geometry.anchorAtEnd) 1f else 0f)
+                } else if (geometry.anchorAtEnd) {
                     TransformOrigin(1f, 0.5f)
                 } else {
                     TransformOrigin(0f, 0.5f)
@@ -236,7 +245,10 @@ fun GlassThumb(
                     }
                 }
             )
-            .size(geometry.width, geometry.height)
+            .size(
+                if (orientation == Orientation.Vertical) geometry.height else geometry.width,
+                if (orientation == Orientation.Vertical) geometry.width else geometry.height
+            )
     )
 }
 
@@ -263,13 +275,15 @@ fun Modifier.glassSegmentDrag(
     onDragOffsetChange: (Float?) -> Unit,
     onSettle: (Int) -> Unit,
     onPressChanged: (Boolean) -> Unit,
-    enabled: Boolean = true
-): Modifier = this.pointerInput(itemCount, enabled) {
+    enabled: Boolean = true,
+    orientation: Orientation = Orientation.Horizontal
+): Modifier = this.pointerInput(itemCount, enabled, orientation) {
     if (!enabled || itemCount <= 0) return@pointerInput
 
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        var currentX = down.position.x
+        val downAxis = if (orientation == Orientation.Vertical) down.position.y else down.position.x
+        var currentX = downAxis
         var dragging = false
         var released = false
         val touchSlop = viewConfiguration.touchSlop
@@ -288,7 +302,7 @@ fun Modifier.glassSegmentDrag(
                         dragging = true
                     }
                     if (dragging) {
-                        currentX = change.position.x
+                        currentX = if (orientation == Orientation.Vertical) change.position.y else change.position.x
                         onDragOffsetChange(currentX)
                         change.consume()
                     }
@@ -304,10 +318,10 @@ fun Modifier.glassSegmentDrag(
 
         // 只有正常抬手才提交选中变更（手势被打断时不提交）
         if (released) {
-            val slotWidthPx = size.width.toFloat() / itemCount.toFloat()
+            val slotWidthPx = (if (orientation == Orientation.Vertical) size.height else size.width).toFloat() / itemCount.toFloat()
             if (slotWidthPx > 0f) {
                 // 点击用按下位置判定目标分格，拖动用抬起位置
-                val settleX = if (dragging) currentX else down.position.x
+                val settleX = if (dragging) currentX else downAxis
                 onSettle((settleX / slotWidthPx).toInt().coerceIn(0, itemCount - 1))
             }
         }
