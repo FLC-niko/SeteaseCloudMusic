@@ -3,19 +3,22 @@ package com.example.seteasecloudmusic.feature.player.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.core.player.PlaybackMode
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
+import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
-import com.example.seteasecloudmusic.feature.player.domain.usecase.GetLyricUseCase
-import com.example.seteasecloudmusic.feature.player.domain.model.Lyrics
+import com.example.seteasecloudmusic.feature.player.domain.GetLyricsUseCase
+import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
+import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -23,81 +26,81 @@ import javax.inject.Inject
  * 1) 对 UI 暴露只读播放状态
  * 2) 转发播放控制命令
  * 3) 统一处理 connect 生命周期入口
- * 4) 获取和管理歌词数据
- * 5) 持有播放器风格设置管理器
+ * 4) 优先通过 AMLL TTML 词库获取逐字歌词，自动降级至网易云 YRC / LRC + 翻译
+ * 5) 管理在线播放音质切换与曲目喜欢状态
  */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     val controller: MusicPlayerController,
-    private val getLyricUseCase: GetLyricUseCase,
+    private val getLyricsUseCase: GetLyricsUseCase,
     val playerSettingsManager: PlayerSettingsManager
 ) : ViewModel() {
 
-    // 直接复用 Controller 内部的状态流
     val playbackState: StateFlow<PlaybackState> = controller.playbackState
 
-    private val _lyricState = MutableStateFlow<Result<Lyrics>?>(null)
-    val lyricState: StateFlow<Result<Lyrics>?> = _lyricState.asStateFlow()
+    private val _parsedLyrics = MutableStateFlow(EmptyLyrics)
+    val parsedLyrics: StateFlow<ParsedLyrics> = _parsedLyrics.asStateFlow()
+
+    private val _isLyricsLoading = MutableStateFlow(false)
+    val isLyricsLoading: StateFlow<Boolean> = _isLyricsLoading.asStateFlow()
+
+    private val _likedTrackIds = MutableStateFlow<Set<Long>>(emptySet())
+    val likedTrackIds: StateFlow<Set<Long>> = _likedTrackIds.asStateFlow()
 
     private var currentLyricTrackId: Long? = null
     private var lyricRequestId = 0L
+    private var lyricJob: Job? = null
 
     init {
+        controller.connect()
         viewModelScope.launch {
             controller.playbackState.collect { state ->
                 val trackId = state.currentTrack?.id
                 if (trackId != currentLyricTrackId) {
                     currentLyricTrackId = trackId
-                    if (trackId == null) {
+                    if (trackId == null || trackId <= 0L) {
                         lyricRequestId += 1L
                         lyricJob?.cancel()
                         lyricJob = null
-                        _lyricState.value = null
+                        _isLyricsLoading.value = false
+                        _parsedLyrics.value = EmptyLyrics
                     } else {
-                        fetchLyric(trackId)
+                        fetchLyrics(trackId)
                     }
                 }
             }
         }
     }
 
-    suspend fun getLyricDataDirectly(songId: Long): String? {
-        val res = getLyricUseCase(songId)
-        val data = res.getOrNull()
-        val yrcLyric = data?.yrc?.lyric
-        val lrcLyric = data?.lrc?.lyric
-        return yrcLyric.takeIf { !it.isNullOrBlank() } ?: lrcLyric.takeIf { !it.isNullOrBlank() }
-    }
-
-    private var lyricJob: Job? = null
-
-    init {
-        controller.connect()
-    }
-
-    private fun fetchLyric(songId: Long) {
+    private fun fetchLyrics(songId: Long) {
         lyricJob?.cancel()
         val requestId = ++lyricRequestId
-        _lyricState.value = null
+        _parsedLyrics.value = EmptyLyrics
+        _isLyricsLoading.value = true
         lyricJob = viewModelScope.launch {
-            delay(100L) // 快速连续切歌防抖，避免高频发包与 UI 线程重绘卡顿
-            val res = getLyricUseCase(songId)
+            delay(60L)
+            val result = getLyricsUseCase(songId)
             if (isActive && requestId == lyricRequestId && controller.playbackState.value.currentTrack?.id == songId) {
-                _lyricState.value = res
+                _parsedLyrics.value = result.getOrElse { EmptyLyrics }
+                _isLyricsLoading.value = false
             }
         }
     }
 
-    /** 建立与 MusicService 的连接 */
     fun connect() {
         controller.connect()
     }
 
-    val currentAudioQuality: StateFlow<com.example.seteasecloudmusic.core.settings.OnlineAudioQuality> = playerSettingsManager.audioQuality
+    val currentAudioQuality: StateFlow<OnlineAudioQuality> = playerSettingsManager.audioQuality
 
-    fun selectAudioQuality(quality: com.example.seteasecloudmusic.core.settings.OnlineAudioQuality) {
+    fun selectAudioQuality(quality: OnlineAudioQuality) {
         playerSettingsManager.setAudioQuality(quality)
         controller.reloadCurrentTrackWithQuality()
+    }
+
+    fun toggleTrackLiked(trackId: Long) {
+        val current = _likedTrackIds.value
+        _likedTrackIds.value = if (trackId in current) current - trackId else current + trackId
     }
 
     fun onPlayPause() {
@@ -127,7 +130,7 @@ class PlayerViewModel @Inject constructor(
         controller.togglePlaybackMode()
     }
 
-    fun setPlaybackMode(mode: com.example.seteasecloudmusic.core.player.PlaybackMode) {
+    fun setPlaybackMode(mode: PlaybackMode) {
         controller.setPlaybackMode(mode)
     }
 
@@ -141,5 +144,9 @@ class PlayerViewModel @Inject constructor(
 
     fun clearQueue() {
         controller.clearQueue()
+    }
+
+    companion object {
+        val EmptyLyrics = ParsedLyrics(emptyList(), hasWordTiming = false, source = LyricSource.NONE)
     }
 }

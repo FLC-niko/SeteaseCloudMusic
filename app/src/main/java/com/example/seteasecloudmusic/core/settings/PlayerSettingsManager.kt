@@ -8,16 +8,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class PlayerStyle(val title: String, val desc: String) {
-    AMLL_WEB("Apple Music 动效 (AMLL)", "流光动态渐变背景与逐字动效歌词"),
-    NATIVE_COMPOSE("原生质感 (Compose)", "沉浸式专辑主色渐变与原生丝滑歌词滚动")
-}
-
-enum class OnlineAudioQuality(val title: String, val levelKey: String, val desc: String) {
-    STANDARD("标准", "standard", "标准音质 · 128Kbps"),
-    HIGH("极高", "exhigh", "极高音质 · 320Kbps"),
-    LOSSLESS("无损", "lossless", "SQ 无损音质 · FLAC"),
-    HIRES("Hi-Res", "hires", "Hi-Res 超清母带 · 24bit/96kHz")
+enum class OnlineAudioQuality(
+    val title: String,
+    val levelKey: String,
+    val desc: String,
+    val badgeText: String
+) {
+    STANDARD("标准", "standard", "标准音质 · 128Kbps", "标准音质"),
+    HIGH("极高", "exhigh", "极高音质 · 320Kbps", "极高音质"),
+    LOSSLESS("无损", "lossless", "SQ 无损音质 · FLAC", "Lossless"),
+    HIRES("Hi-Res", "hires", "Hi-Res 超清母带 · 24bit/96kHz", "Hi-Res Lossless"),
+    DOLBY("杜比全景声", "sky", "沉浸环绕声 · Dolby Atmos", "Dolby Atmos")
 }
 
 @Singleton
@@ -25,9 +26,6 @@ class PlayerSettingsManager @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-
-    private val _playerStyle = MutableStateFlow(loadSavedStyle())
-    val playerStyle: StateFlow<PlayerStyle> = _playerStyle.asStateFlow()
 
     private val _audioQuality = MutableStateFlow(loadSavedAudioQuality())
     val audioQuality: StateFlow<OnlineAudioQuality> = _audioQuality.asStateFlow()
@@ -37,11 +35,6 @@ class PlayerSettingsManager @Inject constructor(
 
     private val _superLyricApiEnabled = MutableStateFlow(loadSavedSuperLyricApi())
     val superLyricApiEnabled: StateFlow<Boolean> = _superLyricApiEnabled.asStateFlow()
-
-    fun setPlayerStyle(style: PlayerStyle) {
-        _playerStyle.value = style
-        prefs.edit().putString(KEY_PLAYER_STYLE, style.name).apply()
-    }
 
     fun setAudioQuality(quality: OnlineAudioQuality) {
         _audioQuality.value = quality
@@ -56,15 +49,6 @@ class PlayerSettingsManager @Inject constructor(
     fun setSuperLyricApiEnabled(enabled: Boolean) {
         _superLyricApiEnabled.value = enabled
         prefs.edit().putBoolean(KEY_SUPER_LYRIC_API, enabled).apply()
-    }
-
-    private fun loadSavedStyle(): PlayerStyle {
-        val name = prefs.getString(KEY_PLAYER_STYLE, PlayerStyle.NATIVE_COMPOSE.name)
-        return try {
-            PlayerStyle.valueOf(name ?: PlayerStyle.NATIVE_COMPOSE.name)
-        } catch (e: Exception) {
-            PlayerStyle.NATIVE_COMPOSE
-        }
     }
 
     private fun loadSavedAudioQuality(): OnlineAudioQuality {
@@ -86,7 +70,6 @@ class PlayerSettingsManager @Inject constructor(
 
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
-        private const val KEY_PLAYER_STYLE = "player_style_mode"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
         private const val KEY_BLUETOOTH_LYRICS = "player_bluetooth_lyrics"
         private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"
