@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +66,9 @@ private val PlaylistTextSecondary = Color(0xFF8E8E93)
 private val PlaylistDividerColor = Color(0xFFEAEAEE)
 private val PlaylistAccentColor = Color(0xFFFA233B)
 
+private val PlaylistDetail.displayTitle: String
+    get() = if (name.endsWith("喜欢的音乐")) "我喜欢的音乐" else name
+
 @Composable
 fun PlaylistDetailScreen(
     detail: PlaylistDetail,
@@ -85,7 +89,7 @@ fun PlaylistDetailScreen(
             BackHandler(onBack = onClose)
             val songs: @Composable () -> Unit = {
                 LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 12.dp, bottom = bottom + 16.dp)) {
-                    item(key = "detail_title") { MusicPaneHeader(if (embedded) detail.name else "歌曲", "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", if (embedded) onClose else null) }
+                    item(key = "detail_title") { MusicPaneHeader(if (embedded) detail.displayTitle else "歌曲", "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", if (embedded) onClose else null) }
                     if (embedded) item(key = "playlist_hero") { Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { PlaylistHeroSection(detail, onPlayAll) } }
                     if (isLoading && detail.tracks.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PlaylistAccentColor) } }
                     itemsIndexed(detail.tracks, key = { _, track -> track.id }) { index, track ->
@@ -230,7 +234,7 @@ private fun CompactPlaylistDetailScreen(
 
             // 顶部 Apple Music 风格渐变模糊导航栏（使用轻量级磨砂玻璃，滑动与弹出 0 卡顿）
             AppleMusicCollapsedTopBar(
-                title = detail.name,
+                title = detail.displayTitle,
                 collapseFraction = collapseFractionState.value,
                 statusBarHeight = statusBarHeight,
                 backdrop = null,
@@ -266,8 +270,7 @@ private fun PlaylistHeroSection(
                 contentDescription = null,
                 modifier = Modifier
                     .size(136.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.56f), RoundedCornerShape(20.dp)),
+                    .clip(RoundedCornerShape(20.dp)),
                 contentScale = ContentScale.Crop
             )
         } else {
@@ -279,8 +282,7 @@ private fun PlaylistHeroSection(
                         Brush.linearGradient(
                             listOf(Color(0xFFFA233B), Color(0xFFFF9EAE))
                         )
-                    )
-                    .border(1.dp, Color.White.copy(alpha = 0.56f), RoundedCornerShape(20.dp)),
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -295,8 +297,9 @@ private fun PlaylistHeroSection(
         Spacer(modifier = Modifier.height(16.dp))
 
         // 歌单标题
+        val isLiked = detail.name.endsWith("喜欢的音乐")
         Text(
-            text = detail.name,
+            text = detail.displayTitle,
             style = MaterialTheme.typography.titleLarge.copy(
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -310,8 +313,9 @@ private fun PlaylistHeroSection(
 
         // 创建者与歌曲数
         val count = if (detail.trackCount > 0) detail.trackCount else detail.tracks.size
+        val creatorSuffix = if (!detail.creatorName.isNullOrBlank() && !isLiked) " · ${detail.creatorName}" else ""
         Text(
-            text = "$count 首歌曲" + if (!detail.creatorName.isNullOrBlank()) " · ${detail.creatorName}" else "",
+            text = "$count 首歌曲$creatorSuffix",
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontSize = 13.sp,
                 color = PlaylistTextSecondary

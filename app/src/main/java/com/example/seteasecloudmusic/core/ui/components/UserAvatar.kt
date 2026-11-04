@@ -40,8 +40,8 @@ fun UserAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 46.dp,
     showBorder: Boolean = false,
-    borderWidth: Dp = 1.dp,
-    borderColor: Color = Color.White.copy(alpha = 0.42f),
+    borderWidth: Dp = 0.dp,
+    borderColor: Color = Color.Transparent,
     isGuest: Boolean = false
 ) {
     val monogram = remember(displayName) { buildAvatarMonogram(displayName) }
@@ -53,15 +53,14 @@ fun UserAvatar(
     if (isGuestPlaceholder) {
         Box(
             modifier = modifier
-                .size(size)
-                .border(2.dp, appleMusicRed, CircleShape),
+                .size(size),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.Person,
                 contentDescription = null,
                 tint = appleMusicRed,
-                modifier = Modifier.size(size * 0.48f)
+                modifier = Modifier.size(size * 0.58f)
             )
         }
         return
@@ -177,8 +176,8 @@ fun UserAvatarButton(
             avatarUrl = avatarUrl,
             displayName = displayName,
             size = size,
-            showBorder = !isGuest,
-            borderWidth = if (isGuest) 0.dp else 1.dp,
+            showBorder = false,
+            borderWidth = 0.dp,
             isGuest = isGuest
         )
     }
