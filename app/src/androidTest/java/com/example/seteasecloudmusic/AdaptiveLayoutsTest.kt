@@ -1,9 +1,5 @@
 package com.example.seteasecloudmusic
 
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.WebView
-import java.util.concurrent.atomic.AtomicBoolean
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
@@ -61,7 +57,7 @@ class AdaptiveLayoutsTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @Volatile private var windowInfo: AdaptiveWindowInfo? = null
     @Volatile private var currentFontScale = 1f
-    private val pages = listOf("chrome", "native_music", "home", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "web", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
+    private val pages = listOf("chrome", "native_music", "home", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
 
     @Before fun keepEmulatorVisible() {
         compose.activityRule.scenario.onActivity { activity ->
@@ -126,9 +122,8 @@ class AdaptiveLayoutsTest {
             if (expected != null) {
                 compose.onAllNodesWithText(expected, substring = true).onFirst().assertExists()
             }
-            // Dialogs and WebView render on Android's frame clock as well as Compose's test clock.
+            // Dialogs render on Android's frame clock as well as Compose's test clock.
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            if (name == "web") waitForWebPlayer()
             capture("$label-$name")
             if (name == "chrome") {
                 compose.onNodeWithContentDescription("播放列表").performClick()
@@ -160,9 +155,9 @@ class AdaptiveLayoutsTest {
                 androidx.test.espresso.Espresso.pressBack()
             }
             if (name == "settings") {
-                compose.onNodeWithText("播放页风格").performClick()
-                compose.onNodeWithText("选择播放页风格").assertExists()
-                capture("$label-settings-style")
+                compose.onNodeWithText("在线播放音质").performClick()
+                compose.onNodeWithText("选择在线播放音质").assertExists()
+                capture("$label-settings-quality")
                 compose.onNodeWithText("完成").performClick()
             }
             if (name == "search") {
@@ -310,68 +305,8 @@ class AdaptiveLayoutsTest {
         assertTrue(primary.height > 0 && secondary.height > 0)
     }
 
-    private fun waitForWebPlayer() {
-        val ready = AtomicBoolean(false)
-        val lastProbe = java.util.concurrent.atomic.AtomicReference("not found")
-        fun findWeb(view: View): WebView? {
-            if (view is WebView && view.tag == "amll_player") return view
-            if (view is ViewGroup) for (index in 0 until view.childCount) {
-                findWeb(view.getChildAt(index))?.let { return it }
-            }
-            return null
-        }
-        compose.waitUntil(timeoutMillis = 20000) {
-            compose.runOnUiThread {
-                findWeb(compose.activity.window.decorView)?.let { web ->
-                    web.evaluateJavascript("JSON.stringify({ready:document.readyState,url:location.href,width:innerWidth,height:innerHeight,body:document.body?.innerHTML?.slice(0,2000),playerHeight:document.querySelector('.player')?.clientHeight})") { lastProbe.set(it) }
-                    web.evaluateJavascript("Boolean(window.__scmBridgeReady && document.querySelector('.player')?.clientHeight > 0)") { value ->
-                        if (value == "true") {
-                            web.postInvalidateOnAnimation()
-                            ready.set(true)
-                        }
-                    }
-                }
-            }
-            File(compose.activity.getExternalFilesDir(null), "web-probe.json").writeText(lastProbe.get())
-            ready.get()
-        }
-        val injected = AtomicBoolean(false)
-        var fixtureMessages = ""
-        compose.runOnUiThread {
-            findWeb(compose.activity.window.decorView)?.let { web ->
-                val track = org.json.JSONObject().put("id", "fixture")
-                    .put("title", "日落之前").put("artist", "Luna Ensemble")
-                    .put("coverUrl", "data:image/svg+xml," + java.net.URLEncoder.encode("<svg xmlns='http://www.w3.org/2000/svg' width='480' height='480'><rect width='480' height='480' fill='#7654d9'/><circle cx='360' cy='140' r='170' fill='#ffffff55'/><text x='32' y='390' fill='white' font-size='38'>AFTER HOURS</text></svg>", "UTF-8").replace("+", "%20"))
-                    .put("lrc", "[00:00.00]在城市的另一边\n[00:05.00]听见晚风轻轻唱\n[00:10.00]把平凡的瞬间写成旋律\n[00:15.00]Every moment becomes a melody\n[00:20.00]日落之前，让音乐陪你走远")
-                val message = org.json.JSONObject().put("type", "SET_TRACK").put("payload", track)
-                val playback = org.json.JSONObject().put("type", "SET_PLAYBACK").put("payload", org.json.JSONObject().put("playing", false).put("currentTimeMs", 6000).put("durationMs", 220000))
-                fixtureMessages = "window.dispatchEvent(new CustomEvent('scm-native-message',{detail:$message}));window.dispatchEvent(new CustomEvent('scm-native-message',{detail:$playback}));"
-                web.evaluateJavascript(fixtureMessages) { injected.set(true) }
-            }
-        }
-        compose.waitUntil(10000) { injected.get() }
-        val rendered = AtomicBoolean(false)
-        compose.waitUntil(10000) {
-            compose.runOnUiThread {
-                findWeb(compose.activity.window.decorView)?.let { web ->
-                    web.evaluateJavascript("if(document.querySelector('h1')?.textContent !== '日落之前'){" + fixtureMessages + "}", null)
-                    web.evaluateJavascript("JSON.stringify({body:document.body.innerHTML.slice(0,4000),errors:window.__playerErrors})") { File(compose.activity.getExternalFilesDir(null), "web-render-probe.json").writeText(it) }
-                    web.evaluateJavascript("Boolean(document.querySelector('.lyrics-viewport')?.textContent.includes('听见晚风轻轻唱') && document.querySelector('h1')?.textContent === '日落之前')") { rendered.set(it == "true") }
-                }
-            }
-            rendered.get()
-        }
-        compose.runOnUiThread {
-            findWeb(compose.activity.window.decorView)?.let { web ->
-                val probe = "JSON.stringify({layout:document.querySelector('.player').dataset.layout,rects:[...document.querySelectorAll('.player,.lyrics-pane,.controls,.lyrics-viewport,.amll-lyric-player')].map(e=>({class:e.className,rect:e.getBoundingClientRect().toJSON(),height:getComputedStyle(e).height,flex:getComputedStyle(e).flex})),lines:[...document.querySelectorAll('.amll-lyric-player *')].slice(0,15).map(e=>({text:e.textContent,rect:e.getBoundingClientRect().toJSON(),style:e.getAttribute('style')}))})"
-                val label = InstrumentationRegistry.getArguments().getString("layoutLabel") ?: "current"
-                web.evaluateJavascript(probe) { File(compose.activity.getExternalFilesDir(null), "foldable-qa/$label-web-layout.json").writeText(it) }
-            }
-        }
-    }
-
     private fun capture(name: String) {
-        // Android dialogs and WebView use Choreographer, independently of Compose's virtual clock.
+        // Android dialogs use Choreographer, independently of Compose's virtual clock.
         val frames = java.util.concurrent.CountDownLatch(1)
         compose.runOnUiThread {
             val choreographer = android.view.Choreographer.getInstance()
@@ -450,7 +385,7 @@ private fun FixturePage(page: String, tracks: List<Track>) {
                         PlayerBackdrop(tracks[0], Modifier.layerBackdrop(background))
                         CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
                             ExpandedNativePlayerContent(state, lyrics, quality,
-                                {}, remember { mutableStateOf(1f) }, {}, {}, {}, {}, {}, {},
+                                {}, remember { mutableStateOf(1f) }, {}, {}, {}, {}, {},
                                 { showQuality = true }, { showQueue = true })
                             if (showQueue) PlaylistQueueSheet(state, {}, {}, {}, {}, { showQueue = false })
                             if (showQuality) AudioQualitySelectionSheet(quality, {}, { showQuality = false })
@@ -499,7 +434,6 @@ private fun FixturePage(page: String, tracks: List<Track>) {
                 }
             }
             "quality" -> AudioQualitySelectionSheet(com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.STANDARD, {}, {})
-            "web" -> { PlayerSystemBars(); val vm: PlayerViewModel = hiltViewModel(); Box(Modifier.fillMaxSize().background(Color(0xFF141419)).systemBarsPadding()) { WebPlayerScreen(vm.controller) } }
             "queue" -> PlaylistQueueSheet(PlaybackState(PlayerStatus.PAUSED, tracks[0], queueTracks = tracks, currentQueueIndex = 0), {}, {}, {}, {}, {})
             "qr" -> AdaptiveOverlayPane(Modifier.fillMaxSize().systemBarsPadding()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {

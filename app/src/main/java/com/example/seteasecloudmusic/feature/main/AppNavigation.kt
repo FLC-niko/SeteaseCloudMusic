@@ -120,13 +120,37 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.feature.player.presentation.LocalPlayerArtwork
 import com.example.seteasecloudmusic.feature.player.presentation.PlaylistQueueSheet
+import com.example.seteasecloudmusic.feature.player.presentation.isUsable
+import com.example.seteasecloudmusic.feature.player.presentation.mix
+import com.example.seteasecloudmusic.feature.player.presentation.playerArtworkRect
+import com.example.seteasecloudmusic.feature.player.presentation.playerBackgroundAlpha
+import com.example.seteasecloudmusic.feature.player.presentation.playerContainerCornerRadius
+import com.example.seteasecloudmusic.feature.player.presentation.playerContainerRect
+import com.example.seteasecloudmusic.feature.player.presentation.playerContentAlpha
+import com.example.seteasecloudmusic.feature.player.presentation.playerMiniContentAlpha
+import com.example.seteasecloudmusic.feature.player.presentation.playerTopAnchoredArtworkRect
+import com.example.seteasecloudmusic.feature.player.presentation.normalizeHighResCoverUrl
+import com.example.seteasecloudmusic.feature.player.presentation.rememberHighResArtworkRequest
+import com.example.seteasecloudmusic.feature.player.presentation.rememberPlayerScreenCornerRadiusPx
+import androidx.compose.foundation.Image
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -245,11 +269,43 @@ fun AppNavigation(
 
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showPlaylistQueueSheet by rememberSaveable { mutableStateOf(false) }
+    var miniPlayerContainerBounds by remember { mutableStateOf<Rect?>(null) }
     var miniPlayerArtworkBounds by remember { mutableStateOf<Rect?>(null) }
+    var frozenOpeningContainerBounds by remember { mutableStateOf<Rect?>(null) }
+    var frozenOpeningArtworkBounds by remember { mutableStateOf<Rect?>(null) }
+    var nowPlayingHostBounds by remember { mutableStateOf<Rect?>(null) }
     var nowPlayingArtworkBounds by remember { mutableStateOf<Rect?>(null) }
+    var nowPlayingArtworkCorner by remember { mutableStateOf(14.dp) }
+    var nowPlayingArtworkShadow by remember { mutableStateOf(26.dp) }
+    var nowPlayingArtworkTrackTop by remember { mutableStateOf(false) }
     var nowPlayingArtworkUrl by remember { mutableStateOf<String?>(null) }
-    val nowPlayingProgress = remember { Animatable(0f) }
+    val nowPlayingProgress = remember { Animatable(if (showNowPlaying) 1f else 0f) }
     val nowPlayingScope = rememberCoroutineScope()
+    var nowPlayingAnimJob by remember { mutableStateOf<Job?>(null) }
+    val rootDensity = LocalDensity.current
+
+    // 仅在曲目封面 URL 变化时发射，绝不因 500ms 播放进度更新触发导航外壳重组
+    val activeArtworkUrlFlow = remember(playerViewModel) {
+        playerViewModel.playbackState
+            .map { state -> state.currentTrack?.coverUrl ?: state.currentTrack?.album?.coverUrl }
+            .distinctUntilChanged()
+    }
+    val activeArtworkUrl by activeArtworkUrlFlow.collectAsStateWithLifecycle(initialValue = null)
+    val effectiveArtworkUrl = activeArtworkUrl ?: nowPlayingArtworkUrl
+    val highResArtworkRequest = rememberHighResArtworkRequest(effectiveArtworkUrl)
+    val sharedArtworkPainter = if (highResArtworkRequest != null) {
+        rememberAsyncImagePainter(
+            model = highResArtworkRequest,
+            filterQuality = FilterQuality.High
+        )
+    } else null
+    val sharedArtworkPair = remember(effectiveArtworkUrl, sharedArtworkPainter) {
+        val normalized = normalizeHighResCoverUrl(effectiveArtworkUrl)
+        if (!normalized.isNullOrBlank() && sharedArtworkPainter != null) {
+            normalized to sharedArtworkPainter
+        } else null
+    }
+
     var showAccountSheet by rememberSaveable { mutableStateOf(false) }
     var mountAccountOverlay by remember { mutableStateOf(showAccountSheet) }
     var selectedArtist by navigationState::selectedArtist
@@ -257,32 +313,59 @@ fun AppNavigation(
     val expandProgress = remember { Animatable(if (dailyRecommendState != null) 1f else 0f) }
     val expandScope = rememberCoroutineScope()
 
-    fun closePlayer() {
-        nowPlayingScope.launch {
-            nowPlayingProgress.animateTo(0f, tween(durationMillis = 440, easing = FastOutSlowInEasing))
+    fun openPlayer(artworkUrl: String?) {
+        nowPlayingAnimJob?.cancel()
+        if (!artworkUrl.isNullOrBlank()) {
+            nowPlayingArtworkUrl = artworkUrl
+        }
+        frozenOpeningContainerBounds = miniPlayerContainerBounds
+        frozenOpeningArtworkBounds = miniPlayerArtworkBounds
+        val wasOpen = showNowPlaying
+        showNowPlaying = true
+        nowPlayingAnimJob = nowPlayingScope.launch {
+            if (!wasOpen) {
+                nowPlayingProgress.snapTo(0f)
+                // 等待全屏播放页完成首帧布局以获取精确目标封面 Rect
+                withFrameNanos { }
+            }
+            nowPlayingProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = 310f,
+                    visibilityThreshold = 0.0005f
+                )
+            )
+            frozenOpeningContainerBounds = null
+            frozenOpeningArtworkBounds = null
+        }
+    }
+
+    fun closePlayer(initialVelocity: Float = 0f) {
+        nowPlayingAnimJob?.cancel()
+        frozenOpeningContainerBounds = null
+        frozenOpeningArtworkBounds = null
+        nowPlayingAnimJob = nowPlayingScope.launch {
+            nowPlayingProgress.animateTo(
+                targetValue = 0f,
+                initialVelocity = initialVelocity,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = 320f,
+                    visibilityThreshold = 0.001f
+                )
+            )
             showNowPlaying = false
             nowPlayingArtworkBounds = null
         }
     }
 
     LaunchedEffect(window.width, window.height, window.separatingFold) {
+        miniPlayerContainerBounds = null
         miniPlayerArtworkBounds = null
+        frozenOpeningContainerBounds = null
+        frozenOpeningArtworkBounds = null
         nowPlayingArtworkBounds = null
-    }
-    LaunchedEffect(showNowPlaying) {
-        if (showNowPlaying) {
-            nowPlayingProgress.snapTo(0f)
-            // 先让全屏播放器完成一次测量，拿到大封面的真实目标位置，再开始移动。
-            withFrameNanos { }
-            withFrameNanos { }
-            nowPlayingProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = 560,
-                    easing = FastOutSlowInEasing
-                )
-            )
-        }
     }
 
     LaunchedEffect(dailyRecommendState) {
@@ -423,8 +506,11 @@ fun AppNavigation(
     val hintScale = 1f - 0.05f * hintProgress
 
     // 2. 【舞台】：整个屏幕的根容器，使用 Box 以支持 Z 轴方向的层叠排列
-    CompositionLocalProvider(LocalGlassBackdrop provides backdrop,
-        LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp)) {
+    CompositionLocalProvider(
+        LocalGlassBackdrop provides backdrop,
+        LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp),
+        LocalPlayerArtwork provides sharedArtworkPair
+    ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // --- 底层内容区域 ---
         Box(
@@ -507,8 +593,9 @@ fun AppNavigation(
                 // 保持自然舒适的视觉高度
                 .height(navBarHeight)
                 .graphicsLayer {
-                    alpha = 1f - sinkProgress
-                    translationY = sinkProgress * 200.dp.toPx()
+                    val playerOpenSink = (nowPlayingProgress.value * 1.25f).coerceIn(0f, 1f)
+                    alpha = (1f - sinkProgress) * (1f - playerOpenSink)
+                    translationY = sinkProgress * 200.dp.toPx() + playerOpenSink * 48.dp.toPx()
                     scaleX = hintScale
                     scaleY = hintScale
                     transformOrigin = TransformOrigin(0.5f, 1f)
@@ -882,12 +969,17 @@ fun AppNavigation(
         val isMiniPlayerVisible = searchFadeOut > 0.001f && (1f - sinkProgress) > 0.001f
 
         if (isMiniPlayerVisible) {
+            val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
+            val sharesArtworkNow = showNowPlaying &&
+                activeSourceArtwork?.isUsable() == true &&
+                nowPlayingArtworkBounds?.isUsable() == true
             AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(1f)) {
             SearchMiniPlayerBar(
                 backdrop = backdrop,
                 cornerRadius = if (useRail) 30.dp else cornerRadius,
                 playbackStateFlow = playerViewModel.playbackState,
                 contentProgress = miniPlayerChromeMotion.contentProgress,
+                playerTransitionProgress = nowPlayingProgress.asState(),
                 enabled = (useRail || (!isSearchExpanded && searchProgress < 0.01f)) && !showNowPlaying,
                 onPlayPauseClick = { playerViewModel.onPlayPause() },
                 onPlaylistClick = { showPlaylistQueueSheet = true },
@@ -895,9 +987,12 @@ fun AppNavigation(
                 onPreviousClick = { playerViewModel.onPrevious(forcePreviousSong = true) },
                 onBarClick = { artworkUrl ->
                     if (!showNowPlaying) {
-                        nowPlayingArtworkUrl = artworkUrl
-                        nowPlayingArtworkBounds = null
-                        showNowPlaying = true
+                        openPlayer(artworkUrl)
+                    }
+                },
+                onContainerBoundsChanged = { bounds ->
+                    if (miniPlayerContainerBounds != bounds) {
+                        miniPlayerContainerBounds = bounds
                     }
                 },
                 onArtworkBoundsChanged = { bounds ->
@@ -905,7 +1000,7 @@ fun AppNavigation(
                         miniPlayerArtworkBounds = bounds
                     }
                 },
-                hideArtwork = showNowPlaying && nowPlayingArtworkBounds != null,
+                hideArtwork = sharesArtworkNow || (showNowPlaying && nowPlayingProgress.value > 0.02f),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .zIndex(1f)
@@ -919,7 +1014,10 @@ fun AppNavigation(
                     .fillMaxWidth()
                     .height(currentMiniPlayerHeight)
                     .graphicsLayer {
-                        alpha = searchFadeOut * (1f - sinkProgress)
+                        val shellFade = if (showNowPlaying) {
+                            (1f - playerBackgroundAlpha(nowPlayingProgress.value) * 1.15f).coerceIn(0f, 1f)
+                        } else 1f
+                        alpha = searchFadeOut * (1f - sinkProgress) * shellFade
                         translationY = (if (useRail) 0f else searchProgress * 60.dp.toPx()) + (sinkProgress * 76.dp.toPx())
                         scaleX = hintScale
                         scaleY = hintScale
@@ -930,15 +1028,81 @@ fun AppNavigation(
 
         }
         if (showNowPlaying) {
+            val activeSourceContainer = frozenOpeningContainerBounds ?: miniPlayerContainerBounds
+            val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
             NowPlayingTransitionLayer(
                 playerViewModel = playerViewModel,
                 progress = nowPlayingProgress.asState(),
-                artworkUrl = nowPlayingArtworkUrl,
-                sourceArtworkBounds = miniPlayerArtworkBounds,
+                artworkUrl = effectiveArtworkUrl,
+                sourceContainerBounds = activeSourceContainer,
+                sourceArtworkBounds = activeSourceArtwork,
                 targetArtworkBounds = nowPlayingArtworkBounds,
+                targetArtworkCorner = nowPlayingArtworkCorner,
+                targetArtworkShadow = nowPlayingArtworkShadow,
+                targetArtworkTrackTop = nowPlayingArtworkTrackTop,
+                onHostBoundsChanged = { bounds ->
+                    if (nowPlayingHostBounds != bounds) {
+                        nowPlayingHostBounds = bounds
+                    }
+                },
                 onTargetArtworkBoundsChanged = { bounds ->
                     if (nowPlayingArtworkBounds != bounds) {
                         nowPlayingArtworkBounds = bounds
+                    }
+                },
+                onTargetArtworkCornerChanged = { corner ->
+                    if (nowPlayingArtworkCorner != corner) {
+                        nowPlayingArtworkCorner = corner
+                    }
+                },
+                onTargetArtworkShadowChanged = { shadow ->
+                    if (nowPlayingArtworkShadow != shadow) {
+                        nowPlayingArtworkShadow = shadow
+                    }
+                },
+                onTargetArtworkTrackTopChanged = { trackTop ->
+                    if (nowPlayingArtworkTrackTop != trackTop) {
+                        nowPlayingArtworkTrackTop = trackTop
+                    }
+                },
+                onGrabberDragStart = {
+                    nowPlayingAnimJob?.cancel()
+                    frozenOpeningContainerBounds = null
+                    frozenOpeningArtworkBounds = null
+                },
+                onGrabberDragDelta = { deltaPx ->
+                    val hostH = nowPlayingHostBounds?.height ?: with(rootDensity) { window.height.toPx() }
+                    val miniH = miniPlayerContainerBounds?.height ?: with(rootDensity) { navBarHeight.toPx() }
+                    val travelPx = (hostH - miniH).coerceAtLeast(1f)
+                    val nextP = (nowPlayingProgress.value - deltaPx / travelPx).coerceIn(0f, 1f)
+                    nowPlayingScope.launch {
+                        nowPlayingProgress.snapTo(nextP)
+                    }
+                },
+                onGrabberDragEnd = { velocityY ->
+                    val hostH = nowPlayingHostBounds?.height ?: with(rootDensity) { window.height.toPx() }
+                    val miniH = miniPlayerContainerBounds?.height ?: with(rootDensity) { navBarHeight.toPx() }
+                    val travelPx = (hostH - miniH).coerceAtLeast(1f)
+                    val progressVelocity = -velocityY / travelPx
+                    val flingClosePx = with(rootDensity) { 580.dp.toPx() }
+                    val flingOpenPx = -with(rootDensity) { 260.dp.toPx() }
+                    val shouldClose = velocityY > flingClosePx ||
+                        (velocityY >= flingOpenPx && nowPlayingProgress.value < 0.78f)
+                    if (shouldClose) {
+                        closePlayer(initialVelocity = progressVelocity)
+                    } else {
+                        nowPlayingAnimJob?.cancel()
+                        nowPlayingAnimJob = nowPlayingScope.launch {
+                            nowPlayingProgress.animateTo(
+                                targetValue = 1f,
+                                initialVelocity = progressVelocity,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = 360f,
+                                    visibilityThreshold = 0.0005f
+                                )
+                            )
+                        }
                     }
                 },
                 onClose = { closePlayer() }
@@ -1437,45 +1601,120 @@ private fun NowPlayingTransitionLayer(
     playerViewModel: PlayerViewModel,
     progress: State<Float>,
     artworkUrl: String?,
+    sourceContainerBounds: Rect?,
     sourceArtworkBounds: Rect?,
     targetArtworkBounds: Rect?,
+    targetArtworkCorner: Dp,
+    targetArtworkShadow: Dp,
+    targetArtworkTrackTop: Boolean,
+    onHostBoundsChanged: (Rect) -> Unit,
     onTargetArtworkBoundsChanged: (Rect) -> Unit,
+    onTargetArtworkCornerChanged: (Dp) -> Unit,
+    onTargetArtworkShadowChanged: (Dp) -> Unit,
+    onTargetArtworkTrackTopChanged: (Boolean) -> Unit,
+    onGrabberDragStart: () -> Unit,
+    onGrabberDragDelta: (Float) -> Unit,
+    onGrabberDragEnd: (Float) -> Unit,
     onClose: () -> Unit
 ) {
-    val pageAlpha = remember(progress) {
-        derivedStateOf {
-            ((progress.value - 0.04f) / 0.50f).coerceIn(0f, 1f)
-        }
-    }
-    val targetArtworkAlpha = remember(progress) {
-        derivedStateOf {
-            ((progress.value - 0.86f) / 0.14f).coerceIn(0f, 1f)
-        }
+    var hostBounds by remember { mutableStateOf(Rect.Zero) }
+    val screenCornerPx = rememberPlayerScreenCornerRadiusPx(hostBounds)
+
+    val canShareArtwork = remember(sourceArtworkBounds, targetArtworkBounds) {
+        sourceArtworkBounds?.isUsable() == true && targetArtworkBounds?.isUsable() == true
     }
 
-    Box(modifier = Modifier.fillMaxSize().zIndex(10f)) {
+    val backgroundAlpha = remember(progress) {
+        derivedStateOf { playerBackgroundAlpha(progress.value) }
+    }
+    val contentAlpha = remember(progress) {
+        derivedStateOf { playerContentAlpha(progress.value) }
+    }
+    val targetArtworkAlpha = remember(progress, canShareArtwork) {
+        derivedStateOf {
+            if (!canShareArtwork) {
+                progress.value.coerceIn(0f, 1f)
+            } else if (progress.value >= 0.998f) {
+                1f
+            } else {
+                0f
+            }
+        }
+    }
+    val enableLightStatusBar by remember(progress) {
+        derivedStateOf { progress.value > 0.55f }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(10f)
+            .onGloballyPositioned { coords ->
+                val bounds = coords.boundsInRoot()
+                if (hostBounds != bounds) {
+                    hostBounds = bounds
+                    onHostBoundsChanged(bounds)
+                }
+            }
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    alpha = pageAlpha.value
+                    val p = progress.value.coerceIn(0f, 1f)
+                    val srcContainer = sourceContainerBounds
+                    if (p < 0.999f && srcContainer?.isUsable() == true && hostBounds.isUsable()) {
+                        val currentContainer = playerContainerRect(srcContainer, hostBounds, p)
+                            .translate(-hostBounds.topLeft)
+                        val radius = playerContainerCornerRadius(
+                            source = srcContainer.height * 0.5f,
+                            target = screenCornerPx,
+                            progress = p
+                        )
+                        shape = object : Shape {
+                            override fun createOutline(
+                                size: Size,
+                                layoutDirection: LayoutDirection,
+                                density: Density
+                            ): Outline = Outline.Rounded(
+                                RoundRect(currentContainer, CornerRadius(radius, radius))
+                            )
+                        }
+                        clip = true
+                    } else {
+                        clip = false
+                    }
                 }
         ) {
             NowPlayingScreen(
                 playerViewModel = playerViewModel,
                 onClose = onClose,
                 artworkAlpha = targetArtworkAlpha,
-                onArtworkBoundsChanged = onTargetArtworkBoundsChanged
+                onArtworkBoundsChanged = onTargetArtworkBoundsChanged,
+                enableLightStatusBarSwitch = enableLightStatusBar,
+                contentAlpha = contentAlpha,
+                backgroundAlpha = backgroundAlpha,
+                onArtworkCornerRadiusChanged = onTargetArtworkCornerChanged,
+                onArtworkShadowChanged = onTargetArtworkShadowChanged,
+                onArtworkTrackTopChanged = onTargetArtworkTrackTopChanged,
+                onGrabberDragStart = onGrabberDragStart,
+                onGrabberDragDelta = onGrabberDragDelta,
+                onGrabberDragEnd = onGrabberDragEnd
             )
         }
 
-        if (sourceArtworkBounds != null && targetArtworkBounds != null) {
+        if (canShareArtwork && sourceArtworkBounds != null && targetArtworkBounds != null) {
             MovingPlayerArtwork(
                 imageUrl = artworkUrl,
                 sourceBounds = sourceArtworkBounds,
                 targetBounds = targetArtworkBounds,
+                sourceContainerBounds = sourceContainerBounds,
+                hostBounds = hostBounds,
+                targetCorner = targetArtworkCorner,
+                targetShadow = targetArtworkShadow,
+                trackContainerTop = targetArtworkTrackTop,
                 progress = progress,
-                targetArtworkAlpha = targetArtworkAlpha
+                visible = targetArtworkAlpha.value < 0.5f
             )
         }
     }
@@ -1486,67 +1725,93 @@ private fun MovingPlayerArtwork(
     imageUrl: String?,
     sourceBounds: Rect,
     targetBounds: Rect,
+    sourceContainerBounds: Rect?,
+    hostBounds: Rect,
+    targetCorner: Dp,
+    targetShadow: Dp,
+    trackContainerTop: Boolean,
     progress: State<Float>,
-    targetArtworkAlpha: State<Float>
+    visible: Boolean
 ) {
-    if (sourceBounds.width <= 0f || sourceBounds.height <= 0f ||
-        targetBounds.width <= 0f || targetBounds.height <= 0f
-    ) {
+    if (!visible || !sourceBounds.isUsable() || !targetBounds.isUsable()) {
         return
     }
 
     val density = LocalDensity.current
-    val targetWidth = with(density) { targetBounds.width.toDp() }
-    val targetHeight = with(density) { targetBounds.height.toDp() }
+    val sharedArtwork = LocalPlayerArtwork.current
+    val baseWidthDp = with(density) { targetBounds.width.coerceAtLeast(1f).toDp() }
+    val baseHeightDp = with(density) { targetBounds.height.coerceAtLeast(1f).toDp() }
     val sourceCornerPx = with(density) { 7.dp.toPx() }
-    val targetCornerPx = with(density) { 16.dp.toPx() }
+    val targetCornerPx = with(density) { targetCorner.toPx() }
+    val targetShadowPx = with(density) { targetShadow.toPx() }
 
     Box(
         modifier = Modifier
-            .offset {
-                IntOffset(
-                    targetBounds.left.roundToInt(),
-                    targetBounds.top.roundToInt()
-                )
-            }
-            .size(targetWidth, targetHeight)
+            .size(baseWidthDp, baseHeightDp)
             .graphicsLayer {
-                val fraction = progress.value.coerceIn(0f, 1f)
-                val currentScaleX = lerp(
-                    sourceBounds.width / targetBounds.width,
-                    1f,
-                    fraction
-                )
-                val currentScaleY = lerp(
-                    sourceBounds.height / targetBounds.height,
-                    1f,
-                    fraction
-                )
+                val p = progress.value.coerceIn(0f, 1f)
+                val worldRect = if (trackContainerTop && sourceContainerBounds?.isUsable() == true && hostBounds.isUsable()) {
+                    playerTopAnchoredArtworkRect(
+                        source = sourceBounds,
+                        target = targetBounds,
+                        sourceContainer = sourceContainerBounds,
+                        targetContainer = hostBounds,
+                        progress = p
+                    )
+                } else {
+                    playerArtworkRect(
+                        source = sourceBounds,
+                        target = targetBounds,
+                        progress = p
+                    )
+                }
+                val localRect = if (hostBounds.isUsable()) {
+                    worldRect.translate(-hostBounds.topLeft)
+                } else {
+                    worldRect
+                }
+
+                val currentScaleX = (localRect.width / size.width.coerceAtLeast(1f)).coerceAtLeast(0.001f)
+                val currentScaleY = (localRect.height / size.height.coerceAtLeast(1f)).coerceAtLeast(0.001f)
 
                 transformOrigin = TransformOrigin(0f, 0f)
+                translationX = localRect.left
+                translationY = localRect.top
                 scaleX = currentScaleX
                 scaleY = currentScaleY
-                translationX = lerp(sourceBounds.left - targetBounds.left, 0f, fraction)
-                translationY = lerp(sourceBounds.top - targetBounds.top, 0f, fraction)
-                alpha = 1f - targetArtworkAlpha.value
+                alpha = 1f
 
-                // 图层本身会被缩放，因此反算局部圆角，确保视觉圆角从 MiniPlayer 的 8dp
-                // 平滑过渡到大封面的 16dp，而不是随缩放突然变成夸张的大圆角。
-                val visualCornerPx = lerp(sourceCornerPx, targetCornerPx, fraction)
+                val visualCornerPx = mix(sourceCornerPx, targetCornerPx, p)
                 val localCornerPx = visualCornerPx / minOf(currentScaleX, currentScaleY)
-                shape = RoundedCornerShape(with(density) { localCornerPx.toDp() })
+                shape = RoundedRectangle(with(density) { localCornerPx.toDp() })
                 clip = true
+
+                shadowElevation = (targetShadowPx * p) / currentScaleX
+                ambientShadowColor = Color.Black.copy(alpha = 0.65f)
+                spotShadowColor = Color.Black.copy(alpha = 0.80f)
             }
-            .background(Color(0xFFE3E3E6)),
+            .background(Color(0xFF282830)),
         contentAlignment = Alignment.Center
     ) {
         if (!imageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            val normalizedUrl = remember(imageUrl) { normalizeHighResCoverUrl(imageUrl) }
+            val painter = sharedArtwork?.takeIf { it.first == normalizedUrl }?.second
+            if (painter != null) {
+                Image(
+                    painter = painter,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                AsyncImage(
+                    model = rememberHighResArtworkRequest(imageUrl),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         } else {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
@@ -1564,12 +1829,14 @@ private fun SearchMiniPlayerBar(
     cornerRadius: Dp,
     playbackStateFlow: StateFlow<PlaybackState>,
     contentProgress: State<Float> = remember { mutableFloatStateOf(0f) },
+    playerTransitionProgress: State<Float> = remember { mutableFloatStateOf(0f) },
     enabled: Boolean = true,
     onPlayPauseClick: () -> Unit,
     onPlaylistClick: () -> Unit,
     onNextClick: () -> Unit,
     onPreviousClick: () -> Unit,
     onBarClick: (String?) -> Unit,
+    onContainerBoundsChanged: (Rect) -> Unit = {},
     onArtworkBoundsChanged: (Rect) -> Unit,
     hideArtwork: Boolean,
     modifier: Modifier = Modifier
@@ -1751,6 +2018,9 @@ private fun SearchMiniPlayerBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                onContainerBoundsChanged(coordinates.boundsInRoot())
+            }
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
@@ -1769,6 +2039,9 @@ private fun SearchMiniPlayerBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    alpha = playerMiniContentAlpha(playerTransitionProgress.value)
+                }
                 .padding(end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -2027,7 +2300,8 @@ private fun MiniPlayerArtwork(
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(7.dp)
+    val shape = RoundedRectangle(7.dp)
+    val sharedArtwork = LocalPlayerArtwork.current
 
     Box(
         modifier = modifier
@@ -2039,12 +2313,24 @@ private fun MiniPlayerArtwork(
         contentAlignment = Alignment.Center
     ) {
         if (!imageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = "当前歌曲封面",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            val normalizedUrl = remember(imageUrl) { normalizeHighResCoverUrl(imageUrl) }
+            val painter = sharedArtwork?.takeIf { it.first == normalizedUrl }?.second
+            if (painter != null) {
+                Image(
+                    painter = painter,
+                    contentDescription = "当前歌曲封面",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                AsyncImage(
+                    model = rememberHighResArtworkRequest(imageUrl),
+                    contentDescription = "当前歌曲封面",
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         } else {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,

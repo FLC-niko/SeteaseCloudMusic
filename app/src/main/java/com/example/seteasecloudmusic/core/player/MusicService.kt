@@ -463,6 +463,7 @@ class MusicService : MediaSessionService() {
         val request = ImageRequest.Builder(this)
             .data(coverUrl)
             .size(320, 320)
+            .memoryCacheKey("$coverUrl#notif_320")
             .allowHardware(false) // 禁用 GPU 硬件加速位图，确保通过 Binder 跨进程安全传输至背屏
             .bitmapConfig(Bitmap.Config.ARGB_8888)
             .target(

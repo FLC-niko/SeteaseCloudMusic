@@ -43,7 +43,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
-import com.example.seteasecloudmusic.core.settings.PlayerStyle
+import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -101,8 +101,8 @@ fun AccountLoginSheetContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val contentScrollState = rememberScrollState()
-    var showPlayerStyleDialog by remember { mutableStateOf(false) }
-    val playerStyle by viewModel.playerSettingsManager.playerStyle.collectAsStateWithLifecycle()
+    var showAudioQualityDialog by remember { mutableStateOf(false) }
+    val audioQuality by viewModel.playerSettingsManager.audioQuality.collectAsStateWithLifecycle()
     val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
     val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
 
@@ -174,7 +174,7 @@ fun AccountLoginSheetContent(
                             onCaptchaClick = { viewModel.onCaptchaPanelOpened() },
                             onQrClick = { viewModel.onQrPanelOpened() },
                             onSettingsClick = {
-                                showPlayerStyleDialog = true
+                                showAudioQualityDialog = true
                             },
                             onProfileClick = {
                                 viewModel.onAccountDetailsOpened()
@@ -240,8 +240,8 @@ fun AccountLoginSheetContent(
                             onPersonalizedRecommendationChange = {
                                 viewModel.onPersonalizedRecommendationToggled(it)
                             },
-                            playerStyle = playerStyle,
-                            onPlayerStyleClick = { showPlayerStyleDialog = true },
+                            audioQuality = audioQuality,
+                            onAudioQualityClick = { showAudioQualityDialog = true },
                             bluetoothLyricsEnabled = bluetoothLyricsEnabled,
                             onBluetoothLyricsChange = { viewModel.playerSettingsManager.setBluetoothLyricsEnabled(it) },
                             superLyricApiEnabled = superLyricApiEnabled,
@@ -285,14 +285,14 @@ fun AccountLoginSheetContent(
             )
         }
 
-        if (showPlayerStyleDialog) {
-            PlayerStyleSelectionDialog(
-                currentStyle = playerStyle,
-                onSelect = { style ->
-                    viewModel.playerSettingsManager.setPlayerStyle(style)
-                    showPlayerStyleDialog = false
+        if (showAudioQualityDialog) {
+            AudioQualitySettingsDialog(
+                currentQuality = audioQuality,
+                onSelect = { quality ->
+                    viewModel.playerSettingsManager.setAudioQuality(quality)
+                    showAudioQualityDialog = false
                 },
-                onDismiss = { showPlayerStyleDialog = false }
+                onDismiss = { showAudioQualityDialog = false }
             )
         }
 
@@ -413,8 +413,8 @@ private fun AccountDetailsPanel(
     onCountryRegionClick: () -> Unit,
     onRatingsAndReviewsClick: () -> Unit,
     onPersonalizedRecommendationChange: (Boolean) -> Unit,
-    playerStyle: PlayerStyle,
-    onPlayerStyleClick: () -> Unit,
+    audioQuality: OnlineAudioQuality,
+    onAudioQualityClick: () -> Unit,
     bluetoothLyricsEnabled: Boolean,
     onBluetoothLyricsChange: (Boolean) -> Unit,
     superLyricApiEnabled: Boolean,
@@ -468,9 +468,9 @@ private fun AccountDetailsPanel(
 
         SettingsSectionCard {
             SettingsNavigationRow(
-                title = "播放页风格",
-                trailingText = if (playerStyle == PlayerStyle.AMLL_WEB) "Apple Music 动效" else "原生质感",
-                onClick = onPlayerStyleClick
+                title = "在线播放音质",
+                trailingText = audioQuality.badgeText,
+                onClick = onAudioQualityClick
             )
         }
 
@@ -1299,16 +1299,16 @@ private fun PanelTitle(
 }
 
 @Composable
-private fun PlayerStyleSelectionDialog(
-    currentStyle: PlayerStyle,
-    onSelect: (PlayerStyle) -> Unit,
+private fun AudioQualitySettingsDialog(
+    currentQuality: OnlineAudioQuality,
+    onSelect: (OnlineAudioQuality) -> Unit,
     onDismiss: () -> Unit
 ) {
     AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "选择播放页风格",
+                text = "选择在线播放音质",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
@@ -1321,8 +1321,8 @@ private fun PlayerStyleSelectionDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                PlayerStyle.values().forEach { style ->
-                    val isSelected = currentStyle == style
+                OnlineAudioQuality.values().forEach { quality ->
+                    val isSelected = currentQuality == quality
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1330,20 +1330,20 @@ private fun PlayerStyleSelectionDialog(
                             .background(
                                 if (isSelected) Color(0xFFFA233B).copy(alpha = 0.08f) else Color(0xFFF5F5F7)
                             )
-                            .clickable { onSelect(style) }
+                            .clickable { onSelect(quality) }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = style.title,
+                                text = quality.badgeText,
                                 fontSize = 15.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSelected) Color(0xFFFA233B) else Color(0xFF111111)
                             )
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = style.desc,
+                                text = quality.desc,
                                 fontSize = 12.sp,
                                 color = Color(0xFF8E8E93)
                             )

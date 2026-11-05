@@ -45,7 +45,7 @@ class MineRepositoryImpl @Inject constructor(
             val likedPlaylist = likedItem?.let {
                 UserPlaylist(
                     id = it.id ?: 0L,
-                    name = it.name?.takeIf { n -> n.isNotBlank() } ?: "我喜欢的音乐",
+                    name = "我喜欢的音乐",
                     coverUrl = it.coverImgUrl,
                     trackCount = it.trackCount ?: 0,
                     playCount = it.playCount ?: 0L,

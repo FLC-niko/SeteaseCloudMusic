@@ -6,7 +6,9 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -17,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.example.seteasecloudmusic.core.ui.adaptive.*
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -235,6 +238,15 @@ fun MineScreen(
                 }
             }
         } else {
+            val isTabsPinned by remember {
+                derivedStateOf { lazyListState.firstVisibleItemIndex >= 3 }
+            }
+            val tabsBackgroundColor by animateColorAsState(
+                targetValue = if (isTabsPinned) MinePageBase else Color.Transparent,
+                animationSpec = tween(durationMillis = 150),
+                label = "tabsBg"
+            )
+
             LazyColumn(
                 state = lazyListState,
                 modifier = Modifier
@@ -243,8 +255,7 @@ fun MineScreen(
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 8.dp,
                     bottom = bottomContentPadding
-                ),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                )
             ) {
                 item(key = "large_page_title") {
                     AppleMusicLargeTitle(
@@ -261,7 +272,7 @@ fun MineScreen(
                 }
 
             item(key = "user_header") {
-                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                Box(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp)) {
                     UserProfileCenterpiece(
                         backdrop = mineBackdrop,
                         nickname = session.nickname ?: "云音乐用户",
@@ -279,7 +290,7 @@ fun MineScreen(
             }
 
             item(key = "liked_hero") {
-                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                Box(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp)) {
                     LikedSongsHeroCard(
                         backdrop = mineBackdrop,
                         playlist = uiState.likedPlaylist,
@@ -293,8 +304,8 @@ fun MineScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MinePageBase)
-                        .padding(horizontal = 20.dp, vertical = 2.dp)
+                        .background(tabsBackgroundColor)
+                        .padding(horizontal = 20.dp, vertical = 4.dp)
                 ) {
                     MinePlaylistTabs(
                         backdrop = mineBackdrop,
@@ -312,7 +323,7 @@ fun MineScreen(
                     if (uiState.createdPlaylists.isEmpty() && !uiState.isLoading) {
                         if (!uiState.errorMessage.isNullOrBlank()) {
                             item(key = "error_created") {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                                     MineErrorNotice(
                                         message = uiState.errorMessage,
                                         onRetry = onRefresh
@@ -321,7 +332,7 @@ fun MineScreen(
                             }
                         } else {
                             item(key = "empty_created") {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                                     EmptyPlaylistNotice("暂无自建歌单")
                                 }
                             }
@@ -339,7 +350,7 @@ fun MineScreen(
                     if (uiState.favoritedPlaylists.isEmpty() && !uiState.isLoading) {
                         if (!uiState.errorMessage.isNullOrBlank()) {
                             item(key = "error_favorited") {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                                     MineErrorNotice(
                                         message = uiState.errorMessage,
                                         onRetry = onRefresh
@@ -348,7 +359,7 @@ fun MineScreen(
                             }
                         } else {
                             item(key = "empty_favorited") {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                                     EmptyPlaylistNotice("暂无收藏歌单")
                                 }
                             }
@@ -372,7 +383,7 @@ fun MineScreen(
                         }
                     }
                     item(key = "local_dir_control_bar") {
-                        Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                             LocalMusicDirectoryBar(
                                 backdrop = mineBackdrop,
                                 directoryPath = uiState.localDirectoryPath,
@@ -662,9 +673,7 @@ private fun UserProfileCenterpiece(
                     avatarUrl = avatarUrl,
                     displayName = nickname,
                     size = 64.dp,
-                    showBorder = true,
-                    borderWidth = 2.dp,
-                    borderColor = Color.White.copy(alpha = 0.82f)
+                    showBorder = false
                 )
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -818,8 +827,7 @@ private fun MineLoggedOutView(
                     modifier = Modifier
                         .size(76.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.32f))
-                        .border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape),
+                        .background(Color.White.copy(alpha = 0.32f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -881,8 +889,7 @@ private fun LikedSongsHeroCard(
                 modifier = Modifier
                     .size(70.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = 0.32f))
-                    .border(1.dp, Color.White.copy(alpha = 0.58f), RoundedCornerShape(18.dp)),
+                    .background(Color.White.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (!playlist?.coverUrl.isNullOrBlank()) {
@@ -902,9 +909,12 @@ private fun LikedSongsHeroCard(
                 }
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
                 Text(
-                    text = playlist?.name ?: "我喜欢的音乐",
+                    text = "我喜欢的音乐",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
@@ -912,11 +922,6 @@ private fun LikedSongsHeroCard(
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(5.dp))
-                Text(
-                    text = "${playlist?.trackCount ?: 0} 首歌曲",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, color = MineTextSecondary)
                 )
             }
             Box(
@@ -941,17 +946,17 @@ private fun LikedSongsHeroCard(
 private fun MinePlaylistTabs(
     backdrop: Backdrop,
     selectedTab: MinePlaylistTab,
-    createdCount: Int,
-    favoritedCount: Int,
-    localCount: Int,
+    createdCount: Int = 0,
+    favoritedCount: Int = 0,
+    localCount: Int = 0,
     onTabSelected: (MinePlaylistTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val tabs = remember(createdCount, favoritedCount, localCount) {
+    val tabs = remember {
         listOf(
-            MinePlaylistTab.CREATED to "创建 $createdCount",
-            MinePlaylistTab.FAVORITED to "收藏 $favoritedCount",
-            MinePlaylistTab.LOCAL to "本地 $localCount"
+            MinePlaylistTab.CREATED to "创建",
+            MinePlaylistTab.FAVORITED to "收藏",
+            MinePlaylistTab.LOCAL to "本地"
         )
     }
 
@@ -1120,17 +1125,16 @@ private fun PlaylistRowItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(56.dp)
-                .clip(RoundedCornerShape(15.dp))
-                .background(Color.White.copy(alpha = 0.42f))
-                .border(1.dp, Color.White.copy(alpha = 0.62f), RoundedCornerShape(15.dp)),
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White.copy(alpha = 0.42f)),
             contentAlignment = Alignment.Center
         ) {
             if (!playlist.coverUrl.isNullOrBlank()) {
