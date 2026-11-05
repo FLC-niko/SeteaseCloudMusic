@@ -31,14 +31,15 @@ import com.kyant.shapes.RoundedRectangle
 @Composable
 fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (onClose != null) {
-            IconButton(onClick = onClose, modifier = Modifier.size(44.dp)
+        val sideControls = LocalAdaptiveWindow.current.useNavigationRail && !LocalAdaptiveWindow.current.sideControlsAtStart
+        val back: @Composable () -> Unit = {
+            IconButton(onClick = { onClose?.invoke() }, modifier = Modifier.size(44.dp)
                 .background(Color.White.copy(alpha = 0.6f), RoundedRectangle(22.dp))
                 .border(0.75.dp, Color.White.copy(alpha = 0.85f), RoundedRectangle(22.dp))) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color(0xFF393941), modifier = Modifier.size(22.dp))
             }
-            Spacer(Modifier.width(8.dp))
         }
+        if (onClose != null && !sideControls) { back(); Spacer(Modifier.width(8.dp)) }
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15151A), maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
@@ -46,6 +47,7 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
                 Text(subtitle, fontSize = 13.sp, color = Color(0xFF81818B))
             }
         }
+        if (onClose != null && sideControls) { Spacer(Modifier.width(8.dp)); back() }
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -83,8 +84,8 @@ fun AdaptiveModalSheet(
                 interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismissRequest)) {
                 AdaptiveOverlayPane(Modifier.fillMaxSize().systemBarsPadding()) {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
-                        LiquidGlassPanel(modifier.align(Alignment.CenterEnd).padding(20.dp).widthIn(max = 460.dp)
-                            .fillMaxWidth().heightIn(max = (maxHeight - 40.dp).coerceAtLeast(0.dp))
+                        LiquidGlassPanel(modifier.align(Alignment.Center).padding(20.dp).widthIn(max = 460.dp)
+                            .fillMaxWidth().testTag("adaptive_modal_surface").heightIn(max = (maxHeight - 40.dp).coerceAtLeast(0.dp))
                             .graphicsLayer { alpha = reveal; scaleX = 0.94f + 0.06f * reveal; scaleY = scaleX }
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
                             containerColor = containerColor) {

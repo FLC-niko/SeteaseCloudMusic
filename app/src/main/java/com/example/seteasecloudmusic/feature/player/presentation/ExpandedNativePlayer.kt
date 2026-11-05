@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -141,7 +142,7 @@ internal fun ExpandedNativePlayerContent(
 
     Box(
         Modifier
-            .fillMaxSize()
+            .fillMaxSize().testTag("player_two_column")
             .background(if (sharedBackground == null) Color(0xFF101014) else Color.Transparent)
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }
     ) {
@@ -261,7 +262,7 @@ internal fun ExpandedNativePlayerContent(
                         if (!controlsInSecondary) {
                             LiquidGlassPanel(
                                 Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
-                                    .fillMaxWidth().padding(bottom = 12.dp).heightIn(max = 260.dp),
+                                    .fillMaxWidth().testTag("expanded_player_controls").padding(bottom = 12.dp).heightIn(max = 260.dp),
                                 backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
                             ) {
                                 Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
@@ -278,7 +279,7 @@ internal fun ExpandedNativePlayerContent(
                         if (controlsInSecondary) {
                             LiquidGlassPanel(
                                 Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
-                                    .fillMaxWidth().padding(bottom = 12.dp).heightIn(max = 240.dp),
+                                    .fillMaxWidth().testTag("expanded_player_controls").padding(bottom = 12.dp).heightIn(max = 240.dp),
                                 backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
                             ) {
                                 Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
