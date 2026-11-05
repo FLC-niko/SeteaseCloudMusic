@@ -1039,9 +1039,9 @@ fun AppNavigation(
                 header = {
                     UserAvatarButton(authUiState.authSession?.avatarUrl, authUiState.authSession?.nickname,
                         { showAccountSheet = true }, size = 44.dp, sideControl = true)
-                }, miniPlayer = { inOverflow ->
+                }, miniPlayer = { inOverflow, closeOverflow ->
                     SideMiniPlayer(playerViewModel.playbackState, backdrop,
-                        { openPlayer(it) }, playerViewModel::onPlayPause, { showPlaylistQueueSheet = true },
+                        { closeOverflow(); openPlayer(it) }, { closeOverflow(); playerViewModel.onPlayPause() }, { closeOverflow(); showPlaylistQueueSheet = true },
                         { miniPlayerContainerBounds = if (inOverflow) null else it }, { miniPlayerArtworkBounds = if (inOverflow) null else it })
                 })
         }

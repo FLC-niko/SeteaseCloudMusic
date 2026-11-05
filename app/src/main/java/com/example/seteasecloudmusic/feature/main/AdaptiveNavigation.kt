@@ -88,7 +88,7 @@ internal fun MusicNavigationRail(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     header: @Composable () -> Unit = {},
-    miniPlayer: @Composable (Boolean) -> Unit = {}
+    miniPlayer: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }
 ) {
     val items = remember { listOf(
         BottomNavItem("首页", R.drawable.ic_nav_home, R.drawable.ic_nav_home_filled),
@@ -112,7 +112,7 @@ internal fun MusicNavigationRail(
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             header()
             Spacer(Modifier.weight(1f))
-            if (!controlsInOverflow) miniPlayer(false)
+            if (!controlsInOverflow) miniPlayer(false) {}
             Spacer(Modifier.height(12.dp))
             if (collapsed) {
                 Box {
@@ -126,7 +126,7 @@ internal fun MusicNavigationRail(
                                 modifier = Modifier.testTag("glass_dock_$index"),
                                 leadingIcon = { Icon(painterResource(item.iconRes), null) })
                         }
-                        if (controlsInOverflow) Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) { miniPlayer(true) }
+                        if (controlsInOverflow) Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) { miniPlayer(true) { overflow = false } }
                     }
                 }
             } else {
