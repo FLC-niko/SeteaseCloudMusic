@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -138,8 +139,10 @@ fun UserAvatarButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Dp = 46.dp,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    sideControl: Boolean = false
 ) {
+    if (LocalAdaptiveWindow.current.useNavigationRail && !sideControl) return
     val hasDisplayName = !displayName.isNullOrBlank()
     val hasAvatar = !avatarUrl.isNullOrBlank()
     val isGuest = !hasAvatar && !hasDisplayName
