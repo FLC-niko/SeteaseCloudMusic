@@ -36,6 +36,9 @@ class PlayerSettingsManager @Inject constructor(
     private val _superLyricApiEnabled = MutableStateFlow(loadSavedSuperLyricApi())
     val superLyricApiEnabled: StateFlow<Boolean> = _superLyricApiEnabled.asStateFlow()
 
+    private val _playlistDetailStyle = MutableStateFlow(loadSavedPlaylistDetailStyle())
+    val playlistDetailStyle: StateFlow<String> = _playlistDetailStyle.asStateFlow()
+
     fun setAudioQuality(quality: OnlineAudioQuality) {
         _audioQuality.value = quality
         prefs.edit().putString(KEY_AUDIO_QUALITY, quality.name).apply()
@@ -49,6 +52,11 @@ class PlayerSettingsManager @Inject constructor(
     fun setSuperLyricApiEnabled(enabled: Boolean) {
         _superLyricApiEnabled.value = enabled
         prefs.edit().putBoolean(KEY_SUPER_LYRIC_API, enabled).apply()
+    }
+
+    fun setPlaylistDetailStyle(styleId: String) {
+        _playlistDetailStyle.value = styleId
+        prefs.edit().putString(KEY_PLAYLIST_STYLE, styleId).apply()
     }
 
     private fun loadSavedAudioQuality(): OnlineAudioQuality {
@@ -68,10 +76,15 @@ class PlayerSettingsManager @Inject constructor(
         return prefs.getBoolean(KEY_SUPER_LYRIC_API, true)
     }
 
+    private fun loadSavedPlaylistDetailStyle(): String {
+        return prefs.getString(KEY_PLAYLIST_STYLE, "apple_music") ?: "apple_music"
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
         private const val KEY_BLUETOOTH_LYRICS = "player_bluetooth_lyrics"
         private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"
+        private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
     }
 }

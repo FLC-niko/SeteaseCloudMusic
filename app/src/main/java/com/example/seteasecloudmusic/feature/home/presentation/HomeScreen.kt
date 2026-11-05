@@ -384,7 +384,7 @@ private fun DailyRecommendPosterWall(
 }
 
 @Composable
-private fun ScrollingPosterWall(
+internal fun ScrollingPosterWall(
     covers: List<String>,
     modifier: Modifier = Modifier
 ) {
@@ -496,7 +496,7 @@ private fun ScrollingPosterWall(
 }
 
 @Composable
-private fun PosterCoverCell(
+internal fun PosterCoverCell(
     imageUrl: String?,
     modifier: Modifier = Modifier
 ) {
