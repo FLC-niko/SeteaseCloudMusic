@@ -171,6 +171,7 @@ cd SeteaseCloudMusic
 ## 相关文档
 
 - [折叠屏页面、布局与验证说明](docs/折叠屏适配.md)
+- [折叠屏液态玻璃视觉统一](docs/折叠屏液态玻璃优化.md)
 - [后台模拟器启动、ADB 调试与截图](docs/后台模拟器调试.md)
 
 - 详细开发说明：app/src/main/java/com/example/seteasecloudmusic/开发必看.md
