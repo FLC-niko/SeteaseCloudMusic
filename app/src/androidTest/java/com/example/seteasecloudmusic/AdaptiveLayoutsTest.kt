@@ -105,7 +105,7 @@ class AdaptiveLayoutsTest {
             compose.onNodeWithTag("fixture").assertExists()
             val expected = when (name) {
                 "chrome" -> "首页"
-                "native_music" -> if (windowInfo?.width?.let { it >= 600.dp } == true || windowInfo?.separatingFold != null) "日落之前" else "未在播放"
+                "native_music" -> "日落之前"
                 "home" -> "首页"
                 "radio", "radio_detail" -> "电台"
                 "mine", "mine_detail", "local" -> "我的"
@@ -126,17 +126,36 @@ class AdaptiveLayoutsTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             capture("$label-$name")
             if (name == "chrome") {
+                val info = requireNotNull(windowInfo)
+                if (info.useNavigationRail) {
+                    val dock = compose.onNodeWithTag("expanded_glass_dock").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+                    val content = compose.onNodeWithTag("chrome_content").fetchSemanticsNode().boundsInRoot
+                    val root = compose.onNodeWithTag("fixture").fetchSemanticsNode().boundsInRoot
+                    assertTrue("Controls must follow the outer edge", if (info.sideControlsAtStart) dock.center.x < root.center.x else dock.center.x > root.center.x)
+                    assertTrue("Content must leave the side controls clear", if (info.sideControlsAtStart) content.left >= dock.right - 1f else content.right <= dock.left + 1f)
+                    compose.onNodeWithTag("horizontal_glass_dock").assertDoesNotExist()
+                } else {
+                    compose.onNodeWithTag("horizontal_glass_dock").assertIsDisplayed()
+                    compose.onNodeWithTag("expanded_glass_dock").assertDoesNotExist()
+                }
+                val queueInOverflow = compose.onAllNodesWithContentDescription("播放列表").fetchSemanticsNodes().isEmpty()
+                val underlyingCenter = if (queueInOverflow) {
+                    val center = compose.onNodeWithTag("glass_dock_overflow").fetchSemanticsNode().boundsInRoot.center
+                    compose.onNodeWithTag("glass_dock_overflow").performClick()
+                    center
+                } else compose.onNodeWithContentDescription("播放列表").fetchSemanticsNode().boundsInRoot.center
                 compose.onNodeWithContentDescription("播放列表").performClick()
                 compose.onNodeWithText("播放列表为空").assertExists()
                 capture("$label-chrome-queue")
                 androidx.test.espresso.Espresso.pressBack()
-                val queueCenter = compose.onNodeWithContentDescription("播放列表").fetchSemanticsNode().boundsInRoot.center
                 compose.onNodeWithContentDescription("打开账户").performClick()
                 compose.onNodeWithText("Setease 账户").assertExists()
+                assertAwayFromFold("account_glass_surface")
                 capture("$label-chrome-account")
                 val fixtureOrigin = compose.onNodeWithTag("fixture").fetchSemanticsNode().boundsInRoot.topLeft
-                compose.onNodeWithTag("fixture").performTouchInput { click(queueCenter - fixtureOrigin) }
+                compose.onNodeWithTag("fixture").performTouchInput { click(underlyingCenter - fixtureOrigin) }
                 compose.onNodeWithText("播放列表为空").assertDoesNotExist()
+                if (queueInOverflow) compose.onNodeWithTag("glass_dock_0").assertDoesNotExist()
                 // The same screen point can be outside the narrower sheet: its scrim may dismiss it.
                 if (compose.onAllNodesWithText("Setease 账户").fetchSemanticsNodes().isEmpty()) {
                     compose.onNodeWithContentDescription("打开账户").performClick()
@@ -144,15 +163,23 @@ class AdaptiveLayoutsTest {
                 compose.onNodeWithText("Setease 账户").assertExists()
                 androidx.test.espresso.Espresso.pressBack()
             }
-            if (name == "native_music" && (windowInfo?.width?.let { it >= 600.dp } == true || windowInfo?.separatingFold != null)) {
+            if (name == "native_music") {
+                compose.onNodeWithTag(if (windowInfo?.useExpandedPlayer == true) "player_two_column" else "player_stacked").assertExists()
                 compose.onNodeWithContentDescription("待播清单").performClick()
                 compose.onNodeWithText("播放列表").assertExists()
+                if (windowInfo?.isRegularWidth == true || windowInfo?.separatingFold != null) assertAwayFromFold("adaptive_modal_surface")
                 capture("$label-native-queue")
                 androidx.test.espresso.Espresso.pressBack()
                 compose.onNodeWithText("Hi-Res").performClick()
                 compose.onNodeWithText("选择播放音质").assertExists()
+                if (windowInfo?.isRegularWidth == true || windowInfo?.separatingFold != null) assertAwayFromFold("adaptive_modal_surface")
                 capture("$label-native-quality")
                 androidx.test.espresso.Espresso.pressBack()
+                if (windowInfo?.useExpandedPlayer != true) {
+                    compose.onNodeWithContentDescription("歌词").performClick()
+                    capture("$label-native-lyrics")
+                    androidx.test.espresso.Espresso.pressBack()
+                }
             }
             if (name == "settings") {
                 compose.onNodeWithText("在线播放音质").performClick()
@@ -220,6 +247,68 @@ class AdaptiveLayoutsTest {
         compose.onNodeWithTag("glass_dock_2").assertIsSelected()
         compose.onNodeWithTag("glass_dock_search").performClick().assertIsSelected()
         compose.onNodeWithTag("glass_dock_1").performClick().assertIsSelected()
+    }
+
+    @Test fun shortSideDockKeepsAllDestinationsReachable() {
+        var selected by mutableIntStateOf(0)
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                CompositionLocalProvider(LocalAdaptiveWindow provides AdaptiveWindowInfo(800.dp, 420.dp, isFoldable = true)) {
+                    val background = rememberLayerBackdrop { drawContent() }
+                    Box(Modifier.width(84.dp).height(350.dp)) {
+                        MusicNavigationRail(selected, { selected = it }, background)
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("glass_dock_overflow").assertIsDisplayed().performClick()
+        compose.onNodeWithText("我的").performClick()
+        compose.runOnIdle { assertEquals(2, selected) }
+        compose.onNodeWithTag("glass_dock_search").performClick().assertIsSelected()
+        compose.onNodeWithTag("glass_dock_overflow").performClick()
+        compose.onNodeWithText("首页").performClick()
+        compose.runOnIdle { assertEquals(0, selected) }
+    }
+
+    @Test fun splitWindowKeepsControlsOnItsLeftOuterEdge() {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                CompositionLocalProvider(LocalAdaptiveWindow provides AdaptiveWindowInfo(500.dp, 800.dp,
+                    isFoldable = true, sideControlsAtStart = true)) {
+                    AppNavigation()
+                }
+            }
+        }
+        val dock = compose.onNodeWithTag("expanded_glass_dock").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val content = compose.onNodeWithTag("chrome_content").fetchSemanticsNode().boundsInRoot
+        assertTrue("Left split controls must leave the app content clear", dock.right <= content.left + 1f)
+        compose.onNodeWithTag("glass_dock_search").performClick()
+        compose.onNode(hasSetTextAction()).assertExists()
+    }
+
+    @Test fun lyricPageSurvivesWideWindowReflow() {
+        var wide by mutableStateOf(false)
+        val tracks = fixtures()
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                val info = if (wide) AdaptiveWindowInfo(800.dp, 500.dp, isFoldable = true)
+                    else AdaptiveWindowInfo(500.dp, 800.dp, isFoldable = true)
+                val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(
+                    Lyrics(lrc = LyricContent(lyric = "[00:00.00]在城市的另一边")))
+                CompositionLocalProvider(LocalAdaptiveWindow provides info) {
+                    NativePlayerContent(PlaybackState(PlayerStatus.PAUSED, tracks[0], durationMs = 220000), lyrics,
+                        com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
+                        {}, remember { mutableStateOf(1f) }, {})
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("歌词").performClick()
+        val lyricState = SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "歌词")
+        compose.onNodeWithTag("player_stacked").assert(lyricState)
+        compose.runOnUiThread { wide = true }
+        compose.onNodeWithTag("player_two_column").assertExists()
+        compose.runOnUiThread { wide = false }
+        compose.onNodeWithTag("player_stacked").assert(lyricState)
     }
 
     @Test fun navigationAndSearchSurviveActivityRecreation() {
@@ -305,6 +394,15 @@ class AdaptiveLayoutsTest {
         assertTrue(primary.height > 0 && secondary.height > 0)
     }
 
+    private fun assertAwayFromFold(tag: String) {
+        val info = windowInfo ?: return
+        val fold = info.separatingFold ?: return
+        val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInWindow
+        assertTrue("$tag must avoid the fold: $bounds / $fold",
+            if (info.horizontalFold) bounds.bottom <= fold.top + 1f || bounds.top >= fold.bottom - 1f
+            else bounds.right <= fold.left + 1f || bounds.left >= fold.right - 1f)
+    }
+
     private fun capture(name: String) {
         // Android dialogs use Choreographer, independently of Compose's virtual clock.
         val frames = java.util.concurrent.CountDownLatch(1)
@@ -325,7 +423,10 @@ class AdaptiveLayoutsTest {
         val label = InstrumentationRegistry.getArguments().getString("layoutLabel")
         val info = requireNotNull(windowInfo)
         when (label) {
-            "outer", "outer-large-font" -> assertTrue("Outer panel must be portrait: $info", info.width < 600.dp && info.height > info.width)
+            "outer", "outer-large-font" -> {
+                assertTrue("Outer panel must be portrait: $info", info.width < 600.dp && info.height > info.width)
+                assertTrue("Foldable cover must expose side controls on a fresh activity", info.isFoldable && info.useNavigationRail)
+            }
             "outer-landscape" -> assertTrue("Outer landscape must actually be short and wide: $info", info.height < 600.dp && info.width > info.height)
             "landscape" -> assertTrue("Inner landscape must be wide: $info", info.width > info.height && info.height >= 600.dp)
             "book" -> assertTrue("Book posture must expose a vertical separating fold: $info", info.isBook)
@@ -371,27 +472,18 @@ private fun FixturePage(page: String, tracks: List<Track>) {
             "chrome" -> AppNavigation()
             "native_music" -> {
                 PlayerSystemBars()
-                val info = LocalAdaptiveWindow.current
-                if (info.width >= 600.dp || info.separatingFold != null) {
-                    val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(Lyrics(lrc = LyricContent(
-                        lyric = "[00:00.00]在城市的另一边\n[00:05.00]听见晚风轻轻唱\n[00:10.00]把平凡的瞬间写成旋律")))
-                    val background = rememberLayerBackdrop { drawContent() }
-                    var showQueue by remember { mutableStateOf(false) }
-                    var showQuality by remember { mutableStateOf(false) }
-                    val state = PlaybackState(PlayerStatus.PAUSED, tracks[0], currentPositionMs = 6000,
-                        durationMs = 220000, queueTracks = tracks)
-                    val quality = com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES
-                    Box(Modifier.fillMaxSize()) {
-                        PlayerBackdrop(tracks[0], Modifier.layerBackdrop(background))
-                        CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
-                            ExpandedNativePlayerContent(state, lyrics, quality,
-                                {}, remember { mutableStateOf(1f) }, {}, {}, {}, {}, {},
-                                { showQuality = true }, { showQueue = true })
-                            if (showQueue) PlaylistQueueSheet(state, {}, {}, {}, {}, { showQueue = false })
-                            if (showQuality) AudioQualitySelectionSheet(quality, {}, { showQuality = false })
-                        }
+                val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(Lyrics(lrc = LyricContent(
+                    lyric = "[00:00.00]在城市的另一边\n[00:05.00]听见晚风轻轻唱\n[00:10.00]把平凡的瞬间写成旋律")))
+                val background = rememberLayerBackdrop { drawContent() }
+                val state = PlaybackState(PlayerStatus.PAUSED, tracks[0], currentPositionMs = 6000,
+                    durationMs = 220000, queueTracks = tracks)
+                Box(Modifier.fillMaxSize()) {
+                    PlayerBackdrop(tracks[0], Modifier.layerBackdrop(background))
+                    CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
+                        NativePlayerContent(state, lyrics, com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
+                            {}, remember { mutableStateOf(1f) }, {})
                     }
-                } else NativePlayerScreen(hiltViewModel(), {}, remember { mutableStateOf(1f) }, {})
+                }
             }
             "home" -> HomeScreenContent(HomeUiState(tracks = tracks, favoriteTracks = tracks, radarTracks = tracks), 0.dp, bottom,
                 displayName = "Luna", onTrackClick = {}, onFavoriteTrackClick = {}, onCardPlayClick = {}, onRetryClick = {}, onRefreshClick = {}, onPosterWallClick = { _, _ -> })
