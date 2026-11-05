@@ -19,6 +19,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.shapes.RoundedRectangle
+import com.example.seteasecloudmusic.core.player.PlaybackState
+import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
+import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,6 +78,33 @@ internal fun ExpandedNativePlayer(
     val quality by viewModel.currentAudioQuality.collectAsStateWithLifecycle()
     val likedTrackIds by viewModel.likedTrackIds.collectAsStateWithLifecycle()
 
+    ExpandedNativePlayerContent(state, lyrics, quality, onClose, artworkAlpha, onArtworkBoundsChanged,
+        viewModel::onPlayPause, viewModel::onNext, { viewModel.onPrevious() }, viewModel::seekTo,
+        onQuality, onQueue, isLyricsLoading, likedTrackIds, viewModel::toggleTrackLiked,
+        viewModel::togglePlaybackMode)
+}
+
+@Composable
+internal fun ExpandedNativePlayerContent(
+    state: PlaybackState,
+    lyrics: ParsedLyrics,
+    quality: OnlineAudioQuality,
+    onClose: () -> Unit,
+    artworkAlpha: State<Float>,
+    onArtworkBoundsChanged: (Rect) -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onSeek: (Int) -> Unit,
+    onQuality: () -> Unit,
+    onQueue: () -> Unit,
+    isLyricsLoading: Boolean = false,
+    likedTrackIds: Set<Long> = emptySet(),
+    onToggleStar: (Long) -> Unit = {},
+    onToggleMode: () -> Unit = {}
+) {
+    val sharedBackground = LocalPlayerBackdrop.current
+    val background = sharedBackground ?: rememberLayerBackdrop { drawContent() }
     val track = state.currentTrack
     val playing = state.status == PlayerStatus.PLAYING
     val window = LocalAdaptiveWindow.current
@@ -92,11 +127,13 @@ internal fun ExpandedNativePlayer(
             hasTrack = track != null,
             currentAudioQuality = quality,
             isLocalTrack = local,
+            playbackMode = state.playbackMode,
+            onTogglePlaybackMode = onToggleMode,
             onAudioQualityClick = onQuality,
-            onPlayPause = viewModel::onPlayPause,
-            onNext = viewModel::onNext,
-            onPrevious = { viewModel.onPrevious() },
-            onSeekTo = viewModel::seekTo,
+            onPlayPause = onPlayPause,
+            onNext = onNext,
+            onPrevious = onPrevious,
+            onSeekTo = onSeek,
             onToggleLyrics = {},
             onQueueClick = onQueue
         )
@@ -105,13 +142,10 @@ internal fun ExpandedNativePlayer(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF101014))
+            .background(if (sharedBackground == null) Color(0xFF101014) else Color.Transparent)
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }
     ) {
-        AppleMusicBackground(
-            coverUrl = track?.coverUrl,
-            isPlaying = playing
-        )
+        if (sharedBackground == null) PlayerBackdrop(track, Modifier.layerBackdrop(background), playing)
 
         Column(
             Modifier
@@ -179,8 +213,8 @@ internal fun ExpandedNativePlayer(
                                         scaleY = playbackScale
                                         alpha = artworkAlpha.value
                                     }
-                                    .shadow(24.dp, RoundedCornerShape(16.dp))
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .shadow(24.dp, RoundedRectangle(24.dp))
+                                    .clip(RoundedRectangle(24.dp))
                                     .background(Color.White.copy(alpha = 0.08f))
                                     .onGloballyPositioned { onArtworkBoundsChanged(it.boundsInRoot()) },
                                 contentAlignment = Alignment.Center
@@ -220,17 +254,17 @@ internal fun ExpandedNativePlayer(
                             track = track,
                             isStarred = isStarred,
                             isExplicit = isExplicit,
-                            onToggleStar = { track?.let { viewModel.toggleTrackLiked(it.id) } },
+                            onToggleStar = { track?.let { onToggleStar(it.id) } },
                             onMore = onQuality
                         )
 
                         if (!controlsInSecondary) {
-                            Box(
-                                Modifier
-                                    .heightIn(max = 260.dp)
-                                    .verticalScroll(rememberScrollState())
+                            LiquidGlassPanel(
+                                Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
+                                    .fillMaxWidth().padding(bottom = 12.dp).heightIn(max = 260.dp),
+                                backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
                             ) {
-                                controls()
+                                Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
                             }
                         }
                     }
@@ -242,12 +276,12 @@ internal fun ExpandedNativePlayer(
                             .padding(end = 20.dp)
                     ) {
                         if (controlsInSecondary) {
-                            Box(
-                                Modifier
-                                    .heightIn(max = 240.dp)
-                                    .verticalScroll(rememberScrollState())
+                            LiquidGlassPanel(
+                                Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
+                                    .fillMaxWidth().padding(bottom = 12.dp).heightIn(max = 240.dp),
+                                backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
                             ) {
-                                controls()
+                                Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
                             }
                         }
                         when {
@@ -260,7 +294,7 @@ internal fun ExpandedNativePlayer(
                                     activeLineIndex = index,
                                     currentTimeMs = state.currentPositionMs,
                                     isPlaying = playing,
-                                    onLineClick = viewModel::seekTo,
+                                    onLineClick = onSeek,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxWidth()

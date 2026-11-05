@@ -426,10 +426,7 @@ fun NativePlayerScreen(
                     alpha = backgroundAlpha?.value ?: 1f
                 }
         ) {
-            AppleMusicBackground(
-                coverUrl = track?.coverUrl,
-                isPlaying = isPlaying
-            )
+            if (LocalPlayerBackdrop.current == null) PlayerBackdrop(track, isPlaying = isPlaying)
         }
 
         // ── Layer 1: 前景交互内容层（随外层容器展开/收起渐变）──

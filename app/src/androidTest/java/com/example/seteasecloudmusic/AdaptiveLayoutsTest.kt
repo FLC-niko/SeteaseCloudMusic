@@ -6,6 +6,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
@@ -19,12 +20,18 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.seteasecloudmusic.feature.player.domain.model.Lyrics
+import com.example.seteasecloudmusic.feature.player.domain.model.LyricContent
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.core.model.*
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.ui.adaptive.*
 import com.example.seteasecloudmusic.feature.main.MainActivity
+import com.example.seteasecloudmusic.feature.main.AppNavigation
+import com.example.seteasecloudmusic.feature.main.MusicNavigationRail
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import com.example.seteasecloudmusic.feature.artist.presentation.*
 import com.example.seteasecloudmusic.feature.artist.domain.model.*
 import com.example.seteasecloudmusic.feature.auth.presentation.*
@@ -50,7 +57,7 @@ class AdaptiveLayoutsTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @Volatile private var windowInfo: AdaptiveWindowInfo? = null
     @Volatile private var currentFontScale = 1f
-    private val pages = listOf("home", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
+    private val pages = listOf("chrome", "native_music", "home", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
 
     @Before fun keepEmulatorVisible() {
         compose.activityRule.scenario.onActivity { activity ->
@@ -65,6 +72,9 @@ class AdaptiveLayoutsTest {
         val arguments = InstrumentationRegistry.getArguments()
         val label = arguments.getString("layoutLabel") ?: "current"
         val selectedPages = arguments.getString("pages")?.split(',') ?: pages
+        require(selectedPages.isNotEmpty() && selectedPages.all { it in pages }) {
+            "Page scope must contain known fixtures: $selectedPages"
+        }
         val tracks = fixtures()
         var page by mutableStateOf(selectedPages.first())
         compose.activityRule.scenario.onActivity { activity ->
@@ -74,8 +84,16 @@ class AdaptiveLayoutsTest {
                     val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
                     SideEffect { windowInfo = info; currentFontScale = fontScale }
                     MaterialTheme {
+                        val background = rememberLayerBackdrop { drawContent() }
                         Box(Modifier.fillMaxSize().background(Color.White).testTag("fixture")) {
-                            FixturePage(page, tracks)
+                            Canvas(Modifier.fillMaxSize().layerBackdrop(background)) {
+                                drawRect(Color.White)
+                                drawRect(androidx.compose.ui.graphics.Brush.radialGradient(
+                                    listOf(Color(0xFFE7DEF4), Color.Transparent),
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.75f, size.height * 0.4f),
+                                    radius = size.width * 0.65f))
+                            }
+                            CompositionLocalProvider(LocalGlassBackdrop provides background) { FixturePage(page, tracks) }
                         }
                     }
                 }
@@ -86,6 +104,8 @@ class AdaptiveLayoutsTest {
             compose.waitForIdle()
             compose.onNodeWithTag("fixture").assertExists()
             val expected = when (name) {
+                "chrome" -> "首页"
+                "native_music" -> if (windowInfo?.width?.let { it >= 600.dp } == true || windowInfo?.separatingFold != null) "日落之前" else "未在播放"
                 "home" -> "首页"
                 "radio", "radio_detail" -> "电台"
                 "mine", "mine_detail", "local" -> "我的"
@@ -105,6 +125,35 @@ class AdaptiveLayoutsTest {
             // Dialogs render on Android's frame clock as well as Compose's test clock.
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             capture("$label-$name")
+            if (name == "chrome") {
+                compose.onNodeWithContentDescription("播放列表").performClick()
+                compose.onNodeWithText("播放列表为空").assertExists()
+                capture("$label-chrome-queue")
+                androidx.test.espresso.Espresso.pressBack()
+                val queueCenter = compose.onNodeWithContentDescription("播放列表").fetchSemanticsNode().boundsInRoot.center
+                compose.onNodeWithContentDescription("打开账户").performClick()
+                compose.onNodeWithText("Setease 账户").assertExists()
+                capture("$label-chrome-account")
+                val fixtureOrigin = compose.onNodeWithTag("fixture").fetchSemanticsNode().boundsInRoot.topLeft
+                compose.onNodeWithTag("fixture").performTouchInput { click(queueCenter - fixtureOrigin) }
+                compose.onNodeWithText("播放列表为空").assertDoesNotExist()
+                // The same screen point can be outside the narrower sheet: its scrim may dismiss it.
+                if (compose.onAllNodesWithText("Setease 账户").fetchSemanticsNodes().isEmpty()) {
+                    compose.onNodeWithContentDescription("打开账户").performClick()
+                }
+                compose.onNodeWithText("Setease 账户").assertExists()
+                androidx.test.espresso.Espresso.pressBack()
+            }
+            if (name == "native_music" && (windowInfo?.width?.let { it >= 600.dp } == true || windowInfo?.separatingFold != null)) {
+                compose.onNodeWithContentDescription("待播清单").performClick()
+                compose.onNodeWithText("播放列表").assertExists()
+                capture("$label-native-queue")
+                androidx.test.espresso.Espresso.pressBack()
+                compose.onNodeWithText("Hi-Res").performClick()
+                compose.onNodeWithText("选择播放音质").assertExists()
+                capture("$label-native-quality")
+                androidx.test.espresso.Espresso.pressBack()
+            }
             if (name == "settings") {
                 compose.onNodeWithText("在线播放音质").performClick()
                 compose.onNodeWithText("选择在线播放音质").assertExists()
@@ -119,6 +168,58 @@ class AdaptiveLayoutsTest {
                 }
             }
         }
+    }
+
+    @Test fun playerTransportStaysCenteredWithLargeQualityLabels() {
+        var width by mutableStateOf(320.dp)
+        var fontScale by mutableFloatStateOf(1f)
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
+                    MaterialTheme {
+                        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                            Box(Modifier.width(width).height(250.dp).testTag("player_controls_fixture")) {
+                                PlayerControls(6000, 220000, false,
+                                    currentQuality = com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
+                                    onPlayPause = {}, onNext = {}, onPrevious = {}, onSeekTo = {})
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        listOf(1f, 1.5f).forEach { scale ->
+            listOf(320.dp, 350.dp, 420.dp).forEach { size ->
+                compose.runOnUiThread { width = size; fontScale = scale }
+                compose.waitForIdle()
+                val container = compose.onNodeWithTag("player_controls_fixture").fetchSemanticsNode().boundsInRoot
+                val play = compose.onNodeWithContentDescription("播放").fetchSemanticsNode().boundsInRoot
+                assertEquals("Play must stay centered at $size / font scale $scale", container.center.x, play.center.x, 1f)
+                compose.onNodeWithText("Hi-Res").assertIsDisplayed()
+            }
+        }
+    }
+
+    @Test fun expandedGlassDockSupportsDragAndSearch() {
+        var selected by mutableIntStateOf(0)
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                val background = rememberLayerBackdrop { drawContent() }
+                Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().background(Color(0xFFF0E8F5)).layerBackdrop(background))
+                    MusicNavigationRail(selected, { selected = it }, background)
+                }
+            }
+        }
+        compose.onNodeWithTag("glass_dock_0").assertIsSelected()
+        val start = compose.onNodeWithTag("glass_dock_0").fetchSemanticsNode().boundsInRoot.center
+        val end = compose.onNodeWithTag("glass_dock_2").fetchSemanticsNode().boundsInRoot.center
+        val origin = compose.onNodeWithTag("expanded_glass_dock").fetchSemanticsNode().boundsInRoot.topLeft
+        compose.onNodeWithTag("expanded_glass_dock").performTouchInput { swipe(start - origin, end - origin, 450) }
+        compose.onNodeWithTag("glass_dock_2").assertIsSelected()
+        compose.onNodeWithTag("glass_dock_search").performClick().assertIsSelected()
+        compose.onNodeWithTag("glass_dock_1").performClick().assertIsSelected()
     }
 
     @Test fun navigationAndSearchSurviveActivityRecreation() {
@@ -267,6 +368,31 @@ private fun FixturePage(page: String, tracks: List<Track>) {
     val userPlaylists = (1L..8L).map { UserPlaylist(it, listOf("夜晚漫游", "微风与海", "工作时听", "周末慢生活")[(it % 4).toInt()], tracks[(it % 4).toInt()].coverUrl, 24, 1200) }
     CompositionLocalProvider(LocalContentBottomPadding provides bottom) {
         when (page) {
+            "chrome" -> AppNavigation()
+            "native_music" -> {
+                PlayerSystemBars()
+                val info = LocalAdaptiveWindow.current
+                if (info.width >= 600.dp || info.separatingFold != null) {
+                    val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(Lyrics(lrc = LyricContent(
+                        lyric = "[00:00.00]在城市的另一边\n[00:05.00]听见晚风轻轻唱\n[00:10.00]把平凡的瞬间写成旋律")))
+                    val background = rememberLayerBackdrop { drawContent() }
+                    var showQueue by remember { mutableStateOf(false) }
+                    var showQuality by remember { mutableStateOf(false) }
+                    val state = PlaybackState(PlayerStatus.PAUSED, tracks[0], currentPositionMs = 6000,
+                        durationMs = 220000, queueTracks = tracks)
+                    val quality = com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES
+                    Box(Modifier.fillMaxSize()) {
+                        PlayerBackdrop(tracks[0], Modifier.layerBackdrop(background))
+                        CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
+                            ExpandedNativePlayerContent(state, lyrics, quality,
+                                {}, remember { mutableStateOf(1f) }, {}, {}, {}, {}, {},
+                                { showQuality = true }, { showQueue = true })
+                            if (showQueue) PlaylistQueueSheet(state, {}, {}, {}, {}, { showQueue = false })
+                            if (showQuality) AudioQualitySelectionSheet(quality, {}, { showQuality = false })
+                        }
+                    }
+                } else NativePlayerScreen(hiltViewModel(), {}, remember { mutableStateOf(1f) }, {})
+            }
             "home" -> HomeScreenContent(HomeUiState(tracks = tracks, favoriteTracks = tracks, radarTracks = tracks), 0.dp, bottom,
                 displayName = "Luna", onTrackClick = {}, onFavoriteTrackClick = {}, onCardPlayClick = {}, onRetryClick = {}, onRefreshClick = {}, onPosterWallClick = { _, _ -> })
             "radio", "radio_detail" -> RadioScreenContent(RadioUiState(

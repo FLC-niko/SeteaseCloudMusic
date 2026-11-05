@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.seteasecloudmusic.core.player.PlaybackMode
@@ -92,16 +93,17 @@ fun PlayerControls(
     }
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val narrow = maxWidth < 340.dp
+        val narrow = maxWidth < 360.dp
         val modeButton: @Composable () -> Unit = {
-            IconButton(onTogglePlaybackMode, enabled = hasTrack, modifier = Modifier.size(48.dp)) {
+            IconButton(onTogglePlaybackMode, enabled = hasTrack, modifier = Modifier.width(72.dp).height(48.dp)) {
                 Icon(if (playbackMode == PlaybackMode.SHUFFLE) Icons.Filled.Shuffle else Icons.Filled.Repeat,
                     "切换播放模式", tint = Color.White.copy(alpha = if (hasTrack) 0.72f else 0.25f), modifier = Modifier.size(22.dp))
             }
         }
         val qualityButton: @Composable () -> Unit = {
-            IconButton(onSelectQualityClick, enabled = hasTrack && !isLocalTrack, modifier = Modifier.size(48.dp)) {
-                Text(if (isLocalTrack) "本地" else currentQuality.title, color = Color.White.copy(alpha = if (hasTrack) 0.72f else 0.25f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            IconButton(onSelectQualityClick, enabled = hasTrack && !isLocalTrack, modifier = Modifier.width(72.dp).height(48.dp)) {
+                Text(if (isLocalTrack) "本地" else currentQuality.title, color = Color.White.copy(alpha = if (hasTrack) 0.72f else 0.25f),
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = if (narrow) 12.dp else 24.dp, vertical = 8.dp)) {
