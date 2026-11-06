@@ -44,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -130,13 +132,33 @@ fun PlaylistDetailScreen(
         }
     }
 
-    // 100% 绝对不透明的纯色底座，彻底杜绝底层页面透光
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = solidBackgroundColor
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
+    val deviceCorners = rememberDeviceCornerRadius()
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
+        val isCardMode = !embedded && !split
+        val cornerShape = remember(deviceCorners, isCardMode) {
+            if (isCardMode) deviceCorners.toShape() else RoundedCornerShape(0.dp)
+        }
+
+        // 100% 绝对不透明的纯色底座，结合真机硬件 r 角裁剪与滑入柔和投影
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (isCardMode && deviceCorners.hasRoundedCorners) {
+                        Modifier
+                            .shadow(
+                                elevation = 20.dp,
+                                shape = cornerShape,
+                                clip = false
+                            )
+                            .clip(cornerShape)
+                    } else Modifier
+                ),
+            shape = cornerShape,
+            color = solidBackgroundColor
+        ) {
             if (embedded || split) {
                 BackHandler(onBack = onClose)
                 val songs: @Composable () -> Unit = {

@@ -544,7 +544,7 @@ private fun FixturePage(page: String, tracks: List<Track>) {
                 } else NativePlayerScreen(hiltViewModel(), {}, remember { mutableStateOf(1f) }, {})
             }
             "home" -> HomeScreenContent(HomeUiState(tracks = tracks, favoriteTracks = tracks, radarTracks = tracks), 0.dp, bottom,
-                displayName = "Luna", onTrackClick = {}, onFavoriteTrackClick = {}, onCardPlayClick = {}, onRetryClick = {}, onRefreshClick = {}, onPosterWallClick = { _, _ -> })
+                displayName = "Luna", onTrackClick = {}, onFavoriteTrackClick = {}, onCardPlayClick = {}, onRetryClick = {}, onRefreshClick = {}, onPosterWallClick = { _, _, _ -> })
             "radio", "radio_detail" -> RadioScreenContent(RadioUiState(
                 toplists = userPlaylists.map { RadioToplistItem(it.id, it.name, coverUrl = it.coverUrl) },
                 radarPlaylists = userPlaylists.map { RadioRadarItem(it.id, it.name, "为你精选", it.coverUrl) },

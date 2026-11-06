@@ -11,8 +11,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -79,6 +79,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -152,6 +153,11 @@ fun MineScreen(
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, permissionToRequest) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    val handlePlaylistClick: (UserPlaylist) -> Unit = { playlist ->
+        trySyncExtractColor(context, playlist.coverUrl)
+        onPlaylistClick(playlist)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -294,7 +300,7 @@ fun MineScreen(
                     LikedSongsHeroCard(
                         backdrop = mineBackdrop,
                         playlist = uiState.likedPlaylist,
-                        onClick = { uiState.likedPlaylist?.let(onPlaylistClick) }
+                        onClick = { uiState.likedPlaylist?.let(handlePlaylistClick) }
                     )
                 }
             }
@@ -340,7 +346,7 @@ fun MineScreen(
                     } else {
                         items(uiState.createdPlaylists, key = { it.id }) { playlist ->
                             Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                PlaylistRowItem(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                                PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
                             }
                         }
                     }
@@ -367,7 +373,7 @@ fun MineScreen(
                     } else {
                         items(uiState.favoritedPlaylists, key = { it.id }) { playlist ->
                             Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                PlaylistRowItem(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                                PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
                             }
                         }
                     }
@@ -378,7 +384,7 @@ fun MineScreen(
                         Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                             PlaylistRowItem(
                                 playlist = uiState.localPlaylist,
-                                onClick = { onPlaylistClick(uiState.localPlaylist) }
+                                onClick = { handlePlaylistClick(uiState.localPlaylist) }
                             )
                         }
                     }
@@ -442,14 +448,26 @@ fun MineScreen(
         )
     }
 
+    val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+    if (uiState.activePlaylistDetail != null) {
+        lastPlaylistDetail.value = uiState.activePlaylistDetail
+    }
+
     if (!split) {
     AnimatedVisibility(
         visible = uiState.activePlaylistDetail != null,
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        enter = slideInHorizontally(
+            initialOffsetX = { fullWidth -> fullWidth },
+            animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+        ),
+        exit = slideOutHorizontally(
+            targetOffsetX = { fullWidth -> fullWidth },
+            animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+        ),
         modifier = Modifier.fillMaxSize().zIndex(20f)
     ) {
-        uiState.activePlaylistDetail?.let { detail ->
+        val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
+        displayDetail?.let { detail ->
             PlaylistDetailScreen(
                 detail = detail,
                 isLoading = uiState.isLoadingDetail,

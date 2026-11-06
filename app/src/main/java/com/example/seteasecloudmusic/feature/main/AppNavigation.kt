@@ -62,6 +62,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -82,7 +83,6 @@ import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.auth.presentation.AccountLoginSheetContent
 import com.example.seteasecloudmusic.feature.auth.presentation.AuthViewModel
 import com.example.seteasecloudmusic.feature.artist.presentation.ArtistDetailRoute
-import com.example.seteasecloudmusic.feature.home.presentation.DailyRecommendDetailRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
 import com.example.seteasecloudmusic.feature.mine.presentation.MineRoute
@@ -253,6 +253,7 @@ fun AppNavigation(
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
     val window = LocalAdaptiveWindow.current
     val useRail = window.useNavigationRail
     val railPadding = if (useRail) window.sideControlWidth else 0.dp
@@ -316,9 +317,6 @@ fun AppNavigation(
     var showAccountSheet by rememberSaveable { mutableStateOf(false) }
     var mountAccountOverlay by remember { mutableStateOf(showAccountSheet) }
     var selectedArtist by navigationState::selectedArtist
-    var dailyRecommendState by navigationState::dailyRecommend
-    val expandProgress = remember { Animatable(if (dailyRecommendState != null) 1f else 0f) }
-    val expandScope = rememberCoroutineScope()
 
     fun openPlayer(artworkUrl: String?) {
         nowPlayingAnimJob?.cancel()
@@ -373,12 +371,6 @@ fun AppNavigation(
         frozenOpeningContainerBounds = null
         frozenOpeningArtworkBounds = null
         nowPlayingArtworkBounds = null
-    }
-
-    LaunchedEffect(dailyRecommendState) {
-        if (dailyRecommendState != null) {
-            expandProgress.animateTo(1f, tween(durationMillis = 320, easing = FastOutSlowInEasing))
-        }
     }
 
     LaunchedEffect(authViewModel.dismissSheet) {
@@ -466,9 +458,6 @@ fun AppNavigation(
     // 让玻璃滑块、主导航条、搜索按钮共享一致的圆角半径。
     val cornerRadius = navBarHeight / 2
 
-    // ── 每日推荐展开进度（0f ~ 1f）──
-    val sinkProgress = expandProgress.value
-
     // ── 键盘（IME）感知：实现 Apple Music 风格的平滑上抬效果 ──
     val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
     val navBarsBottomPx = WindowInsets.navigationBars.getBottom(LocalDensity.current)
@@ -499,7 +488,7 @@ fun AppNavigation(
 
     val navigationScroll = rememberNavigationScrollState(
         viewport = activeViewport,
-        enabled = !useRail && !isSearchExpanded && !showNowPlaying && dailyRecommendState == null
+        enabled = !useRail && !isSearchExpanded && !showNowPlaying
     )
 
     val shouldCompactMiniPlayer = !useRail && navigationScroll.compactTarget && !isSearchExpanded && !showNowPlaying
@@ -539,9 +528,6 @@ fun AppNavigation(
                 displayName = authUiState.authSession?.nickname,
                 searchViewModel = searchViewModel,
                 onAccountClick = { showAccountSheet = true },
-                onPosterWallClick = { tracks, title, coverUrl ->
-                    dailyRecommendState = DailyRecommendState(tracks, title, coverUrl)
-                },
                 onArtistClick = { artistId, artistName, artistCoverUrl ->
                     selectedArtist = SelectedArtist(
                         id = artistId,
@@ -559,7 +545,6 @@ fun AppNavigation(
         Box(Modifier.fillMaxWidth().padding(start = railStartPadding, end = railEndPadding)) {
         AppTopArea(
             selectedIndex = selectedIndexState,
-            sinkProgress = sinkProgress,
             avatarUrl = authUiState.authSession?.avatarUrl,
             displayName = authUiState.authSession?.nickname,
             onAvatarClick = {
@@ -597,8 +582,8 @@ fun AppNavigation(
                 .height(navBarHeight).testTag("horizontal_glass_dock")
                 .graphicsLayer {
                     val playerOpenSink = (nowPlayingProgress.value * 1.25f).coerceIn(0f, 1f)
-                    alpha = (1f - sinkProgress) * (1f - playerOpenSink)
-                    translationY = sinkProgress * 200.dp.toPx() + playerOpenSink * 48.dp.toPx()
+                    alpha = 1f - playerOpenSink
+                    translationY = playerOpenSink * 48.dp.toPx()
                     scaleX = hintScale
                     scaleY = hintScale
                     transformOrigin = TransformOrigin(0.5f, 1f)
@@ -918,33 +903,6 @@ fun AppNavigation(
 
         }
         }
-        dailyRecommendState?.let { state ->
-            val progress = expandProgress.value
-            if (progress > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = railStartPadding, end = railEndPadding)
-                        .graphicsLayer {
-                            translationY = (1f - progress) * 24.dp.toPx()
-                            alpha = progress
-                        }
-                ) {
-                    val homeViewModel: HomeViewModel = hiltViewModel()
-                    DailyRecommendDetailRoute(
-                        tracks = state.tracks,
-                        title = state.title,
-                        coverUrl = state.coverUrl,
-                        onClose = {
-                            expandScope.launch {
-                                expandProgress.animateTo(0f, tween(durationMillis = 220, easing = FastOutSlowInEasing))
-                                dailyRecommendState = null
-                            }
-                        }
-                    )
-                }
-            }
-        }
 
         val normalMiniPlayerBottom = (if (useRail) 18.dp else 6.dp + navBarHeight + miniPlayerNavGap) + animatedImeOffset
         val compactMiniPlayerBottom = 6.dp + animatedImeOffset
@@ -957,7 +915,7 @@ fun AppNavigation(
         val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
         val searchFadeOut = if (useRail) 1f else (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
-        val isMiniPlayerVisible = searchFadeOut > 0.001f && (1f - sinkProgress) > 0.001f
+        val isMiniPlayerVisible = searchFadeOut > 0.001f
 
         if (isMiniPlayerVisible && !useRail) {
             val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
@@ -1008,8 +966,8 @@ fun AppNavigation(
                         val shellFade = if (showNowPlaying) {
                             (1f - playerBackgroundAlpha(nowPlayingProgress.value) * 1.15f).coerceIn(0f, 1f)
                         } else 1f
-                        alpha = searchFadeOut * (1f - sinkProgress) * shellFade
-                        translationY = (if (useRail) 0f else searchProgress * 60.dp.toPx()) + (sinkProgress * 76.dp.toPx())
+                        alpha = searchFadeOut * shellFade
+                        translationY = if (useRail) 0f else searchProgress * 60.dp.toPx()
                         scaleX = hintScale
                         scaleY = hintScale
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -1215,7 +1173,6 @@ private fun AppPageContent(
     displayName: String?,
     searchViewModel: SearchViewModel,
     onAccountClick: () -> Unit,
-    onPosterWallClick: (tracks: List<Track>, title: String, coverUrl: String?) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     homeListState: LazyListState,
     radioListState: LazyListState,
@@ -1258,8 +1215,8 @@ private fun AppPageContent(
                 slideProgress.animateTo(
                     targetValue = 1f,
                     animationSpec = spring(
-                        dampingRatio = 0.9f,
-                        stiffness = 450f
+                        dampingRatio = 0.92f,
+                        stiffness = 340f
                     )
                 )
             } finally {
@@ -1330,7 +1287,6 @@ private fun AppPageContent(
                             avatarUrl = avatarUrl,
                             displayName = displayName,
                             onAvatarClick = onAccountClick,
-                            onPosterWallClick = onPosterWallClick,
                             lazyListState = homeListState
                         )
 
@@ -1382,7 +1338,6 @@ private const val OFFSCREEN_PAGE_OFFSET_PX = 100_000
 @Composable
 private fun AppTopArea(
     selectedIndex: State<Int>,
-    sinkProgress: Float,
     avatarUrl: String?,
     displayName: String?,
     onAvatarClick: () -> Unit,
@@ -1397,11 +1352,6 @@ private fun AppTopArea(
         3 -> "搜索"
         else -> "首页"
     }
-    val topLargeTitleAlpha by animateFloatAsState(
-        targetValue = 1f - sinkProgress,
-        animationSpec = tween(durationMillis = 220),
-        label = "topLargeTitleAlpha"
-    )
 
     Box(modifier = modifier.fillMaxSize()) {
         AnimatedContent(
@@ -1415,7 +1365,6 @@ private fun AppTopArea(
                 .align(Alignment.TopStart)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 20.dp, top = 14.dp)
-                .graphicsLayer { alpha = topLargeTitleAlpha }
         ) { animatedTitle ->
             LargePageTitle(title = animatedTitle)
         }
@@ -1428,7 +1377,6 @@ private fun AppTopArea(
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(end = 20.dp, top = 14.dp)
-                .graphicsLayer { alpha = 1f - sinkProgress }
         )
     }
 }

@@ -5,11 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -80,6 +81,8 @@ import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
+import com.example.seteasecloudmusic.feature.mine.presentation.trySyncExtractColor
 import com.example.seteasecloudmusic.feature.radio.domain.model.ArtistHotSectionData
 import com.example.seteasecloudmusic.feature.radio.domain.model.FollowedArtistSectionData
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioArtistHotItem
@@ -114,6 +117,7 @@ fun RadioRoute(
     lazyListState: LazyListState = rememberLazyListState()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     RadioScreenContent(
         uiState = uiState,
@@ -123,7 +127,10 @@ fun RadioRoute(
         displayName = displayName,
         onAvatarClick = onAvatarClick,
         onArtistClick = onArtistClick,
-        onOpenPlaylistDetail = viewModel::openPlaylistDetail,
+        onOpenPlaylistDetail = { id, name, coverUrl ->
+            trySyncExtractColor(context, coverUrl)
+            viewModel.openPlaylistDetail(id, name, coverUrl)
+        },
         onClosePlaylistDetail = viewModel::closePlaylistDetail,
         onPlayTrackInPlaylist = viewModel::playTrackInPlaylist,
         onPlayAllTracks = viewModel::playAllTracks,
@@ -395,17 +402,29 @@ internal fun RadioScreenContent(
             }
         )
 
+        val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+        if (uiState.activePlaylistDetail != null) {
+            lastPlaylistDetail.value = uiState.activePlaylistDetail
+        }
+
         // 歌单详情层（类似我的喜欢歌单页面）
         if (!split) {
         AnimatedVisibility(
             visible = uiState.activePlaylistDetail != null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth },
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+            ),
+            exit = slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth },
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+            ),
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(20f)
         ) {
-            uiState.activePlaylistDetail?.let { detail ->
+            val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
+            displayDetail?.let { detail ->
                 PlaylistDetailScreen(
                     detail = detail,
                     isLoading = uiState.isLoadingDetail,

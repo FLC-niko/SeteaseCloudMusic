@@ -1,14 +1,25 @@
 package com.example.seteasecloudmusic.feature.home.presentation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import com.example.seteasecloudmusic.core.ui.adaptive.*
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.zIndex
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.layout.Arrangement
@@ -103,7 +114,7 @@ fun HomeRoute(
     avatarUrl: String? = null,
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
-    onPosterWallClick: (tracks: List<Track>, title: String, coverUrl: String?) -> Unit,
+    onPosterWallClick: ((tracks: List<Track>, title: String, coverUrl: String?) -> Unit)? = null,
     viewModel: HomeViewModel = hiltViewModel(),
     lazyListState: LazyListState = rememberLazyListState()
 ) {
@@ -130,7 +141,16 @@ fun HomeRoute(
         },
         onRetryClick = viewModel::onRetryClick,
         onRefreshClick = viewModel::onRefreshClick,
-        onPosterWallClick = onPosterWallClick,
+        onPosterWallClick = { tracks, title, coverUrl ->
+            if (onPosterWallClick != null) {
+                onPosterWallClick(tracks, title, coverUrl)
+            } else {
+                viewModel.openPlaylistDetail(tracks, title, coverUrl)
+            }
+        },
+        onClosePlaylistDetail = viewModel::closePlaylistDetail,
+        onPlayAll = { tracks -> viewModel.playAll(tracks, 0) },
+        onShufflePlay = { tracks -> viewModel.playAll(tracks.shuffled(), 0) },
         lazyListState = lazyListState
     )
 }
@@ -149,6 +169,9 @@ internal fun HomeScreenContent(
     onRetryClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onPosterWallClick: (tracks: List<Track>, title: String, coverUrl: String?) -> Unit,
+    onClosePlaylistDetail: () -> Unit = {},
+    onPlayAll: (List<Track>) -> Unit = {},
+    onShufflePlay: (List<Track>) -> Unit = {},
     lazyListState: LazyListState = rememberLazyListState()
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -156,17 +179,28 @@ internal fun HomeScreenContent(
         lazyListState = lazyListState,
         collapseThresholdDp = 76.dp
     )
-    Box(
+    val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+    if (uiState.activePlaylistDetail != null) {
+        lastPlaylistDetail.value = uiState.activePlaylistDetail
+    }
+    val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(HomeBackground)
     ) {
-        AdaptiveContent {
-        AdaptiveSectionColumn(
-            state = lazyListState,
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalElasticOverscroll(),
+        val window = LocalAdaptiveWindow.current
+        val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
+
+        val feedContent: @Composable () -> Unit = {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AdaptiveContent {
+                AdaptiveSectionColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
                 bottom = bottomContentPadding
@@ -305,6 +339,72 @@ internal fun HomeScreenContent(
             onAvatarClick = onAvatarClick,
             modifier = Modifier.align(Alignment.TopCenter)
         )
+    }
+    }
+
+    if (split) {
+        AdaptiveTwoPane(
+            modifier = Modifier.fillMaxSize(),
+            primaryFraction = 0.44f,
+            gap = 12.dp,
+            primary = feedContent,
+            secondary = {
+                val detail = uiState.activePlaylistDetail
+                if (detail != null) {
+                    val fallbackBackdrop = rememberLayerBackdrop { drawContent() }
+                    val glassBackdrop = LocalGlassBackdrop.current ?: fallbackBackdrop
+                    PlaylistDetailScreen(
+                        detail = detail,
+                        backdrop = glassBackdrop,
+                        onClose = onClosePlaylistDetail,
+                        onPlayTrack = onTrackClick,
+                        onPlayAll = { onPlayAll(detail.tracks) },
+                        onShufflePlay = { onShufflePlay(detail.tracks) },
+                        isLoading = false,
+                        embedded = true,
+                        listState = detailListState
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize().padding(top = statusBarHeight + 12.dp, bottom = bottomContentPadding)) {
+                        MusicDetailPlaceholder()
+                    }
+                }
+            }
+        )
+    } else {
+        feedContent()
+
+        AnimatedVisibility(
+            visible = uiState.activePlaylistDetail != null,
+            enter = slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth },
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+            ),
+            exit = slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth },
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+            ),
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(20f)
+        ) {
+            val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
+            displayDetail?.let { detail ->
+                val fallbackBackdrop = rememberLayerBackdrop { drawContent() }
+                val glassBackdrop = LocalGlassBackdrop.current ?: fallbackBackdrop
+                PlaylistDetailScreen(
+                    detail = detail,
+                    isLoading = false,
+                    listState = detailListState,
+                    backdrop = glassBackdrop,
+                    onClose = onClosePlaylistDetail,
+                    onPlayTrack = onTrackClick,
+                    onPlayAll = { onPlayAll(detail.tracks) },
+                    onShufflePlay = { onShufflePlay(detail.tracks) }
+                )
+            }
+        }
+    }
     }
 }
 

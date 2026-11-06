@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import javax.inject.Inject
 
 data class HomeUiState(
@@ -30,7 +31,8 @@ data class HomeUiState(
     val radarPlaylist: RadarPlaylistData? = null,
     val likedMusicCoverUrl: String? = null,
     val privateDjCoverUrl: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val activePlaylistDetail: PlaylistDetail? = null
 )
 
 @HiltViewModel
@@ -247,5 +249,39 @@ class HomeViewModel @Inject constructor(
             startIndex = 0,
             queueSource = MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ
         )
+    }
+
+    fun openPlaylistDetail(tracks: List<Track>, title: String, coverUrl: String?) {
+        val playlistDetail = PlaylistDetail(
+            id = when (title) {
+                "每日推荐" -> -1001L
+                "雷达歌单" -> -1002L
+                "心动模式" -> -1003L
+                "私人 DJ" -> -1004L
+                "相似歌曲" -> -1005L
+                "相似艺人" -> -1006L
+                else -> title.hashCode().toLong()
+            },
+            name = title,
+            coverUrl = coverUrl ?: tracks.firstOrNull()?.coverUrl,
+            description = when (title) {
+                "每日推荐" -> "今天，听点喜欢的"
+                "雷达歌单" -> "反复聆听你爱的歌"
+                "心动模式" -> "红心歌曲和相似推荐"
+                "私人 DJ" -> "你的全天候音乐助理"
+                "相似歌曲" -> "从你喜欢的歌听起"
+                "相似艺人" -> "常听歌手风格深度探索"
+                else -> "为你精选 · 共 ${tracks.size} 首歌曲"
+            },
+            trackCount = tracks.size,
+            playCount = 0L,
+            creatorName = "网易云音乐",
+            tracks = tracks
+        )
+        _uiState.update { it.copy(activePlaylistDetail = playlistDetail) }
+    }
+
+    fun closePlaylistDetail() {
+        _uiState.update { it.copy(activePlaylistDetail = null) }
     }
 }
