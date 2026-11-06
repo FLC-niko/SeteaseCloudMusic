@@ -13,7 +13,5 @@ internal val LocalPlayerBackdrop = staticCompositionLocalOf<LayerBackdrop?> { nu
 /** 窄屏、大屏与播放菜单共用云端原生播放器的封面流光采样。 */
 @Composable
 internal fun PlayerBackdrop(track: Track?, modifier: Modifier = Modifier, isPlaying: Boolean = false) {
-    Box(modifier.fillMaxSize()) {
-        AppleMusicBackground(coverUrl = track?.coverUrl, isPlaying = isPlaying)
-    }
+    AppleMusicBackground(coverUrl = track?.coverUrl, isPlaying = isPlaying, modifier = modifier)
 }

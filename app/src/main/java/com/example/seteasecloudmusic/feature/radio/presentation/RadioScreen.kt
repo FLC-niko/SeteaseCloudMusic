@@ -413,7 +413,8 @@ internal fun RadioScreenContent(
                     backdrop = radioBackdrop,
                     onClose = onClosePlaylistDetail,
                     onPlayTrack = { track -> onPlayTrackInPlaylist(track, detail.tracks) },
-                    onPlayAll = { onPlayAllTracks(detail.tracks) }
+                    onPlayAll = { onPlayAllTracks(detail.tracks) },
+                    onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) }
                 )
             }
         }
@@ -426,6 +427,7 @@ internal fun RadioScreenContent(
                 uiState.activePlaylistDetail?.let { detail ->
                     PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
                         { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
+                        onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
                         isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
                 }
             })

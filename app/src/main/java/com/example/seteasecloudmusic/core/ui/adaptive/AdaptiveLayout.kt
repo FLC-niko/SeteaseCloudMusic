@@ -3,6 +3,7 @@ package com.example.seteasecloudmusic.core.ui.adaptive
 import android.app.Activity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -17,6 +18,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowMetricsCalculator
 import androidx.window.layout.WindowInfoTracker
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
@@ -27,9 +29,17 @@ data class AdaptiveWindowInfo(
     val width: Dp = 0.dp,
     val height: Dp = 0.dp,
     val separatingFold: Rect? = null,
-    val horizontalFold: Boolean = false
+    val horizontalFold: Boolean = false,
+    val isFoldable: Boolean = false,
+    val sideControlsAtStart: Boolean = false
 ) {
-    val useNavigationRail get() = width >= 600.dp && height >= 360.dp && separatingFold == null
+    val isRegularWidth get() = width >= 600.dp
+    // Duo: side controls on the cover/landscape; horizontal bars on inner portrait/tabletop.
+    // 600dp is Android's compact/medium window boundary, independent of a device's pixel size.
+    val useNavigationRail get() = height >= 400.dp && !isTabletop &&
+        (width > height || (isFoldable && !isRegularWidth))
+    val useExpandedPlayer get() = isBook || isTabletop || (isRegularWidth && width > height)
+    val sideControlWidth get() = if (isRegularWidth) 84.dp else 72.dp
     val isTabletop get() = separatingFold != null && horizontalFold
     val isBook get() = separatingFold != null && !horizontalFold
 }
@@ -40,17 +50,27 @@ val LocalPaneAlreadySplit = staticCompositionLocalOf { false }
 
 @Composable
 fun ProvideAdaptiveWindow(activity: Activity, content: @Composable () -> Unit) {
-    val layoutFlow = remember(activity) { WindowInfoTracker.getOrCreate(activity).windowLayoutInfo(activity).map { it.displayFeatures } }
+    val tracker = remember(activity) { WindowInfoTracker.getOrCreate(activity) }
+    val supportsFolding = remember(tracker) { tracker.supportedPostures.isNotEmpty() }
+    var foldingSeen by rememberSaveable { mutableStateOf(supportsFolding) }
+    val layoutFlow = remember(tracker, activity) { tracker.windowLayoutInfo(activity).map { it.displayFeatures } }
     val features by layoutFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    LaunchedEffect(features) { if (features.any { it is FoldingFeature }) foldingSeen = true }
     val fold = features.filterIsInstance<FoldingFeature>().firstOrNull {
         it.isSeparating || it.occlusionType == FoldingFeature.OcclusionType.FULL
     }
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
+        val metrics = WindowMetricsCalculator.getOrCreate()
+        val currentBounds = metrics.computeCurrentWindowMetrics(activity).bounds
+        val maximumBounds = metrics.computeMaximumWindowMetrics(activity).bounds
+        val controlsAtStart = activity.isInMultiWindowMode && currentBounds.centerX() < maximumBounds.centerX()
         val info = AdaptiveWindowInfo(
             width = maxWidth,
             height = maxHeight,
             separatingFold = fold?.bounds?.let { Rect(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) },
-            horizontalFold = fold?.orientation == FoldingFeature.Orientation.HORIZONTAL
+            horizontalFold = fold?.orientation == FoldingFeature.Orientation.HORIZONTAL,
+            isFoldable = foldingSeen || features.any { it is FoldingFeature },
+            sideControlsAtStart = controlsAtStart
         )
         CompositionLocalProvider(LocalAdaptiveWindow provides info, content = content)
     }

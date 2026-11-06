@@ -384,7 +384,7 @@ private fun DailyRecommendPosterWall(
 }
 
 @Composable
-private fun ScrollingPosterWall(
+internal fun ScrollingPosterWall(
     covers: List<String>,
     modifier: Modifier = Modifier
 ) {
@@ -496,7 +496,7 @@ private fun ScrollingPosterWall(
 }
 
 @Composable
-private fun PosterCoverCell(
+internal fun PosterCoverCell(
     imageUrl: String?,
     modifier: Modifier = Modifier
 ) {
@@ -769,7 +769,7 @@ private fun FavoriteRecommendedSongsSection(
     }
 
     val songColumns = remember(displayTracks) {
-        displayTracks.take(18).chunked(3)
+        displayTracks.take(18).chunked(4)
     }
 
     val pagerState = rememberPagerState(pageCount = { songColumns.size })

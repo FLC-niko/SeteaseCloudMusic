@@ -41,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -225,11 +228,11 @@ private fun DetailHeroSection(
         modifier = Modifier
             .fillMaxWidth()
             .height((LocalAdaptiveWindow.current.height * 0.5f).coerceIn(220.dp, 420.dp))
-            .background(PosterWallSurface)
+            .clipToBounds()
     ) {
         DetailPosterCoverGrid(
             covers = wallCovers,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxWidth()
         )
 
         Box(
@@ -281,27 +284,35 @@ private fun DetailPosterCoverGrid(
 ) {
     val slotCount = 20
     val displayItems = remember(covers) {
-        List(slotCount) { index -> covers.getOrNull(index).toCoverThumbnailUrl(180) }
+        List(slotCount) { index -> covers.getOrNull(index)?.toCoverThumbnailUrl(180) }
     }
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxWidth()
+            .clipToBounds()
     ) {
         repeat(5) { rowIndex ->
+            if (rowIndex > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color.White)
+                )
+            }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(1.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = Modifier.fillMaxWidth()
             ) {
                 repeat(4) { colIndex ->
                     val itemIndex = rowIndex * 4 + colIndex
                     DetailPosterGridCell(
-                        imageUrl = displayItems[itemIndex],
+                        imageUrl = displayItems.getOrNull(itemIndex),
+                        colIndex = colIndex,
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight()
+                            .aspectRatio(1f)
+                            .clipToBounds()
                     )
                 }
             }
@@ -312,11 +323,23 @@ private fun DetailPosterCoverGrid(
 @Composable
 private fun DetailPosterGridCell(
     imageUrl: String?,
+    colIndex: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .background(Color(0xFFDCDDE2))
+            .drawWithContent {
+                drawContent()
+                if (colIndex < 3) {
+                    val strokePx = 1.dp.toPx()
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(size.width - strokePx / 2, 0f),
+                        end = Offset(size.width - strokePx / 2, size.height),
+                        strokeWidth = strokePx
+                    )
+                }
+            }
     ) {
         if (!imageUrl.isNullOrBlank()) {
             AsyncImage(

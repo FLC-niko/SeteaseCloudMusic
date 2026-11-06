@@ -58,7 +58,8 @@ def main():
     original_override = override_match.group(1) if override_match else "reset"
     report = {"scenarios": [], "sourceSha256": {}, "pages": args.pages}
     sources = list((ROOT / "app/src/main/java").rglob("*.kt"))
-    sources += [path for path in (ROOT / "amll-web-player/src").rglob("*") if path.suffix in {".jsx", ".js", ".css"}]
+    if (ROOT / "amll-web-player/src").exists():
+        sources += [path for path in (ROOT / "amll-web-player/src").rglob("*") if path.suffix in {".jsx", ".js", ".css"}]
     report["sourceSha256"] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
     report["apkSha256"] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [
         ROOT / "app/build/outputs/apk/debug/app-debug.apk",
