@@ -180,9 +180,16 @@ class AdaptiveLayoutsTest {
                     MaterialTheme {
                         Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                             Box(Modifier.width(width).height(250.dp).testTag("player_controls_fixture")) {
-                                PlayerControls(6000, 220000, false,
-                                    currentQuality = com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
-                                    onPlayPause = {}, onNext = {}, onPrevious = {}, onSeekTo = {})
+                                AppleMusicPlaybackControls(
+                                    currentPositionMs = 6000,
+                                    durationMs = 220000,
+                                    isPlaying = false,
+                                    currentAudioQuality = com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
+                                    onPlayPause = {},
+                                    onNext = {},
+                                    onPrevious = {},
+                                    onSeekTo = {}
+                                )
                             }
                         }
                     }
@@ -196,7 +203,7 @@ class AdaptiveLayoutsTest {
                 val container = compose.onNodeWithTag("player_controls_fixture").fetchSemanticsNode().boundsInRoot
                 val play = compose.onNodeWithContentDescription("播放").fetchSemanticsNode().boundsInRoot
                 assertEquals("Play must stay centered at $size / font scale $scale", container.center.x, play.center.x, 1f)
-                compose.onNodeWithText("Hi-Res").assertIsDisplayed()
+                compose.onNodeWithText("Hi-Res", substring = true).assertIsDisplayed()
             }
         }
     }

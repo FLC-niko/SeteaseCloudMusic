@@ -63,6 +63,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -89,8 +91,8 @@ fun AppleMusicPlaybackControls(
     currentPositionMs: Int,
     durationMs: Int,
     isPlaying: Boolean,
-    isLyricsPage: Boolean,
-    hasTrack: Boolean,
+    isLyricsPage: Boolean = false,
+    hasTrack: Boolean = true,
     currentAudioQuality: OnlineAudioQuality = OnlineAudioQuality.DOLBY,
     isLocalTrack: Boolean = false,
     playbackMode: PlaybackMode = PlaybackMode.SEQUENTIAL,
@@ -99,9 +101,9 @@ fun AppleMusicPlaybackControls(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeekTo: (Int) -> Unit,
-    onToggleLyrics: () -> Unit,
+    onToggleLyrics: () -> Unit = {},
     onTogglePlaybackMode: () -> Unit = {},
-    onQueueClick: () -> Unit,
+    onQueueClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -386,6 +388,7 @@ fun AppleMusicMainTransportButtons(
             modifier = Modifier
                 .size(62.dp)
                 .clip(CircleShape)
+                .semantics { contentDescription = "上一首" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -409,6 +412,7 @@ fun AppleMusicMainTransportButtons(
             modifier = Modifier
                 .size(72.dp)
                 .clip(CircleShape)
+                .semantics { contentDescription = if (isPlaying) "暂停" else "播放" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -428,6 +432,7 @@ fun AppleMusicMainTransportButtons(
             modifier = Modifier
                 .size(62.dp)
                 .clip(CircleShape)
+                .semantics { contentDescription = "下一首" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
