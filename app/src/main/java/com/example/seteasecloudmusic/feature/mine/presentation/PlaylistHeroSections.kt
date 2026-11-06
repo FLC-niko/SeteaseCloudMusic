@@ -135,14 +135,14 @@ fun PlaylistHeroAppleMusicSection(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 3. 中间胶囊播放键（自适应深浅背景）
+        // 3. 中间胶囊播放键（主题红底白字）
         Surface(
             onClick = onPlayAll,
             enabled = totalCount > 0,
             shape = RoundedCornerShape(24.dp),
-            color = if (isDark) Color.White else Color(0xFFF2F2F7),
-            border = if (isDark) null else BorderStroke(0.5.dp, Color.Black.copy(alpha = 0.06f)),
-            shadowElevation = if (isDark) 2.dp else 0.dp,
+            color = PlaylistAccentColor,
+            border = null,
+            shadowElevation = 2.dp,
             modifier = Modifier.height(48.dp)
         ) {
             Row(
@@ -151,7 +151,7 @@ fun PlaylistHeroAppleMusicSection(
                 horizontalArrangement = Arrangement.Center
             ) {
                 AppleMusicPlayTriangleIcon(
-                    tint = Color.Black,
+                    tint = Color.White,
                     size = 15.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -160,7 +160,7 @@ fun PlaylistHeroAppleMusicSection(
                     style = TextStyle(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        color = Color.White
                     )
                 )
             }
@@ -241,15 +241,15 @@ fun PlaylistHeroPosterWallSection(
             modifier = Modifier.padding(horizontal = 24.dp)
         )
 
-        // 3. 播放键（自适应深浅背景）
+        // 3. 播放键（主题红底白字）
         Spacer(modifier = Modifier.height(16.dp))
         Surface(
             onClick = onPlayAll,
             enabled = totalCount > 0,
             shape = RoundedCornerShape(24.dp),
-            color = if (isDark) Color.White else Color(0xFFF2F2F7),
-            border = if (isDark) null else BorderStroke(0.5.dp, Color.Black.copy(alpha = 0.06f)),
-            shadowElevation = if (isDark) 2.dp else 0.dp,
+            color = PlaylistAccentColor,
+            border = null,
+            shadowElevation = 2.dp,
             modifier = Modifier.height(48.dp)
         ) {
             Row(
@@ -258,7 +258,7 @@ fun PlaylistHeroPosterWallSection(
                 horizontalArrangement = Arrangement.Center
             ) {
                 AppleMusicPlayTriangleIcon(
-                    tint = Color.Black,
+                    tint = Color.White,
                     size = 15.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -267,7 +267,7 @@ fun PlaylistHeroPosterWallSection(
                     style = TextStyle(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        color = Color.White
                     )
                 )
             }
@@ -349,15 +349,15 @@ fun PlaylistHeroDynamicPosterWallSection(
             modifier = Modifier.padding(horizontal = 24.dp)
         )
 
-        // 3. 播放键（自适应深浅背景）
+        // 3. 播放键（主题红底白字）
         Spacer(modifier = Modifier.height(16.dp))
         Surface(
             onClick = onPlayAll,
             enabled = totalCount > 0,
             shape = RoundedCornerShape(24.dp),
-            color = if (isDark) Color.White else Color(0xFFF2F2F7),
-            border = if (isDark) null else BorderStroke(0.5.dp, Color.Black.copy(alpha = 0.06f)),
-            shadowElevation = if (isDark) 2.dp else 0.dp,
+            color = PlaylistAccentColor,
+            border = null,
+            shadowElevation = 2.dp,
             modifier = Modifier.height(48.dp)
         ) {
             Row(
@@ -366,7 +366,7 @@ fun PlaylistHeroDynamicPosterWallSection(
                 horizontalArrangement = Arrangement.Center
             ) {
                 AppleMusicPlayTriangleIcon(
-                    tint = Color.Black,
+                    tint = Color.White,
                     size = 15.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -375,7 +375,7 @@ fun PlaylistHeroDynamicPosterWallSection(
                     style = TextStyle(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        color = Color.White
                     )
                 )
             }
