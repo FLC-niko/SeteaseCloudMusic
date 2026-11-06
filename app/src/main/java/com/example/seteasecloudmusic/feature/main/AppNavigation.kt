@@ -537,8 +537,8 @@ fun AppNavigation(
                 displayName = authUiState.authSession?.nickname,
                 searchViewModel = searchViewModel,
                 onAccountClick = { showAccountSheet = true },
-                onPosterWallClick = { tracks, title ->
-                    dailyRecommendState = DailyRecommendState(tracks, title)
+                onPosterWallClick = { tracks, title, coverUrl ->
+                    dailyRecommendState = DailyRecommendState(tracks, title, coverUrl)
                 },
                 onArtistClick = { artistId, artistName, artistCoverUrl ->
                     selectedArtist = SelectedArtist(
@@ -932,6 +932,7 @@ fun AppNavigation(
                     DailyRecommendDetailRoute(
                         tracks = state.tracks,
                         title = state.title,
+                        coverUrl = state.coverUrl,
                         onClose = {
                             expandScope.launch {
                                 expandProgress.animateTo(0f, tween(durationMillis = 220, easing = FastOutSlowInEasing))
@@ -1199,7 +1200,7 @@ private fun AppPageContent(
     displayName: String?,
     searchViewModel: SearchViewModel,
     onAccountClick: () -> Unit,
-    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
+    onPosterWallClick: (tracks: List<Track>, title: String, coverUrl: String?) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     homeListState: LazyListState,
     radioListState: LazyListState,

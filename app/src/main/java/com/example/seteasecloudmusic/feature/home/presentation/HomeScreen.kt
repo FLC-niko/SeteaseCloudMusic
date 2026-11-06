@@ -103,7 +103,7 @@ fun HomeRoute(
     avatarUrl: String? = null,
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
-    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
+    onPosterWallClick: (tracks: List<Track>, title: String, coverUrl: String?) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
     lazyListState: LazyListState = rememberLazyListState()
 ) {
@@ -148,7 +148,7 @@ internal fun HomeScreenContent(
     onCardPlayClick: (BigCardItem) -> Unit,
     onRetryClick: () -> Unit,
     onRefreshClick: () -> Unit,
-    onPosterWallClick: (tracks: List<Track>, title: String) -> Unit,
+    onPosterWallClick: (tracks: List<Track>, title: String, coverUrl: String?) -> Unit,
     lazyListState: LazyListState = rememberLazyListState()
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -244,7 +244,7 @@ internal fun HomeScreenContent(
             item(key = "daily_recommend_wall") {
                 DailyRecommendPosterWall(
                     tracks = uiState.tracks,
-                    onClick = { onPosterWallClick(uiState.tracks, "每日推荐") },
+                    onClick = { onPosterWallClick(uiState.tracks, "每日推荐", uiState.tracks.firstOrNull()?.coverUrl) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 10.dp)
@@ -273,9 +273,18 @@ internal fun HomeScreenContent(
                     likedCoverUrl = uiState.likedMusicCoverUrl,
                     privateDjCoverUrl = uiState.privateDjCoverUrl,
                     onCardClick = { card ->
-                        when (card.type) {
-                            BigCardType.RADAR_PLAYLIST -> onPosterWallClick(uiState.radarTracks, "雷达歌单")
-                            else -> onCardPlayClick(card)
+                        val targetTracks = when (card.type) {
+                            BigCardType.DAILY_RECOMMEND -> uiState.tracks
+                            BigCardType.RADAR_PLAYLIST -> uiState.radarTracks
+                            BigCardType.HEART_MODE -> if (uiState.favoriteTracks.isNotEmpty()) uiState.favoriteTracks else uiState.tracks
+                            BigCardType.PRIVATE_DJ -> uiState.tracks
+                            BigCardType.SIMI_SONGS -> if (uiState.favoriteTracks.isNotEmpty()) uiState.favoriteTracks else uiState.tracks
+                            BigCardType.SIMI_ARTISTS -> uiState.tracks
+                        }
+                        if (targetTracks.isNotEmpty()) {
+                            onPosterWallClick(targetTracks, card.title, card.coverUrl)
+                        } else {
+                            onCardPlayClick(card)
                         }
                     },
                     onCardPlayClick = onCardPlayClick,

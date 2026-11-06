@@ -58,7 +58,11 @@ import com.example.seteasecloudmusic.core.ui.components.*
 import com.kyant.backdrop.Backdrop
 
 internal data class SelectedArtist(val id: Long, val name: String, val coverUrl: String?)
-internal data class DailyRecommendState(val tracks: List<Track>, val title: String = "每日推荐")
+internal data class DailyRecommendState(
+    val tracks: List<Track>,
+    val title: String = "每日推荐",
+    val coverUrl: String? = null
+)
 
 /** Keep large recommendation lists out of saved-instance bundles, but retain them across resizing. */
 internal class AppNavigationState : ViewModel() {
