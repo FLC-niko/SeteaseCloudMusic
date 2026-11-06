@@ -86,11 +86,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -101,7 +98,6 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlaybackMode
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
@@ -161,47 +157,6 @@ fun NativePlayerScreen(
     val currentAudioQuality by playerViewModel.currentAudioQuality.collectAsStateWithLifecycle()
     val likedTrackIds by playerViewModel.likedTrackIds.collectAsStateWithLifecycle()
 
-    NativePlayerContent(playbackState, parsedLyrics, currentAudioQuality, onClose, artworkAlpha, onArtworkBoundsChanged,
-        modifier, contentAlpha, backgroundAlpha, onArtworkCornerRadiusChanged, onArtworkShadowChanged,
-        onArtworkTrackTopChanged, onGrabberDragStart, onGrabberDragDelta, onGrabberDragEnd,
-        isLyricsLoading, likedTrackIds, playerViewModel::onPlayPause, playerViewModel::onNext,
-        { playerViewModel.onPrevious() }, playerViewModel::seekTo, playerViewModel::toggleTrackLiked,
-        playerViewModel::togglePlaybackMode, playerViewModel::setPlaybackMode, playerViewModel::selectAudioQuality,
-        playerViewModel::playQueueTrackAt, playerViewModel::removeQueueTrackAt, playerViewModel::clearQueue)
-}
-
-/** Same content and saved hierarchy for every width; the screen wrapper supplies live playback actions. */
-@Composable
-internal fun NativePlayerContent(
-    playbackState: PlaybackState,
-    parsedLyrics: ParsedLyrics,
-    currentAudioQuality: OnlineAudioQuality,
-    onClose: () -> Unit,
-    artworkAlpha: State<Float>,
-    onArtworkBoundsChanged: (Rect) -> Unit,
-    modifier: Modifier = Modifier,
-    contentAlpha: State<Float>? = null,
-    backgroundAlpha: State<Float>? = null,
-    onArtworkCornerRadiusChanged: (Dp) -> Unit = {},
-    onArtworkShadowChanged: (Dp) -> Unit = {},
-    onArtworkTrackTopChanged: (Boolean) -> Unit = {},
-    onGrabberDragStart: (() -> Unit)? = null,
-    onGrabberDragDelta: ((Float) -> Unit)? = null,
-    onGrabberDragEnd: ((Float) -> Unit)? = null,
-    isLyricsLoading: Boolean = false,
-    likedTrackIds: Set<Long> = emptySet(),
-    onPlayPause: () -> Unit = {},
-    onNext: () -> Unit = {},
-    onPrevious: () -> Unit = {},
-    onSeek: (Int) -> Unit = {},
-    onToggleStar: (Long) -> Unit = {},
-    onToggleMode: () -> Unit = {},
-    onSetMode: (PlaybackMode) -> Unit = {},
-    onQuality: (OnlineAudioQuality) -> Unit = {},
-    onQueueTrack: (Int) -> Unit = {},
-    onRemoveTrack: (Int) -> Unit = {},
-    onClearQueue: () -> Unit = {}
-) {
     val currentPosition = playbackState.currentPositionMs
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
     val track = playbackState.currentTrack
@@ -277,25 +232,33 @@ internal fun NativePlayerContent(
 
     // 折叠屏与大屏分栏自适应
     val adaptiveWindow = LocalAdaptiveWindow.current
-    if (adaptiveWindow.useExpandedPlayer) {
-        ExpandedNativePlayerContent(playbackState, parsedLyrics, currentAudioQuality, onClose, artworkAlpha,
-            onArtworkBoundsChanged, onPlayPause, onNext, onPrevious, onSeek,
-            { if (hasTrack) showQualitySheet = true }, { showQueueSheet = true },
-            isLyricsLoading, likedTrackIds, onToggleStar, onToggleMode)
+    if (adaptiveWindow.width >= 600.dp ||
+        (adaptiveWindow.width >= 480.dp && adaptiveWindow.height < 480.dp) ||
+        adaptiveWindow.isTabletop ||
+        adaptiveWindow.isBook
+    ) {
+        ExpandedNativePlayer(
+            viewModel = playerViewModel,
+            onClose = onClose,
+            artworkAlpha = artworkAlpha,
+            onArtworkBoundsChanged = onArtworkBoundsChanged,
+            onQuality = { if (hasTrack) showQualitySheet = true },
+            onQueue = { showQueueSheet = true }
+        )
         if (showQueueSheet) {
             PlaylistQueueSheet(
                 playbackState = playbackState,
-                onTrackClick = onQueueTrack,
-                onRemoveTrack = onRemoveTrack,
-                onClearQueue = onClearQueue,
-                onTogglePlaybackMode = onToggleMode,
+                onTrackClick = playerViewModel::playQueueTrackAt,
+                onRemoveTrack = playerViewModel::removeQueueTrackAt,
+                onClearQueue = playerViewModel::clearQueue,
+                onTogglePlaybackMode = playerViewModel::togglePlaybackMode,
                 onDismiss = { showQueueSheet = false }
             )
         }
         if (showQualitySheet) {
             AudioQualitySelectionSheet(
                 currentQuality = currentAudioQuality,
-                onSelectQuality = onQuality,
+                onSelectQuality = playerViewModel::selectAudioQuality,
                 onDismiss = { showQualitySheet = false }
             )
         }
@@ -335,8 +298,7 @@ internal fun NativePlayerContent(
 
     BoxWithConstraints(
         modifier = modifier
-            .fillMaxSize().testTag("player_stacked")
-            .semantics { stateDescription = if (currentPage == NativePlayerPage.LYRIC) "歌词" else "专辑" }
+            .fillMaxSize()
             .onGloballyPositioned { coords ->
                 val pos = coords.positionInRoot()
                 if (rootOriginInWindow != pos) {
@@ -516,7 +478,7 @@ internal fun NativePlayerContent(
                                 isPlaying = isPlaying,
                                 onLineClick = { seekMs ->
                                     notifyUserActivity()
-                                    onSeek(seekMs)
+                                    playerViewModel.seekTo(seekMs)
                                 },
                                 controlsVisible = controlsShown,
                                 onToggleControls = {
@@ -641,7 +603,7 @@ internal fun NativePlayerContent(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
                                     enabled = currentPage == NativePlayerPage.ALBUM,
-                                    onClick = { onToggleStar(track.id) }
+                                    onClick = { playerViewModel.toggleTrackLiked(track.id) }
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -754,7 +716,7 @@ internal fun NativePlayerContent(
                                     enabled = currentPage == NativePlayerPage.LYRIC,
                                     onClick = {
                                         notifyUserActivity()
-                                        onToggleStar(track.id)
+                                        playerViewModel.toggleTrackLiked(track.id)
                                     }
                                 ),
                             contentAlignment = Alignment.Center
@@ -854,19 +816,19 @@ internal fun NativePlayerContent(
                             },
                             onPlayPause = {
                                 notifyUserActivity()
-                                onPlayPause()
+                                playerViewModel.onPlayPause()
                             },
                             onNext = {
                                 notifyUserActivity()
-                                onNext()
+                                playerViewModel.onNext()
                             },
                             onPrevious = {
                                 notifyUserActivity()
-                                onPrevious()
+                                playerViewModel.onPrevious()
                             },
                             onSeekTo = { posMs ->
                                 notifyUserActivity()
-                                onSeek(posMs)
+                                playerViewModel.seekTo(posMs)
                             },
                             onToggleLyrics = {
                                 notifyUserActivity()
@@ -878,7 +840,7 @@ internal fun NativePlayerContent(
                             },
                             onTogglePlaybackMode = {
                                 notifyUserActivity()
-                                onToggleMode()
+                                playerViewModel.togglePlaybackMode()
                             },
                             onQueueClick = {
                                 notifyUserActivity()
@@ -1048,10 +1010,10 @@ internal fun NativePlayerContent(
         if (showQueueSheet) {
             PlaylistQueueSheet(
                 playbackState = playbackState,
-                onTrackClick = { index -> onQueueTrack(index) },
-                onRemoveTrack = { index -> onRemoveTrack(index) },
-                onClearQueue = { onClearQueue() },
-                onTogglePlaybackMode = { onToggleMode() },
+                onTrackClick = { index -> playerViewModel.playQueueTrackAt(index) },
+                onRemoveTrack = { index -> playerViewModel.removeQueueTrackAt(index) },
+                onClearQueue = { playerViewModel.clearQueue() },
+                onTogglePlaybackMode = { playerViewModel.togglePlaybackMode() },
                 onDismiss = { showQueueSheet = false }
             )
         }
@@ -1060,7 +1022,7 @@ internal fun NativePlayerContent(
         if (showQualitySheet) {
             AudioQualitySelectionSheet(
                 currentQuality = currentAudioQuality,
-                onSelectQuality = { quality -> onQuality(quality) },
+                onSelectQuality = { quality -> playerViewModel.selectAudioQuality(quality) },
                 onDismiss = { showQualitySheet = false }
             )
         }
@@ -1073,8 +1035,8 @@ internal fun NativePlayerContent(
                 playbackMode = playbackState.playbackMode,
                 currentQuality = currentAudioQuality,
                 isLocalTrack = isLocalTrack,
-                onToggleStar = { track?.let { onToggleStar(it.id) } },
-                onSelectPlaybackMode = { mode -> onSetMode(mode) },
+                onToggleStar = { track?.let { playerViewModel.toggleTrackLiked(it.id) } },
+                onSelectPlaybackMode = { mode -> playerViewModel.setPlaybackMode(mode) },
                 onOpenQuality = {
                     showMoreSheet = false
                     if (!isLocalTrack) showQualitySheet = true

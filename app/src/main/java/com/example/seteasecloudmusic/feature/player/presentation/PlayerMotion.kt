@@ -14,6 +14,10 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 
+internal fun easeInCubic(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * it }
+
+internal fun easeOutCubic(value: Float): Float = 1f - easeInCubic(1f - value)
+
 internal fun mix(source: Float, target: Float, progress: Float): Float =
     source + (target - source) * progress.coerceIn(0f, 1f)
 
@@ -25,8 +29,20 @@ internal fun playerContainerRect(source: Rect, target: Rect, progress: Float): R
     mix(source.right, target.right, progress), mix(source.bottom, target.bottom, progress)
 )
 
-internal fun playerArtworkRect(source: Rect, target: Rect, progress: Float): Rect =
-    playerContainerRect(source, target, progress)
+internal fun playerArtworkRect(source: Rect, target: Rect, progress: Float): Rect {
+    val p = progress.coerceIn(0f, 1f)
+    val centerX = mix(source.center.x, target.center.x, easeOutCubic(p))
+    val centerY = mix(source.center.y, target.center.y, mix(easeInCubic(p), p, 0.4f))
+    val scale = mix(1f, target.width / source.width.coerceAtLeast(1f), p)
+    val width = source.width * scale
+    val height = mix(source.height, target.height, p)
+    return Rect(
+        left = centerX - width / 2f,
+        top = centerY - height / 2f,
+        right = centerX + width / 2f,
+        bottom = centerY + height / 2f
+    )
+}
 
 /** 顶栏封面跟随展开容器的顶部，避免缩回迷你播放器时向屏幕中央漂移。 */
 internal fun playerTopAnchoredArtworkRect(
@@ -38,7 +54,8 @@ internal fun playerTopAnchoredArtworkRect(
     return Rect(left, top, left + mix(source.width, target.width, progress), top + mix(source.height, target.height, progress))
 }
 
-internal fun playerContainerCornerRadius(source: Float, target: Float, progress: Float): Float = mix(source, target, progress)
+internal fun playerContainerCornerRadius(source: Float, target: Float, progress: Float): Float =
+    if (progress >= 0.999f) 0f else mix(source, target, progress.coerceAtLeast(0f))
 internal fun playerBackgroundAlpha(progress: Float): Float = (progress / 0.65f).coerceIn(0f, 1f)
 internal fun playerContentAlpha(progress: Float): Float = ((progress - 0.20f) / 0.65f).coerceIn(0f, 1f)
 internal fun playerMiniContentAlpha(progress: Float): Float = (1f - progress / 0.25f).coerceIn(0f, 1f)

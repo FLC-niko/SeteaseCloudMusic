@@ -457,7 +457,8 @@ fun MineScreen(
                 backdrop = mineBackdrop,
                 onClose = onCloseDetail,
                 onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
-                onPlayAll = { onPlayAll(detail.tracks) }
+                onPlayAll = { onPlayAll(detail.tracks) },
+                onShufflePlay = { onPlayAll(detail.tracks.shuffled()) }
             )
         }
     }
@@ -471,6 +472,7 @@ fun MineScreen(
                 if (detail != null) {
                     PlaylistDetailScreen(detail = detail, backdrop = mineBackdrop, onClose = onCloseDetail,
                         onPlayTrack = { onPlayTrack(it, detail.tracks) }, onPlayAll = { onPlayAll(detail.tracks) },
+                        onShufflePlay = { onPlayAll(detail.tracks.shuffled()) },
                         isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
                 } else {
                     Box(Modifier.fillMaxSize().padding(top = statusBarHeight + 12.dp, bottom = bottomContentPadding)) {
