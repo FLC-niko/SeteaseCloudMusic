@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.main
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -63,6 +64,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -1191,6 +1193,19 @@ fun AppNavigation(
  * - [drawWithContent] 跳过整页绘制（不产生 RenderThread / GPU 开销）
  * - [offset] 把整页挪到屏幕外（不参与命中测试，隐藏页不会吞掉当前页的手势）
  */
+/**
+ * 一级页面横向切页过渡描述
+ *
+ * @property fromIndex 切出页索引
+ * @property toIndex 切入页索引
+ * @property direction 页面移动方向：1 为目标页索引更大（切入页从右向左滑入，切出页向左滑出）；-1 为目标页索引更小（切入页从左向右滑入，切出页向右滑出）
+ */
+private data class PageSlideTransition(
+    val fromIndex: Int,
+    val toIndex: Int,
+    val direction: Int
+)
+
 @Composable
 private fun AppPageContent(
     selectedIndex: State<Int>,
@@ -1212,6 +1227,11 @@ private fun AppPageContent(
         2 -> Color(0xFFF7F7FA)
         else -> Color.White
     }
+    val animatedPageBackgroundColor by animateColorAsState(
+        targetValue = pageBackgroundColor,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 450f),
+        label = "pageBgColor"
+    )
 
     // 页面常驻意味着离开搜索页后它的输入框仍然可聚焦，
     // 因此显式清一次焦点，保证键盘随页面一起收起（与原先「切走即销毁」的行为一致）。
@@ -1222,24 +1242,86 @@ private fun AppPageContent(
         }
     }
 
+    // ── 左右滑动切换动画状态 ──
+    var displayedIndex by rememberSaveable { mutableIntStateOf(index) }
+    var transitionState by remember { mutableStateOf<PageSlideTransition?>(null) }
+    val slideProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(index) {
+        if (index != displayedIndex) {
+            val from = displayedIndex
+            val to = index
+            val dir = if (to > from) 1 else -1
+            transitionState = PageSlideTransition(fromIndex = from, toIndex = to, direction = dir)
+            slideProgress.snapTo(0f)
+            try {
+                slideProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = 0.9f,
+                        stiffness = 450f
+                    )
+                )
+            } finally {
+                displayedIndex = to
+                transitionState = null
+            }
+        }
+    }
+
     // 已访问过的页面集合。用普通 Set 而非 snapshot 状态：它只在组合期读写，
     // 不需要（也不应该）驱动重组。首页在启动时就已挂载。
     val mountedPages = remember { mutableSetOf(index) }
     mountedPages.add(index)
+    mountedPages.add(displayedIndex)
+    transitionState?.let {
+        mountedPages.add(it.fromIndex)
+        mountedPages.add(it.toIndex)
+    }
+
+    val density = LocalDensity.current
+    var containerWidthPx by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(pageBackgroundColor)
+            .clipToBounds()
+            .background(animatedPageBackgroundColor)
+            .onSizeChanged { containerWidthPx = it.width.toFloat() }
     ) {
         mountedPages.forEach { pageIndex ->
-            val isActive = pageIndex == index
+            val transition = transitionState
+            val isTarget = pageIndex == (transition?.toIndex ?: displayedIndex)
+            val isFrom = transition != null && pageIndex == transition.fromIndex
+            val isVisible = isTarget || isFrom
+
             key(pageIndex) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .drawWithContent { if (isActive) drawContent() }
-                        .offset { IntOffset(0, if (isActive) 0 else OFFSCREEN_PAGE_OFFSET_PX) }
+                        .drawWithContent { if (isVisible) drawContent() }
+                        .offset {
+                            IntOffset(0, if (isVisible) 0 else OFFSCREEN_PAGE_OFFSET_PX)
+                        }
+                        .zIndex(if (isTarget) 1f else 0f)
+                        .graphicsLayer {
+                            if (transition != null && isVisible) {
+                                val width = if (containerWidthPx > 0f) {
+                                    containerWidthPx
+                                } else {
+                                    with(density) { 360.dp.toPx() }
+                                }
+                                val progress = slideProgress.value
+                                val dir = transition.direction
+                                translationX = when {
+                                    isTarget -> dir * width * (1f - progress)
+                                    isFrom -> -dir * width * progress
+                                    else -> 0f
+                                }
+                            } else {
+                                translationX = 0f
+                            }
+                        }
                 ) {
                     when (pageIndex) {
                         0 -> HomeRoute(
