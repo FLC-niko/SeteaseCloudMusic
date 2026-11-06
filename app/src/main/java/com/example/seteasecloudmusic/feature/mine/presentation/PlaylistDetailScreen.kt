@@ -1,7 +1,12 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
 import android.content.Context
+import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,35 +42,42 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveTwoPane
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalContentBottomPadding
 import com.example.seteasecloudmusic.core.ui.adaptive.MusicPaneHeader
+import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicMoreIcon
 import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 private val PlaylistPageBg = Color(0xFFF7F7FA)
 private val PlaylistTextPrimary = Color(0xFF111111)
@@ -132,24 +144,76 @@ fun PlaylistDetailScreen(
         }
     }
 
+    val settingsManager = remember(context) { PlayerSettingsManager.getInstance(context) }
+    val isPredictiveBackEnabled by settingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val predictiveTranslationX = remember(detail.id) { Animatable(0f) }
+
+    LaunchedEffect(detail.id) {
+        predictiveTranslationX.snapTo(0f)
+    }
+
     val deviceCorners = rememberDeviceCornerRadius()
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
         val isCardMode = !embedded && !split
-        val cornerShape = remember(deviceCorners, isCardMode) {
-            if (isCardMode) deviceCorners.toShape() else RoundedCornerShape(0.dp)
+        val fullWidthPx = with(density) { maxWidth.toPx() }
+        val isPredictiveGestureActive = predictiveTranslationX.value > 0.5f
+
+        if (isCardMode && isPredictiveBackEnabled) {
+            PredictiveBackHandler(enabled = true) { progressFlow ->
+                try {
+                    progressFlow.collect { backEvent ->
+                        val targetTranslationX = com.example.seteasecloudmusic.core.ui.adaptive.PredictiveBackMotion.calculateTranslationX(
+                            progress = backEvent.progress,
+                            fullWidthPx = fullWidthPx
+                        )
+                        predictiveTranslationX.snapTo(targetTranslationX)
+                    }
+                    onClose()
+                } catch (e: CancellationException) {
+                    coroutineScope.launch {
+                        predictiveTranslationX.animateTo(
+                            targetValue = 0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.86f,
+                                stiffness = 400f
+                            )
+                        )
+                    }
+                }
+            }
+        } else {
+            BackHandler(onBack = onClose)
         }
 
-        // 100% 绝对不透明的纯色底座，结合真机硬件 r 角裁剪与滑入柔和投影
+        val cornerShape = remember(deviceCorners, isCardMode, isPredictiveGestureActive) {
+            if (isCardMode) {
+                if (deviceCorners.hasRoundedCorners) {
+                    deviceCorners.toShape()
+                } else if (isPredictiveGestureActive) {
+                    RoundedCornerShape(24.dp)
+                } else {
+                    RoundedCornerShape(0.dp)
+                }
+            } else RoundedCornerShape(0.dp)
+        }
+
+        // 100% 绝对不透明的纯色底座，结合真机硬件 r 角裁剪与向右滑入/返回柔和投影
         Surface(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    translationX = predictiveTranslationX.value
+                }
                 .then(
-                    if (isCardMode && deviceCorners.hasRoundedCorners) {
+                    if (isCardMode && (deviceCorners.hasRoundedCorners || isPredictiveGestureActive)) {
                         Modifier
                             .shadow(
-                                elevation = 20.dp,
+                                elevation = if (isPredictiveGestureActive) 24.dp else 20.dp,
                                 shape = cornerShape,
                                 clip = false
                             )
@@ -160,7 +224,6 @@ fun PlaylistDetailScreen(
             color = solidBackgroundColor
         ) {
             if (embedded || split) {
-                BackHandler(onBack = onClose)
                 val songs: @Composable () -> Unit = {
                     LazyColumn(
                         Modifier.fillMaxSize(),
@@ -280,8 +343,6 @@ private fun CompactPlaylistDetailScreen(
     isLoading: Boolean = false,
     lazyListState: androidx.compose.foundation.lazy.LazyListState
 ) {
-    BackHandler(onBack = onClose)
-
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val collapseThreshold = if (currentStyle == PlaylistDetailStyle.APPLE_MUSIC) 260.dp else 160.dp
 

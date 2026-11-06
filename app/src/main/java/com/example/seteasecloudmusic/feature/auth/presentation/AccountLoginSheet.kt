@@ -105,6 +105,7 @@ fun AccountLoginSheetContent(
     val audioQuality by viewModel.playerSettingsManager.audioQuality.collectAsStateWithLifecycle()
     val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
     val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
+    val predictiveBackEnabled by viewModel.playerSettingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel.snackbarMessage) {
         viewModel.snackbarMessage.collectLatest { message ->
@@ -136,7 +137,7 @@ fun AccountLoginSheetContent(
 
             if (isAccountDetailsFlow) {
                 val detailsTitle = if (uiState.panel == AuthPanel.ACCOUNT_DETAILS) {
-                    "账户设置"
+                    if (uiState.isLoggedIn) "账户设置" else "音乐设置"
                 } else {
                     uiState.accountDetailsDestination?.title ?: "账户详情"
                 }
@@ -174,7 +175,7 @@ fun AccountLoginSheetContent(
                             onCaptchaClick = { viewModel.onCaptchaPanelOpened() },
                             onQrClick = { viewModel.onQrPanelOpened() },
                             onSettingsClick = {
-                                showAudioQualityDialog = true
+                                viewModel.onAccountDetailsOpened()
                             },
                             onProfileClick = {
                                 viewModel.onAccountDetailsOpened()
@@ -211,6 +212,7 @@ fun AccountLoginSheetContent(
 
                     AuthPanel.ACCOUNT_DETAILS -> {
                         AccountDetailsPanel(
+                            isLoggedIn = uiState.isLoggedIn,
                             avatarUrl = uiState.authSession?.avatarUrl,
                             displayName = uiState.authSession?.nickname,
                             personalizedRecommendationEnabled = uiState.personalizedRecommendationEnabled,
@@ -246,6 +248,8 @@ fun AccountLoginSheetContent(
                             onBluetoothLyricsChange = { viewModel.playerSettingsManager.setBluetoothLyricsEnabled(it) },
                             superLyricApiEnabled = superLyricApiEnabled,
                             onSuperLyricApiChange = { viewModel.playerSettingsManager.setSuperLyricApiEnabled(it) },
+                            predictiveBackEnabled = predictiveBackEnabled,
+                            onPredictiveBackChange = { viewModel.playerSettingsManager.setPredictiveBackEnabled(it) },
                             onLogoutClick = { viewModel.onRequestLogout() }
                         )
                     }
@@ -400,6 +404,7 @@ private fun AccountDetailsHeader(
 
 @Composable
 private fun AccountDetailsPanel(
+    isLoggedIn: Boolean,
     avatarUrl: String?,
     displayName: String?,
     personalizedRecommendationEnabled: Boolean,
@@ -419,6 +424,8 @@ private fun AccountDetailsPanel(
     onBluetoothLyricsChange: (Boolean) -> Unit,
     superLyricApiEnabled: Boolean,
     onSuperLyricApiChange: (Boolean) -> Unit,
+    predictiveBackEnabled: Boolean,
+    onPredictiveBackChange: (Boolean) -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val secondary = Color(0xFF8D8D93)
@@ -426,45 +433,47 @@ private fun AccountDetailsPanel(
     val red = Color(0xFFFA233B)
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        SettingsSectionCard {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onAppleAccountClick)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                UserAvatar(
-                    avatarUrl = avatarUrl,
-                    displayName = displayName,
-                    size = 44.dp,
-                    showBorder = false
-                )
-                Spacer(modifier = Modifier.size(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Apple 账户",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF121212)
+        if (isLoggedIn) {
+            SettingsSectionCard {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onAppleAccountClick)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    UserAvatar(
+                        avatarUrl = avatarUrl,
+                        displayName = displayName,
+                        size = 44.dp,
+                        showBorder = false
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = displayName ?: "Setease 用户",
-                        fontSize = 14.sp,
-                        color = secondary
+                    Spacer(modifier = Modifier.size(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Apple 账户",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF121212)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = displayName ?: "Setease 用户",
+                            fontSize = 14.sp,
+                            color = secondary
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = Color(0xFFC7C7CC),
+                        modifier = Modifier.size(22.dp)
                     )
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = Color(0xFFC7C7CC),
-                    modifier = Modifier.size(22.dp)
-                )
             }
-        }
 
-        Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+        }
 
         SettingsSectionCard {
             SettingsNavigationRow(
@@ -485,62 +494,61 @@ private fun AccountDetailsPanel(
             )
             SettingsDivider(dividerColor)
             SettingsToggleRow(
-                title = "灵动岛与状态栏歌词 (SuperLyric)",
+                title = "灵动岛与状态栏歌词",
                 checked = superLyricApiEnabled,
                 onCheckedChange = onSuperLyricApiChange,
+                backdrop = backdrop
+            )
+            SettingsDivider(dividerColor)
+            SettingsToggleRow(
+                title = "预测性返回手势",
+                checked = predictiveBackEnabled,
+                onCheckedChange = onPredictiveBackChange,
                 backdrop = backdrop
             )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = "开启后，将通过系统底层服务向 HyperLyric / SuperLyric 实时广播逐字动效歌词，车载蓝牙屏幕将同步更新滚动歌词。",
-            color = secondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-        )
+        if (isLoggedIn) {
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.height(14.dp))
+            SettingsSectionCard {
+                SettingsNavigationRow(
+                    title = "管理付款方式",
+                    onClick = onManagePaymentClick
+                )
+                SettingsDivider(dividerColor)
+                SettingsNavigationRow(
+                    title = "订阅",
+                    onClick = onSubscriptionsClick
+                )
+                SettingsDivider(dividerColor)
+                SettingsNavigationRow(
+                    title = "购买记录",
+                    onClick = onPurchaseHistoryClick
+                )
+                SettingsDivider(dividerColor)
+                SettingsNavigationRow(
+                    title = "为账户充值",
+                    onClick = onAddFundsClick
+                )
+            }
 
-        SettingsSectionCard {
-            SettingsNavigationRow(
-                title = "管理付款方式",
-                onClick = onManagePaymentClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "订阅",
-                onClick = onSubscriptionsClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "购买记录",
-                onClick = onPurchaseHistoryClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "为账户充值",
-                onClick = onAddFundsClick
-            )
-        }
+            Spacer(modifier = Modifier.height(14.dp))
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        SettingsSectionCard {
-            SettingsNavigationRow(
-                title = "国家/地区",
-                trailingText = "中国大陆",
-                onClick = onCountryRegionClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "评分与评论",
-                onClick = onRatingsAndReviewsClick
-            )
+            SettingsSectionCard {
+                SettingsNavigationRow(
+                    title = "国家/地区",
+                    trailingText = "中国大陆",
+                    onClick = onCountryRegionClick
+                )
+                SettingsDivider(dividerColor)
+                SettingsNavigationRow(
+                    title = "评分与评论",
+                    onClick = onRatingsAndReviewsClick
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -566,38 +574,40 @@ private fun AccountDetailsPanel(
                 .padding(horizontal = 8.dp)
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        if (isLoggedIn) {
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
-                    enabled = !isProcessingLogout,
-                    onClick = onLogoutClick
-                )
-        ) {
-            Box(
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                contentAlignment = Alignment.Center
+                    .clickable(
+                        enabled = !isProcessingLogout,
+                        onClick = onLogoutClick
+                    )
             ) {
-                if (isProcessingLogout) {
-                    CircularProgressIndicator(
-                        color = red,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp)
-                    )
-                } else {
-                    Text(
-                        text = "退出登录",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = red
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isProcessingLogout) {
+                        CircularProgressIndicator(
+                            color = red,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        Text(
+                            text = "退出登录",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = red
+                        )
+                    }
                 }
             }
         }

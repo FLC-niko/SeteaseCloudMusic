@@ -25,6 +25,10 @@ enum class OnlineAudioQuality(
 class PlayerSettingsManager @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
+    init {
+        INSTANCE = this
+    }
+
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
     private val _audioQuality = MutableStateFlow(loadSavedAudioQuality())
@@ -38,6 +42,9 @@ class PlayerSettingsManager @Inject constructor(
 
     private val _playlistDetailStyle = MutableStateFlow(loadSavedPlaylistDetailStyle())
     val playlistDetailStyle: StateFlow<String> = _playlistDetailStyle.asStateFlow()
+
+    private val _predictiveBackEnabled = MutableStateFlow(loadSavedPredictiveBack())
+    val predictiveBackEnabled: StateFlow<Boolean> = _predictiveBackEnabled.asStateFlow()
 
     fun setAudioQuality(quality: OnlineAudioQuality) {
         _audioQuality.value = quality
@@ -57,6 +64,11 @@ class PlayerSettingsManager @Inject constructor(
     fun setPlaylistDetailStyle(styleId: String) {
         _playlistDetailStyle.value = styleId
         prefs.edit().putString(KEY_PLAYLIST_STYLE, styleId).apply()
+    }
+
+    fun setPredictiveBackEnabled(enabled: Boolean) {
+        _predictiveBackEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_PREDICTIVE_BACK, enabled).apply()
     }
 
     private fun loadSavedAudioQuality(): OnlineAudioQuality {
@@ -80,11 +92,25 @@ class PlayerSettingsManager @Inject constructor(
         return prefs.getString(KEY_PLAYLIST_STYLE, "apple_music") ?: "apple_music"
     }
 
+    private fun loadSavedPredictiveBack(): Boolean {
+        return prefs.getBoolean(KEY_PREDICTIVE_BACK, true)
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
         private const val KEY_BLUETOOTH_LYRICS = "player_bluetooth_lyrics"
         private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"
         private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
+        private const val KEY_PREDICTIVE_BACK = "predictive_back_enabled"
+
+        @Volatile
+        private var INSTANCE: PlayerSettingsManager? = null
+
+        fun getInstance(context: Context): PlayerSettingsManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: PlayerSettingsManager(context.applicationContext).also { INSTANCE = it }
+            }
+        }
     }
 }

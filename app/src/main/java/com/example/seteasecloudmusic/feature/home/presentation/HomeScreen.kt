@@ -66,6 +66,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -180,8 +181,12 @@ internal fun HomeScreenContent(
         collapseThresholdDp = 76.dp
     )
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
-    if (uiState.activePlaylistDetail != null) {
-        lastPlaylistDetail.value = uiState.activePlaylistDetail
+    val playlistOpenCounter = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(uiState.activePlaylistDetail) {
+        if (uiState.activePlaylistDetail != null) {
+            lastPlaylistDetail.value = uiState.activePlaylistDetail
+            playlistOpenCounter.intValue++
+        }
     }
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
 
@@ -390,18 +395,20 @@ internal fun HomeScreenContent(
         ) {
             val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
             displayDetail?.let { detail ->
-                val fallbackBackdrop = rememberLayerBackdrop { drawContent() }
-                val glassBackdrop = LocalGlassBackdrop.current ?: fallbackBackdrop
-                PlaylistDetailScreen(
-                    detail = detail,
-                    isLoading = false,
-                    listState = detailListState,
-                    backdrop = glassBackdrop,
-                    onClose = onClosePlaylistDetail,
-                    onPlayTrack = onTrackClick,
-                    onPlayAll = { onPlayAll(detail.tracks) },
-                    onShufflePlay = { onShufflePlay(detail.tracks) }
-                )
+                androidx.compose.runtime.key(playlistOpenCounter.intValue) {
+                    val fallbackBackdrop = rememberLayerBackdrop { drawContent() }
+                    val glassBackdrop = LocalGlassBackdrop.current ?: fallbackBackdrop
+                    PlaylistDetailScreen(
+                        detail = detail,
+                        isLoading = false,
+                        listState = detailListState,
+                        backdrop = glassBackdrop,
+                        onClose = onClosePlaylistDetail,
+                        onPlayTrack = onTrackClick,
+                        onPlayAll = { onPlayAll(detail.tracks) },
+                        onShufflePlay = { onShufflePlay(detail.tracks) }
+                    )
+                }
             }
         }
     }

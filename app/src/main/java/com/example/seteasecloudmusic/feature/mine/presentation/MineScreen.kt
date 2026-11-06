@@ -449,8 +449,12 @@ fun MineScreen(
     }
 
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
-    if (uiState.activePlaylistDetail != null) {
-        lastPlaylistDetail.value = uiState.activePlaylistDetail
+    val playlistOpenCounter = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(uiState.activePlaylistDetail) {
+        if (uiState.activePlaylistDetail != null) {
+            lastPlaylistDetail.value = uiState.activePlaylistDetail
+            playlistOpenCounter.intValue++
+        }
     }
 
     if (!split) {
@@ -468,16 +472,18 @@ fun MineScreen(
     ) {
         val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
         displayDetail?.let { detail ->
-            PlaylistDetailScreen(
-                detail = detail,
-                isLoading = uiState.isLoadingDetail,
-                listState = detailListState,
-                backdrop = mineBackdrop,
-                onClose = onCloseDetail,
-                onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
-                onPlayAll = { onPlayAll(detail.tracks) },
-                onShufflePlay = { onPlayAll(detail.tracks.shuffled()) }
-            )
+            androidx.compose.runtime.key(playlistOpenCounter.intValue) {
+                PlaylistDetailScreen(
+                    detail = detail,
+                    isLoading = uiState.isLoadingDetail,
+                    listState = detailListState,
+                    backdrop = mineBackdrop,
+                    onClose = onCloseDetail,
+                    onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
+                    onPlayAll = { onPlayAll(detail.tracks) },
+                    onShufflePlay = { onPlayAll(detail.tracks.shuffled()) }
+                )
+            }
         }
     }
     }    }

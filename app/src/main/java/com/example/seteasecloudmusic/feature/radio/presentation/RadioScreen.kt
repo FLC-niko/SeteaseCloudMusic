@@ -403,8 +403,12 @@ internal fun RadioScreenContent(
         )
 
         val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
-        if (uiState.activePlaylistDetail != null) {
-            lastPlaylistDetail.value = uiState.activePlaylistDetail
+        val playlistOpenCounter = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+        LaunchedEffect(uiState.activePlaylistDetail) {
+            if (uiState.activePlaylistDetail != null) {
+                lastPlaylistDetail.value = uiState.activePlaylistDetail
+                playlistOpenCounter.intValue++
+            }
         }
 
         // 歌单详情层（类似我的喜欢歌单页面）
@@ -425,16 +429,18 @@ internal fun RadioScreenContent(
         ) {
             val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
             displayDetail?.let { detail ->
-                PlaylistDetailScreen(
-                    detail = detail,
-                    isLoading = uiState.isLoadingDetail,
-                    listState = detailListState,
-                    backdrop = radioBackdrop,
-                    onClose = onClosePlaylistDetail,
-                    onPlayTrack = { track -> onPlayTrackInPlaylist(track, detail.tracks) },
-                    onPlayAll = { onPlayAllTracks(detail.tracks) },
-                    onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) }
-                )
+                androidx.compose.runtime.key(playlistOpenCounter.intValue) {
+                    PlaylistDetailScreen(
+                        detail = detail,
+                        isLoading = uiState.isLoadingDetail,
+                        listState = detailListState,
+                        backdrop = radioBackdrop,
+                        onClose = onClosePlaylistDetail,
+                        onPlayTrack = { track -> onPlayTrackInPlaylist(track, detail.tracks) },
+                        onPlayAll = { onPlayAllTracks(detail.tracks) },
+                        onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) }
+                    )
+                }
             }
         }
     }    }

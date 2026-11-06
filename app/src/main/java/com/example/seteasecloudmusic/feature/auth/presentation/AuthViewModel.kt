@@ -144,7 +144,6 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onAccountDetailsOpened() {
-        if (!_uiState.value.isLoggedIn) return
         stopQrLoginFlow()
         _uiState.update {
             it.copy(
