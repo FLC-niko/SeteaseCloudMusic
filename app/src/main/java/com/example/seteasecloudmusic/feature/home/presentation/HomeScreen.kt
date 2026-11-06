@@ -769,7 +769,7 @@ private fun FavoriteRecommendedSongsSection(
     }
 
     val songColumns = remember(displayTracks) {
-        displayTracks.take(18).chunked(3)
+        displayTracks.take(18).chunked(4)
     }
 
     val pagerState = rememberPagerState(pageCount = { songColumns.size })
