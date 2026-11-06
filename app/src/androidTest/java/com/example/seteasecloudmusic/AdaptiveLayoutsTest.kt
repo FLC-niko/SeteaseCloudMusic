@@ -30,6 +30,9 @@ import com.example.seteasecloudmusic.core.ui.adaptive.*
 import com.example.seteasecloudmusic.feature.main.MainActivity
 import com.example.seteasecloudmusic.feature.main.AppNavigation
 import com.example.seteasecloudmusic.feature.main.MusicNavigationRail
+import com.example.seteasecloudmusic.feature.main.SearchMiniPlayerBar
+import com.example.seteasecloudmusic.feature.main.navigation.horizontalChromeFrame
+import com.example.seteasecloudmusic.feature.main.navigation.horizontalMiniPlayerFrame
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.example.seteasecloudmusic.feature.artist.presentation.*
@@ -145,7 +148,7 @@ class AdaptiveLayoutsTest {
                     center
                 } else compose.onNodeWithContentDescription("播放列表").fetchSemanticsNode().boundsInRoot.center
                 compose.onNodeWithContentDescription("播放列表").performClick()
-                compose.onNodeWithText("播放列表为空").assertExists()
+                compose.onNodeWithText("播放列表").assertExists()
                 capture("$label-chrome-queue")
                 androidx.test.espresso.Espresso.pressBack()
                 compose.onNodeWithContentDescription("打开账户").performClick()
@@ -154,7 +157,7 @@ class AdaptiveLayoutsTest {
                 capture("$label-chrome-account")
                 val fixtureOrigin = compose.onNodeWithTag("fixture").fetchSemanticsNode().boundsInRoot.topLeft
                 compose.onNodeWithTag("fixture").performTouchInput { click(underlyingCenter - fixtureOrigin) }
-                compose.onNodeWithText("播放列表为空").assertDoesNotExist()
+                compose.onNodeWithText("播放列表").assertDoesNotExist()
                 if (queueInOverflow) compose.onNodeWithTag("glass_dock_0").assertDoesNotExist()
                 // The same screen point can be outside the narrower sheet: its scrim may dismiss it.
                 if (compose.onAllNodesWithText("Setease 账户").fetchSemanticsNodes().isEmpty()) {
@@ -194,6 +197,85 @@ class AdaptiveLayoutsTest {
                     capture("$label-search-$category")
                 }
             }
+        }
+    }
+
+    @Test fun compactMiniPlayerKeepsClearOfBothButtonsAcrossWidths() {
+        var width by mutableStateOf(320.dp)
+        var scale by mutableFloatStateOf(1f)
+        var compact by mutableStateOf(false)
+        val tracks = fixtures()
+        val sizingArtist = "陈奕迅 · Luna Ensemble"
+        val sizingTrack = tracks[0].copy(artists = listOf(Artist(1, sizingArtist)))
+        val playback = kotlinx.coroutines.flow.MutableStateFlow(PlaybackState(PlayerStatus.PAUSED, sizingTrack, durationMs = 220000))
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                ProvideAdaptiveWindow(activity) {
+                    val info = LocalAdaptiveWindow.current
+                    SideEffect { windowInfo = info }
+                    val original = androidx.compose.ui.platform.LocalDensity.current
+                    SideEffect { currentFontScale = original.fontScale }
+                    CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(original.density, scale)) {
+                        MaterialTheme {
+                            val background = rememberLayerBackdrop { drawContent() }
+                            Box(Modifier.fillMaxSize().background(Color(0xFFF2F2F7)), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color(0xFFF2F2F7)) }
+                                Box(Modifier.requiredWidth(width).height(160.dp)) {
+                                    Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).horizontalChromeFrame().height(54.dp).testTag("sizing_nav_frame")) {
+                                        Box(Modifier.align(androidx.compose.ui.Alignment.CenterStart).size(54.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape).testTag("sizing_left_button")) {
+                                            androidx.compose.material3.Text("首页", Modifier.align(androidx.compose.ui.Alignment.Center))
+                                        }
+                                        Box(Modifier.align(androidx.compose.ui.Alignment.CenterEnd).size(54.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape).testTag("sizing_right_button")) {
+                                            androidx.compose.material3.Text("搜索", Modifier.align(androidx.compose.ui.Alignment.Center))
+                                        }
+                                    }
+                                    val progress = if (compact) 1f else 0f
+                                    SearchMiniPlayerBar(background, 27.dp, playback,
+                                        contentProgress = remember(progress) { mutableStateOf(progress) },
+                                        onPlayPauseClick = {}, onPlaylistClick = {}, onNextClick = {}, onPreviousClick = {},
+                                        onBarClick = {}, onArtworkBoundsChanged = {}, hideArtwork = false,
+                                        modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+                                            .padding(bottom = if (compact) 0.dp else 66.dp)
+                                            .horizontalMiniPlayerFrame(progress).height(54.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (font in listOf(1f, 1.5f)) for (size in listOf(280.dp, 320.dp, 443.dp, 600.dp, 851.dp, 1200.dp)) for (collapsed in listOf(false, true)) {
+            compose.runOnUiThread { width = size; scale = font; compact = collapsed }
+            compose.waitForIdle()
+            val frame = compose.onNodeWithTag("sizing_nav_frame").fetchSemanticsNode().boundsInRoot
+            val mini = compose.onNodeWithTag("bottom_mini_player_surface").fetchSemanticsNode().boundsInRoot
+            val left = compose.onNodeWithTag("sizing_left_button").fetchSemanticsNode().boundsInRoot
+            val right = compose.onNodeWithTag("sizing_right_button").fetchSemanticsNode().boundsInRoot
+            val density = left.width / 54f
+            assertEquals("Playback remains centred at $size/$font", frame.center.x, mini.center.x, 1f)
+            if (collapsed) {
+                assertTrue("Left button must not cover playback at $size/$font", mini.left >= left.right + 9f * density)
+                assertTrue("Search must not cover playback at $size/$font", mini.right <= right.left - 9f * density)
+            } else {
+                assertEquals(frame.width, mini.width, 1f)
+                assertTrue("Expanded playback must stay above navigation", mini.bottom <= left.top - 11f * density)
+            }
+            val title = compose.onNodeWithText("日落之前", useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            val artist = compose.onNodeWithText(sizingArtist, useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue("Large text must stay inside playback", title.top >= mini.top - 1f && artist.bottom <= mini.bottom + 1f)
+            for (text in listOf("日落之前", sizingArtist)) {
+                val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                compose.onNodeWithText(text, useUnmergedTree = true)
+                    .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                val layout = layouts.single()
+                // didOverflowHeight also includes intentional maxLines/ellipsis truncation.
+                if (layout.size.height + 1f < layout.multiParagraph.height) capture("miniplayer-overflow")
+                assertTrue("Visible line must fit vertically at $size/$font/$collapsed: $text, allocated=${layout.size.height}, paragraph=${layout.multiParagraph.height}, mini=$mini, title=$title, artist=$artist",
+                    layout.size.height + 1f >= layout.multiParagraph.height)
+            }
+            val play = compose.onNodeWithContentDescription("播放", useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue(play.left >= mini.left && play.right <= mini.right + 1f)
+            if (collapsed && font == 1.5f && size in listOf(320.dp, 851.dp, 1200.dp)) capture("miniplayer-${size.value.toInt()}-font150")
         }
     }
 

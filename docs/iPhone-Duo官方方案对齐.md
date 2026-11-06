@@ -47,6 +47,20 @@ python scripts/verify_foldable_layouts.py --adb D:/Android/Sdk/platform-tools/ad
 - 内屏十项设备测试通过，包含短屏菜单、左侧分屏外缘定位和歌词页面在宽窄重排后的保留。
 - 外屏冷启动确认折叠能力识别与侧边导航生效；账户、队列、音质面板实际边界均检查折痕避让。
 - 首轮全页面回归发现短横屏播放入口已进入菜单，测试仍按直达按钮操作；修正测试路径，并补齐打开播放浮层后自动关闭菜单的交互后，重新完成上述完整矩阵。
-- 最终报告：`artifacts/duo/final/report.json`，已核对当前源码和两份 APK 的 SHA256；预览：`artifacts/duo/final/preview.jpg`。
+- 该阶段报告：`artifacts/duo/final/report.json`，已核对该阶段源码和两份 APK 的 SHA256；预览：`artifacts/duo/final/preview.jpg`。
 
 本轮使用无窗口 `emulator-5556` 与 ADB，全程由脚本构建、切换姿态和截图，没有启动 Android Studio。
+
+## 迷你播放器收缩宽度修复
+
+大屏中导航和播放条分别限宽，原先播放条先增加两侧内边距、再限制最大宽度，导致较宽窗口中的内边距被限宽抵消。收缩后的播放条因此仍可能与整个导航框一样宽，进入两侧按钮下面。
+
+导航和播放条现共用 `horizontalChromeFrame`：先确定居中的最大 620dp 范围，再在播放条内部为每侧按钮预留 54dp 和 10dp 间距。例如导航框宽 620dp 时，收缩播放条宽 492dp；较窄窗口与折叠分区则随实际可用宽度缩小。收缩进度限制在 0–1 范围内，保持原有动画与安全区处理。
+
+同时明确歌名、歌手及导航标签行高，并去掉播放条两行文字多余的字体留白和上下内边距，保持字号缩放与单行省略，在固定高度内容纳 1.5 倍字号的中英混排。
+
+设备回归使用实际 `SearchMiniPlayerBar`，覆盖 280/320/443/600/851/1200dp、1.0/1.5 倍字号与展开/收缩两种状态，共 24 组布局。检查播放条居中、两侧按钮间距、播放按钮边界和文字实际可见行高度；导航回归兼容已有非空播放队列。
+
+此次修复验证通过：Debug 应用与设备测试 APK 构建、五项 JVM 测试、内屏全部 11 项设备检查，以及九种配置的导航定向复验。测试背景与玻璃控件分层，文字检查允许正常的单行省略，按可见段落实际高度检查纵向裁切。
+
+最终报告位于 `artifacts/miniplayer-width/release-review/report.json`，已核对源码和两份 APK 的 SHA256。通过已有 `emulator-5554` 的 ADB 滑动触发真实首页收缩，截图确认按钮与播放条之间保留间距；完整截图为 `artifacts/miniplayer-width/actual-compact.png`，底部效果预览为 `artifacts/miniplayer-width/preview.png`。核对后已恢复原旋转设置。
