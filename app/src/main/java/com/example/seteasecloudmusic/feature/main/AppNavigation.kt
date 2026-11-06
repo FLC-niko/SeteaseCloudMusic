@@ -15,6 +15,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.example.seteasecloudmusic.feature.main.navigation.horizontalChromeFrame
+import com.example.seteasecloudmusic.feature.main.navigation.horizontalMiniPlayerFrame
 import com.example.seteasecloudmusic.feature.main.navigation.BottomNavigationViewport
 import com.example.seteasecloudmusic.feature.main.navigation.NavigationScrollState
 import com.example.seteasecloudmusic.feature.main.navigation.MiniPlayerChromeMotion
@@ -587,10 +589,8 @@ fun AppNavigation(
                 // 先避开系统导航栏（小白条）
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 // 手动添加上下左右的间距，左右缩进，底部悬浮
-                .padding(horizontal = horizontalPadding)
                 .padding(top = 16.dp, bottom = 6.dp + animatedImeOffset)
-                .widthIn(max = 620.dp)
-                .fillMaxWidth()
+                .horizontalChromeFrame(horizontalPadding)
                 // 保持自然舒适的视觉高度
                 .height(navBarHeight).testTag("horizontal_glass_dock")
                 .graphicsLayer {
@@ -624,7 +624,7 @@ fun AppNavigation(
                 Box(
                     modifier = Modifier
                         .width(leftWidth)
-                        .fillMaxHeight()
+                        .fillMaxHeight().testTag("bottom_navigation_button")
                         .graphicsLayer {
                             // 按下时整体轻微放大，模拟液态玻璃被“压出张力”的感觉。缩小底栏放大比例。
                             val progress = mainBarProgressAnimation.value
@@ -769,7 +769,7 @@ fun AppNavigation(
                                     Text(
                                         text = item.title,
                                         color = itemColor,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
                                         maxLines = 1
                                     )
                                 }
@@ -798,7 +798,7 @@ fun AppNavigation(
                     modifier = Modifier
                         .offset { IntOffset(currentSearchBarX.roundToPx(), 0) }
                         .width(currentSearchBarWidth)
-                        .fillMaxHeight()
+                        .fillMaxHeight().testTag("bottom_search_button")
                         .graphicsLayer {
                             val progress = searchProgressAnimation.value
                             val maxScale = (size.width + 4f.dp.toPx()) / size.width
@@ -951,20 +951,6 @@ fun AppNavigation(
             miniPlayerChromeMotion.verticalProgress.value
         )
 
-        val inlineGap = 10.dp
-        val compactStartPadding = horizontalPadding + navBarHeight + inlineGap
-        val compactEndPadding = horizontalPadding + navBarHeight + inlineGap
-        val currentStartPadding = lerpDp(
-            horizontalPadding,
-            compactStartPadding,
-            miniPlayerChromeMotion.horizontalProgress.value
-        )
-        val currentEndPadding = lerpDp(
-            horizontalPadding,
-            compactEndPadding,
-            miniPlayerChromeMotion.horizontalProgress.value
-        )
-
         val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
         val searchFadeOut = if (useRail) 1f else (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
@@ -1008,12 +994,12 @@ fun AppNavigation(
                     .zIndex(1f)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(
-                        start = currentStartPadding + railStartPadding,
-                        end = currentEndPadding + railEndPadding,
+                        start = railStartPadding,
+                        end = railEndPadding,
                         bottom = currentMiniPlayerBottom
                     )
-                    .widthIn(max = if (window.isRegularWidth) 620.dp else 1100.dp)
-                    .fillMaxWidth()
+                    .horizontalMiniPlayerFrame(miniPlayerChromeMotion.horizontalProgress.value,
+                        horizontalPadding = horizontalPadding, buttonSize = navBarHeight)
                     .height(currentMiniPlayerHeight)
                     .graphicsLayer {
                         val shellFade = if (showNowPlaying) {
@@ -1844,7 +1830,7 @@ private fun MovingPlayerArtwork(
 }
 
 @Composable
-private fun SearchMiniPlayerBar(
+internal fun SearchMiniPlayerBar(
     backdrop: Backdrop,
     cornerRadius: Dp,
     playbackStateFlow: StateFlow<PlaybackState>,
@@ -2037,7 +2023,7 @@ private fun SearchMiniPlayerBar(
 
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxWidth().testTag("bottom_mini_player_surface")
             .onGloballyPositioned { coordinates ->
                 onContainerBoundsChanged(coordinates.boundsInRoot())
             }
@@ -2167,9 +2153,7 @@ private fun SearchMiniPlayerBar(
                     Spacer(modifier = Modifier.width(8.dp))
                     val artistText = displayedTrack?.artists?.joinToString(", ") { it.name }
                     Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
@@ -2177,7 +2161,10 @@ private fun SearchMiniPlayerBar(
                             color = Color.Black,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.5.sp
+                                fontSize = 13.5.sp,
+                                lineHeight = 17.sp,
+                                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -2186,7 +2173,9 @@ private fun SearchMiniPlayerBar(
                             Text(
                                 text = artistText,
                                 color = Color(0xFF666666),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
