@@ -16,7 +16,8 @@ fun MineRoute(
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MineViewModel = hiltViewModel(),
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    isForeground: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -34,6 +35,7 @@ fun MineRoute(
         onScanLocal = viewModel::scanLocalMusic,
         onSetLocalDirectory = viewModel::setLocalDirectoryAndScan,
         modifier = modifier,
-        lazyListState = lazyListState
+        lazyListState = lazyListState,
+        isForeground = isForeground
     )
 }

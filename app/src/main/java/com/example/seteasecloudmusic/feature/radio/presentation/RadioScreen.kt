@@ -4,6 +4,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -114,7 +115,8 @@ fun RadioRoute(
     onAvatarClick: (() -> Unit)? = null,
     onArtistClick: ((artistId: Long, artistName: String, artistCoverUrl: String?) -> Unit)? = null,
     viewModel: RadioViewModel = hiltViewModel(),
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    isForeground: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -143,7 +145,8 @@ fun RadioRoute(
         onPlayMood = viewModel::playMood,
         onPlayFollowedNewSong = viewModel::playFollowedNewSong,
         onRetryClick = viewModel::onRetryClick,
-        lazyListState = lazyListState
+        lazyListState = lazyListState,
+        isForeground = isForeground
     )
 }
 
@@ -169,7 +172,8 @@ internal fun RadioScreenContent(
     onPlayMood: (RadioMoodItem) -> Unit,
     onPlayFollowedNewSong: (RadioFollowedArtistNewSongItem) -> Unit,
     onRetryClick: () -> Unit,
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    isForeground: Boolean = true
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
@@ -410,6 +414,11 @@ internal fun RadioScreenContent(
                 playlistOpenCounter.intValue++
             }
         }
+        LaunchedEffect(isForeground) {
+            if (!isForeground) {
+                lastPlaylistDetail.value = null
+            }
+        }
 
         // 歌单详情层（类似我的喜欢歌单页面）
         if (!split) {
@@ -419,10 +428,14 @@ internal fun RadioScreenContent(
                 initialOffsetX = { fullWidth -> fullWidth },
                 animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
             ),
-            exit = slideOutHorizontally(
-                targetOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
-            ),
+            exit = if (isForeground) {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                )
+            } else {
+                ExitTransition.None
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(20f)

@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.feature.home.presentation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.LinearEasing
@@ -117,7 +118,8 @@ fun HomeRoute(
     onAvatarClick: (() -> Unit)? = null,
     onPosterWallClick: ((tracks: List<Track>, title: String, coverUrl: String?) -> Unit)? = null,
     viewModel: HomeViewModel = hiltViewModel(),
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    isForeground: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -152,7 +154,8 @@ fun HomeRoute(
         onClosePlaylistDetail = viewModel::closePlaylistDetail,
         onPlayAll = { tracks -> viewModel.playAll(tracks, 0) },
         onShufflePlay = { tracks -> viewModel.playAll(tracks.shuffled(), 0) },
-        lazyListState = lazyListState
+        lazyListState = lazyListState,
+        isForeground = isForeground
     )
 }
 
@@ -173,7 +176,8 @@ internal fun HomeScreenContent(
     onClosePlaylistDetail: () -> Unit = {},
     onPlayAll: (List<Track>) -> Unit = {},
     onShufflePlay: (List<Track>) -> Unit = {},
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    isForeground: Boolean = true
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
@@ -186,6 +190,11 @@ internal fun HomeScreenContent(
         if (uiState.activePlaylistDetail != null) {
             lastPlaylistDetail.value = uiState.activePlaylistDetail
             playlistOpenCounter.intValue++
+        }
+    }
+    LaunchedEffect(isForeground) {
+        if (!isForeground) {
+            lastPlaylistDetail.value = null
         }
     }
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
@@ -385,10 +394,14 @@ internal fun HomeScreenContent(
                 initialOffsetX = { fullWidth -> fullWidth },
                 animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
             ),
-            exit = slideOutHorizontally(
-                targetOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
-            ),
+            exit = if (isForeground) {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                )
+            } else {
+                ExitTransition.None
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(20f)

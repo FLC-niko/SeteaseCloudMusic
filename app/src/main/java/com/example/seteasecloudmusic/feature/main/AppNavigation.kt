@@ -86,7 +86,9 @@ import com.example.seteasecloudmusic.feature.artist.presentation.ArtistDetailRou
 import com.example.seteasecloudmusic.feature.home.presentation.HomeRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
 import com.example.seteasecloudmusic.feature.mine.presentation.MineRoute
+import com.example.seteasecloudmusic.feature.mine.presentation.MineViewModel
 import com.example.seteasecloudmusic.feature.radio.presentation.RadioRoute
+import com.example.seteasecloudmusic.feature.radio.presentation.RadioViewModel
 import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
 import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScreen
@@ -260,6 +262,9 @@ fun AppNavigation(
     val railStartPadding = if (window.sideControlsAtStart) railPadding else 0.dp
     val railEndPadding = if (window.sideControlsAtStart) 0.dp else railPadding
     val navigationState: AppNavigationState = viewModel()
+    val homeViewModel: HomeViewModel = hiltViewModel()
+    val radioViewModel: RadioViewModel = hiltViewModel()
+    val mineViewModel: MineViewModel = hiltViewModel()
     val searchViewModel: SearchViewModel = hiltViewModel()
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
@@ -526,6 +531,9 @@ fun AppNavigation(
                 imeOffset = animatedImeOffset,
                 avatarUrl = authUiState.authSession?.avatarUrl,
                 displayName = authUiState.authSession?.nickname,
+                homeViewModel = homeViewModel,
+                radioViewModel = radioViewModel,
+                mineViewModel = mineViewModel,
                 searchViewModel = searchViewModel,
                 onAccountClick = { showAccountSheet = true },
                 onArtistClick = { artistId, artistName, artistCoverUrl ->
@@ -648,6 +656,14 @@ fun AppNavigation(
                             itemCount = MainNavItems.size,
                             onDragOffsetChange = { dragOffsetXState.value = it },
                             onSettle = {
+                                if (selectedIndexState.intValue == it) {
+                                    // 重复点击当前已选中的 Tab 时收起歌单
+                                    when (it) {
+                                        0 -> homeViewModel.closePlaylistDetail()
+                                        1 -> radioViewModel.closePlaylistDetail()
+                                        2 -> mineViewModel.closePlaylistDetail()
+                                    }
+                                }
                                 selectedIndexState.intValue = it
                                 lastActiveTab = it
                             },
@@ -981,7 +997,16 @@ fun AppNavigation(
                 if (index == SEARCH_PAGE_INDEX && isSearchExpanded) {
                     searchViewModel.onClearQuery()
                     selectedIndexState.intValue = lastActiveTab
-                } else selectedIndexState.intValue = index
+                } else {
+                    if (selectedIndexState.intValue == index) {
+                        when (index) {
+                            0 -> homeViewModel.closePlaylistDetail()
+                            1 -> radioViewModel.closePlaylistDetail()
+                            2 -> mineViewModel.closePlaylistDetail()
+                        }
+                    }
+                    selectedIndexState.intValue = index
+                }
             }, backdrop, Modifier.align(if (window.sideControlsAtStart) Alignment.CenterStart else Alignment.CenterEnd).zIndex(2f),
                 header = {
                     UserAvatarButton(authUiState.authSession?.avatarUrl, authUiState.authSession?.nickname,
@@ -1171,6 +1196,9 @@ private fun AppPageContent(
     imeOffset: Dp,
     avatarUrl: String?,
     displayName: String?,
+    homeViewModel: HomeViewModel,
+    radioViewModel: RadioViewModel,
+    mineViewModel: MineViewModel,
     searchViewModel: SearchViewModel,
     onAccountClick: () -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
@@ -1222,6 +1250,12 @@ private fun AppPageContent(
             } finally {
                 displayedIndex = to
                 transitionState = null
+                // 切完成之后立即退出切出页的歌单页（切页滑动期间保持歌单不动随页面滑出）
+                when (from) {
+                    0 -> homeViewModel.closePlaylistDetail()
+                    1 -> radioViewModel.closePlaylistDetail()
+                    2 -> mineViewModel.closePlaylistDetail()
+                }
             }
         }
     }
@@ -1287,7 +1321,9 @@ private fun AppPageContent(
                             avatarUrl = avatarUrl,
                             displayName = displayName,
                             onAvatarClick = onAccountClick,
-                            lazyListState = homeListState
+                            viewModel = homeViewModel,
+                            lazyListState = homeListState,
+                            isForeground = displayedIndex == 0 && transitionState == null
                         )
 
                         1 -> RadioRoute(
@@ -1297,14 +1333,18 @@ private fun AppPageContent(
                             displayName = displayName,
                             onAvatarClick = onAccountClick,
                             onArtistClick = onArtistClick,
-                            lazyListState = radioListState
+                            viewModel = radioViewModel,
+                            lazyListState = radioListState,
+                            isForeground = displayedIndex == 1 && transitionState == null
                         )
 
                         2 -> MineRoute(
                             topContentPadding = topContentPadding,
                             bottomContentPadding = bottomContentPadding,
                             onLoginClick = onAccountClick,
-                            lazyListState = mineListState
+                            viewModel = mineViewModel,
+                            lazyListState = mineListState,
+                            isForeground = displayedIndex == 2 && transitionState == null
                         )
 
                         3 -> SearchRoute(

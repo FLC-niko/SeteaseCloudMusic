@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -137,7 +138,8 @@ fun MineScreen(
     onScanLocal: (String?) -> Unit,
     onSetLocalDirectory: (String) -> Unit,
     modifier: Modifier = Modifier,
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    isForeground: Boolean = true
 ) {
     val context = LocalContext.current
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -456,6 +458,11 @@ fun MineScreen(
             playlistOpenCounter.intValue++
         }
     }
+    LaunchedEffect(isForeground) {
+        if (!isForeground) {
+            lastPlaylistDetail.value = null
+        }
+    }
 
     if (!split) {
     AnimatedVisibility(
@@ -464,10 +471,14 @@ fun MineScreen(
             initialOffsetX = { fullWidth -> fullWidth },
             animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
         ),
-        exit = slideOutHorizontally(
-            targetOffsetX = { fullWidth -> fullWidth },
-            animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
-        ),
+        exit = if (isForeground) {
+            slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth },
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+            )
+        } else {
+            ExitTransition.None
+        },
         modifier = Modifier.fillMaxSize().zIndex(20f)
     ) {
         val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
