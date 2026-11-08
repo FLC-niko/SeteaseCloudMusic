@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -276,6 +277,29 @@ internal fun NativePlayerContent(
     }
 
     // 折叠屏与大屏分栏自适应
+    val moreSheet: @Composable () -> Unit = {
+        if (showMoreSheet) {
+            AppleMusicMoreActionsSheet(
+                track = track,
+                isStarred = isStarred,
+                playbackMode = playbackState.playbackMode,
+                currentQuality = currentAudioQuality,
+                isLocalTrack = isLocalTrack,
+                onToggleStar = { track?.let { onToggleStar(it.id) } },
+                onSelectPlaybackMode = { mode -> onSetMode(mode) },
+                onOpenQuality = {
+                    showMoreSheet = false
+                    if (!isLocalTrack) showQualitySheet = true
+                },
+                onOpenQueue = {
+                    showMoreSheet = false
+                    showQueueSheet = true
+                },
+                onDismiss = { showMoreSheet = false }
+            )
+        }
+    }
+
     val adaptiveWindow = LocalAdaptiveWindow.current
     if (adaptiveWindow.useExpandedPlayer) {
         ExpandedNativePlayerContent(
@@ -295,7 +319,10 @@ internal fun NativePlayerContent(
             likedTrackIds = likedTrackIds,
             onToggleStar = onToggleStar,
             onToggleMode = onToggleMode,
-            modifier = modifier
+            modifier = modifier,
+            isLyricsPage = currentPage == NativePlayerPage.LYRIC,
+            onToggleLyrics = { currentPage = if (currentPage == NativePlayerPage.LYRIC) NativePlayerPage.ALBUM else NativePlayerPage.LYRIC },
+            onMore = { showMoreSheet = true }
         )
         if (showQueueSheet) {
             PlaylistQueueSheet(
@@ -314,6 +341,7 @@ internal fun NativePlayerContent(
                 onDismiss = { showQualitySheet = false }
             )
         }
+        moreSheet()
         return
     }
 
@@ -375,7 +403,8 @@ internal fun NativePlayerContent(
             mutableIntStateOf(with(density) { 232.dp.roundToPx() })
         }
 
-        val horizontalPaddingDp = 28.dp
+        val contentWidthDp = maxWidth.coerceAtMost(680.dp)
+        val horizontalPaddingDp = (maxWidth - contentWidthDp) / 2 + 28.dp
         val horizontalPaddingPx = with(density) { horizontalPaddingDp.toPx() }
         val grabberRegionHeightPx = with(density) { 36.dp.toPx() }
 
@@ -512,6 +541,7 @@ internal fun NativePlayerContent(
                     modifier = Modifier
                         .zIndex(0f)
                         .fillMaxSize()
+                        .padding(horizontal = horizontalPaddingDp - 28.dp)
                         .padding(top = lyricViewportTopDp, bottom = lyricsBottomInsetDp)
                         .clipToBounds()
                         .graphicsLayer {
@@ -812,7 +842,7 @@ internal fun NativePlayerContent(
                 modifier = Modifier
                     .zIndex(2f)
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
+                    .widthIn(max = 680.dp).fillMaxWidth()
                     .padding(bottom = navBarBottomDp + 4.dp)
             ) {
                 AnimatedVisibility(
@@ -834,7 +864,7 @@ internal fun NativePlayerContent(
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxWidth().testTag("player_controls")
                             .onSizeChanged { sz ->
                                 if (sz.height > 0) {
                                     measuredControlsHeightPx = sz.height
@@ -1081,26 +1111,7 @@ internal fun NativePlayerContent(
         }
 
         // 更多操作弹窗（从右侧 ••• 按钮触发）
-        if (showMoreSheet) {
-            AppleMusicMoreActionsSheet(
-                track = track,
-                isStarred = isStarred,
-                playbackMode = playbackState.playbackMode,
-                currentQuality = currentAudioQuality,
-                isLocalTrack = isLocalTrack,
-                onToggleStar = { track?.let { onToggleStar(it.id) } },
-                onSelectPlaybackMode = { mode -> onSetMode(mode) },
-                onOpenQuality = {
-                    showMoreSheet = false
-                    if (!isLocalTrack) showQualitySheet = true
-                },
-                onOpenQueue = {
-                    showMoreSheet = false
-                    showQueueSheet = true
-                },
-                onDismiss = { showMoreSheet = false }
-            )
-        }
+        moreSheet()
     }
 }
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveOverlayPane
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -52,7 +53,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,14 +107,16 @@ internal fun ExpandedNativePlayerContent(
     likedTrackIds: Set<Long> = emptySet(),
     onToggleStar: (Long) -> Unit = {},
     onToggleMode: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLyricsPage: Boolean = false,
+    onToggleLyrics: () -> Unit = {},
+    onMore: () -> Unit = onQuality
 ) {
     val sharedBackground = LocalPlayerBackdrop.current
     val background = sharedBackground ?: rememberLayerBackdrop { drawContent() }
     val track = state.currentTrack
     val playing = state.status == PlayerStatus.PLAYING
     val window = LocalAdaptiveWindow.current
-    val controlsInSecondary = window.isTabletop || window.height < 480.dp
     val local = track?.let {
         it.id < 0 || it.playableUrl?.let { url ->
             url.startsWith("content:") || url.startsWith("file:") || url.startsWith("/")
@@ -119,13 +125,15 @@ internal fun ExpandedNativePlayerContent(
     val isStarred = track?.id?.let { it in likedTrackIds } == true
     val isExplicit = remember(track?.id, track?.title, lyrics) { isExplicitTrack(track, lyrics) }
     val sharedArtwork = LocalPlayerArtwork.current
+    val fontGrowth = (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+    val lyricsBarHeight = if (window.isBook) 196.dp + 64.dp * fontGrowth else 144.dp + 32.dp * fontGrowth
 
     val controls: @Composable () -> Unit = {
         AppleMusicPlaybackControls(
             currentPositionMs = state.currentPositionMs,
             durationMs = state.durationMs,
             isPlaying = playing,
-            isLyricsPage = true,
+            isLyricsPage = isLyricsPage,
             hasTrack = track != null,
             currentAudioQuality = quality,
             isLocalTrack = local,
@@ -136,7 +144,7 @@ internal fun ExpandedNativePlayerContent(
             onNext = onNext,
             onPrevious = onPrevious,
             onSeekTo = onSeek,
-            onToggleLyrics = {},
+            onToggleLyrics = onToggleLyrics,
             onQueueClick = onQueue
         )
     }
@@ -144,6 +152,7 @@ internal fun ExpandedNativePlayerContent(
     Box(
         modifier
             .fillMaxSize().testTag("player_two_column")
+            .semantics { stateDescription = if (isLyricsPage) "歌词" else "专辑" }
             .background(if (sharedBackground == null) Color(0xFF101014) else Color.Transparent)
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }
     ) {
@@ -254,23 +263,6 @@ internal fun ExpandedNativePlayerContent(
                             }
                         }
 
-                        if (!controlsInSecondary) PlayerTrackCaption(
-                            track = track,
-                            isStarred = isStarred,
-                            isExplicit = isExplicit,
-                            onToggleStar = { track?.let { onToggleStar(it.id) } },
-                            onMore = onQuality
-                        )
-
-                        if (!controlsInSecondary) {
-                            LiquidGlassPanel(
-                                Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
-                                    .fillMaxWidth().testTag("player_controls").padding(bottom = 12.dp).heightIn(max = 260.dp),
-                                backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
-                            ) {
-                                Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
-                            }
-                        }
                     }
                 },
                 secondary = {
@@ -279,23 +271,12 @@ internal fun ExpandedNativePlayerContent(
                             .fillMaxSize()
                             .padding(end = 20.dp)
                     ) {
-                        if (controlsInSecondary) {
-                            PlayerTrackCaption(
-                                track = track,
-                                isStarred = isStarred,
-                                isExplicit = isExplicit,
-                                onToggleStar = { track?.let { onToggleStar(it.id) } },
-                                onMore = onQuality
-                            )
-                            LiquidGlassPanel(
-                                Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
-                                    .fillMaxWidth().testTag("player_controls").padding(bottom = 12.dp).heightIn(max = 240.dp),
-                                backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
-                            ) {
-                                Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
-                            }
-                        }
-                        when {
+                        if (!isLyricsPage) {
+                            PlayerTrackCaption(track, isStarred, isExplicit,
+                                { track?.let { onToggleStar(it.id) } }, onMore)
+                            Box(Modifier.weight(1f).fillMaxWidth().testTag("player_controls")
+                                .verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) { controls() }
+                        } else when {
                             lyrics.lines.isNotEmpty() -> {
                                 val index = lyrics.lines
                                     .indexOfLast { it.startTime <= state.currentPositionMs }
@@ -338,6 +319,14 @@ internal fun ExpandedNativePlayerContent(
                     }
                 }
             )
+            if (isLyricsPage) {
+                AdaptiveOverlayPane(Modifier.fillMaxWidth().height(lyricsBarHeight)) {
+                    ExpandedPlaybackBar(state, quality, background, onPlayPause, onPrevious, onNext, onSeek,
+                        onQuality, onToggleMode, onToggleLyrics, onQueue, onMore,
+                        Modifier.align(Alignment.BottomCenter).widthIn(max = 960.dp).fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp))
+                }
+            }
         }
     }
 }

@@ -888,26 +888,7 @@ fun AppleMusicBottomToolbar(
             )
         }
 
-        // 2. 播放模式切换按钮（循环 ↔ 随机，替换原 AirPlay 图标）
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .semantics { contentDescription = "切换播放模式" }
-                .clip(CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    enabled = hasTrack,
-                    onClick = onTogglePlaybackMode
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            AppleMusicPlaybackModeIcon(
-                mode = playbackMode,
-                size = 25.dp,
-                tint = if (hasTrack) Color.White.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.28f)
-            )
-        }
+        AppleMusicAudioOutputButton()
 
         // 3. 待播队列按钮
         Box(
@@ -927,6 +908,18 @@ fun AppleMusicBottomToolbar(
                 tint = Color.White.copy(alpha = 0.55f)
             )
         }
+    }
+}
+
+@Composable
+internal fun AppleMusicAudioOutputButton(modifier: Modifier = Modifier, tint: Color = Color.White.copy(alpha = 0.55f)) {
+    val context = LocalContext.current
+    Box(modifier.size(42.dp).clip(CircleShape)
+        .semantics { contentDescription = "\u97f3\u9891\u8f93\u51fa" }
+        .clickable(remember { MutableInteractionSource() }, indication = null,
+            onClick = { openSystemAudioOutputSwitcher(context) }),
+        contentAlignment = Alignment.Center) {
+        AppleMusicAirPlayIcon(size = 25.dp, tint = tint)
     }
 }
 
