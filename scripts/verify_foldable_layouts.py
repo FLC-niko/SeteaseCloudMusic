@@ -61,6 +61,8 @@ def main():
     if (ROOT / "amll-web-player/src").exists():
         sources += [path for path in (ROOT / "amll-web-player/src").rglob("*") if path.suffix in {".jsx", ".js", ".css"}]
     report["sourceSha256"] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
+    verification = [Path(__file__).resolve(), *list((ROOT / "app/src/androidTest").rglob("*.kt"))]
+    report["verificationSha256"] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in verification}
     report["apkSha256"] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [
         ROOT / "app/build/outputs/apk/debug/app-debug.apk",
         ROOT / "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
@@ -68,7 +70,7 @@ def main():
     report["initialDeviceState"] = adb("shell", "cmd", "device_state", "print-state")
     if args.resume:
         prior = json.loads((output / "report.json").read_text(encoding="utf-8"))
-        if any(prior.get(key) != report[key] for key in ["sourceSha256", "apkSha256", "pages"]):
+        if any(prior.get(key) != report[key] for key in ["sourceSha256", "verificationSha256", "apkSha256", "pages"]):
             raise SystemExit("Source, APK or page scope changed; run the requested matrix again")
         report["scenarios"] = [item for item in prior["scenarios"] if item["passed"]]
     completed = {item["name"] for item in report["scenarios"]}
@@ -92,8 +94,6 @@ def main():
             adb("shell", "cmd", "device_state", "state", str(state))
             if label in {"landscape", "outer-landscape", "tabletop"}:
                 adb("shell", "cmd", "window", "user-rotation", "lock", "1")
-            if label == "resized":
-                adb("shell", "wm", "size", "1240x1550")
             if label.endswith("large-font"):
                 adb("shell", "settings", "put", "system", "font_scale", "1.5")
             adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
@@ -114,10 +114,15 @@ def main():
             target_rotation = "1" if label in {"landscape", "outer-landscape", "tabletop"} else "0"
             stable_frames = 0
             for _ in range(30):
+                # A physical panel switch can discard an earlier wm override. Apply it after wake/start,
+                # and require the actual logical display to match before creating the test activity.
+                if label == "resized":
+                    adb("shell", "wm", "size", "1240x1550")
                 adb("shell", "cmd", "window", "user-rotation", "lock", target_rotation)
                 frames = re.search(r"DisplayFrames w=(\d+) h=(\d+) r=(\d+)", adb("shell", "dumpsys", "window", "displays"))
                 correct_rotation = frames and frames.group(3) == target_rotation
-                stable_frames = stable_frames + 1 if correct_rotation else 0
+                correct_size = label != "resized" or (frames and frames.group(1, 2) == ("1240", "1550"))
+                stable_frames = stable_frames + 1 if correct_rotation and correct_size else 0
                 if stable_frames >= 3:
                     break
                 time.sleep(0.3)

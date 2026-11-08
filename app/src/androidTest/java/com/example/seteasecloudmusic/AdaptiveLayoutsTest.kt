@@ -60,7 +60,7 @@ class AdaptiveLayoutsTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @Volatile private var windowInfo: AdaptiveWindowInfo? = null
     @Volatile private var currentFontScale = 1f
-    private val pages = listOf("chrome", "native_music", "home", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
+    private val pages = listOf("chrome", "native_music", "home", "home_detail", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
 
     @Before fun keepEmulatorVisible() {
         compose.activityRule.scenario.onActivity { activity ->
@@ -108,8 +108,8 @@ class AdaptiveLayoutsTest {
             compose.onNodeWithTag("fixture").assertExists()
             val expected = when (name) {
                 "chrome" -> "首页"
-                "native_music" -> if (windowInfo?.width?.let { it >= 600.dp } == true || windowInfo?.separatingFold != null) "日落之前" else null
-                "home" -> "首页"
+                "native_music" -> "\u65e5\u843d\u4e4b\u524d"
+                "home", "home_detail" -> "首页"
                 "radio", "radio_detail" -> "电台"
                 "mine", "mine_detail", "local" -> "我的"
                 "playlist" -> "日落之后"
@@ -119,7 +119,7 @@ class AdaptiveLayoutsTest {
                 "discover" -> "推荐歌单"
                 "native" -> "未在播放"
                 "queue" -> "播放列表"
-                "settings" -> "账户设置"
+                "settings" -> null
                 else -> null
             }
             if (expected != null) {
@@ -159,17 +159,84 @@ class AdaptiveLayoutsTest {
                 compose.onNodeWithTag("fixture").performTouchInput { click(underlyingCenter - fixtureOrigin) }
                 compose.onNodeWithText("播放列表").assertDoesNotExist()
                 if (queueInOverflow) compose.onNodeWithTag("glass_dock_0").assertDoesNotExist()
-                // The same screen point can be outside the narrower sheet: its scrim may dismiss it.
-                if (compose.onAllNodesWithText("Setease 账户").fetchSemanticsNodes().isEmpty()) {
+                // This point can open an in-panel destination or dismiss the narrower sheet's scrim.
+                // Check the overlay itself: the account title can legitimately change to music settings.
+                if (compose.onAllNodesWithTag("account_glass_surface").fetchSemanticsNodes().isEmpty()) {
                     compose.onNodeWithContentDescription("打开账户").performClick()
                 }
-                compose.onNodeWithText("Setease 账户").assertExists()
+                compose.onNodeWithTag("account_glass_surface").assertExists()
                 androidx.test.espresso.Espresso.pressBack()
             }
+            if (name in listOf("home", "radio", "mine", "local")) {
+                compose.onNodeWithTag("music_detail_placeholder").assertDoesNotExist()
+                listOf("home_detail_panes", "radio_detail_panes", "mine_detail_panes").forEach { tag ->
+                    compose.onNodeWithTag(tag).assertDoesNotExist()
+                }
+            }
             if (name == "native_music") {
-                compose.onNode(hasContentDescription("播放") or hasContentDescription("暂停")).assertExists()
+                compose.onNodeWithTag(if (windowInfo?.useExpandedPlayer == true) "player_two_column" else "player_stacked").assertExists()
+                compose.onNodeWithContentDescription("音频输出").assertExists().assertIsEnabled()
+                val info = requireNotNull(windowInfo)
+                if (info.useExpandedPlayer) {
+                    listOf("player_media", "player_controls", "player_track_caption", "player_close").forEach(::assertAwayFromFold)
+                    if (info.isTabletop) {
+                        val media = compose.onNodeWithTag("player_media").fetchSemanticsNode().boundsInWindow
+                        val controls = compose.onNodeWithTag("player_controls").fetchSemanticsNode().boundsInWindow
+                        val caption = compose.onNodeWithTag("player_track_caption").fetchSemanticsNode().boundsInWindow
+                        assertTrue("Media must stay above the tabletop fold", media.bottom <= info.separatingFold!!.top + 1f)
+                        assertTrue("All playback actions must stay below the tabletop fold", minOf(controls.top, caption.top) >= info.separatingFold!!.bottom - 1f)
+                    }
+                }
+                if (info.useExpandedPlayer) compose.onNodeWithContentDescription("待播清单").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithContentDescription("待播清单").performClick()
+                compose.onNodeWithText("播放列表").assertExists()
+                if (windowInfo?.isRegularWidth == true || windowInfo?.separatingFold != null) assertAwayFromFold("adaptive_modal_surface")
+                capture("$label-native-queue")
+                androidx.test.espresso.Espresso.pressBack()
+                if (info.useExpandedPlayer) compose.onNodeWithText("Hi-Res", substring = true).performScrollTo().assertIsDisplayed()
+                compose.onNodeWithText("Hi-Res", substring = true).performClick()
+                compose.onNodeWithText("选择播放音质").assertExists()
+                if (windowInfo?.isRegularWidth == true || windowInfo?.separatingFold != null) assertAwayFromFold("adaptive_modal_surface")
+                capture("$label-native-quality")
+                androidx.test.espresso.Espresso.pressBack()
+                if (info.useExpandedPlayer) compose.onNodeWithContentDescription("歌词").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithContentDescription("歌词").performClick()
+                compose.waitForIdle()
+                compose.mainClock.advanceTimeBy(1_000L)
+                compose.waitForIdle()
+                if (!info.useExpandedPlayer) {
+                    val cover = compose.onNodeWithContentDescription("专辑封面").fetchSemanticsNode().boundsInWindow
+                    assertTrue("Lyrics artwork must finish moving into its compact header", cover.width <= 55f * compose.activity.resources.displayMetrics.density)
+                }
+                capture("$label-native-lyrics")
+                val lyricsState = SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "歌词")
+                compose.onNodeWithTag(if (info.useExpandedPlayer) "player_two_column" else "player_stacked").assert(lyricsState)
+                if (info.useExpandedPlayer) {
+                    assertAwayFromFold("player_controls")
+                    val bar = compose.onNodeWithTag("player_controls").fetchSemanticsNode().boundsInWindow
+                    val density = compose.activity.resources.displayMetrics.density
+                    listOf("上一首", "播放", "下一首", "音频输出", "歌词", "更多播放操作").forEach { action ->
+                        val button = compose.onNodeWithContentDescription(action).assertIsDisplayed().fetchSemanticsNode().boundsInWindow
+                        assertTrue("$action must remain fully visible in the lyrics bar", button.height >= 43f * density &&
+                            button.left >= bar.left - 1f && button.right <= bar.right + 1f && button.bottom <= bar.bottom + 1f)
+                    }
+                    compose.onNodeWithContentDescription("更多播放操作").performClick()
+                    compose.onNodeWithText("播放模式").assertExists()
+                    assertAwayFromFold("adaptive_modal_surface")
+                    capture("$label-native-more")
+                    androidx.test.espresso.Espresso.pressBack()
+                    if (compose.onAllNodesWithContentDescription("音量").fetchSemanticsNodes().isNotEmpty()) {
+                        compose.onNodeWithContentDescription("音量").performClick()
+                        compose.onNodeWithText("音量").assertExists()
+                        assertAwayFromFold("adaptive_modal_surface")
+                        capture("$label-native-volume")
+                        androidx.test.espresso.Espresso.pressBack()
+                    }
+                }
+                androidx.test.espresso.Espresso.pressBack()
             }
             if (name == "settings") {
+                compose.onNode(hasText("账户设置") or hasText("音乐设置")).assertExists()
                 compose.onNodeWithText("在线播放音质").performClick()
                 compose.onNodeWithText("选择在线播放音质").assertExists()
                 capture("$label-settings-quality")
@@ -360,6 +427,31 @@ class AdaptiveLayoutsTest {
         compose.onNode(hasSetTextAction()).assertExists()
     }
 
+    @Test fun lyricPageSurvivesWideWindowReflow() {
+        var wide by mutableStateOf(false)
+        val tracks = fixtures()
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                val info = if (wide) AdaptiveWindowInfo(800.dp, 500.dp, isFoldable = true)
+                    else AdaptiveWindowInfo(500.dp, 800.dp, isFoldable = true)
+                val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(
+                    Lyrics(lrc = LyricContent(lyric = "[00:00.00]在城市的另一边")))
+                CompositionLocalProvider(LocalAdaptiveWindow provides info) {
+                    NativePlayerContent(PlaybackState(PlayerStatus.PAUSED, tracks[0], durationMs = 220000), lyrics,
+                        com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
+                        {}, remember { mutableStateOf(1f) }, {})
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("歌词").performClick()
+        val lyricState = SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "歌词")
+        compose.onNodeWithTag("player_stacked").assert(lyricState)
+        compose.runOnUiThread { wide = true }
+        compose.onNodeWithTag("player_two_column").assertExists()
+        compose.runOnUiThread { wide = false }
+        compose.onNodeWithTag("player_stacked").assert(lyricState)
+    }
+
     @Test fun navigationAndSearchSurviveActivityRecreation() {
         compose.onAllNodes(hasText("搜索") or hasContentDescription("搜索")).onFirst().performClick()
         compose.onNode(hasSetTextAction()).performTextInput("Luna")
@@ -453,6 +545,10 @@ class AdaptiveLayoutsTest {
     }
 
     private fun capture(name: String) {
+        // Layout and draw-only springs must settle before sampling Android's rendered surface.
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000L)
+        compose.waitForIdle()
         // Android dialogs use Choreographer, independently of Compose's virtual clock.
         val frames = java.util.concurrent.CountDownLatch(1)
         compose.runOnUiThread {
@@ -521,29 +617,20 @@ private fun FixturePage(page: String, tracks: List<Track>) {
             "chrome" -> AppNavigation()
             "native_music" -> {
                 PlayerSystemBars()
-                val info = LocalAdaptiveWindow.current
-                if (info.width >= 600.dp || info.separatingFold != null) {
-                    val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(Lyrics(lrc = LyricContent(
-                        lyric = "[00:00.00]在城市的另一边\n[00:05.00]听见晚风轻轻唱\n[00:10.00]把平凡的瞬间写成旋律")))
-                    val background = rememberLayerBackdrop { drawContent() }
-                    var showQueue by remember { mutableStateOf(false) }
-                    var showQuality by remember { mutableStateOf(false) }
-                    val state = PlaybackState(PlayerStatus.PAUSED, tracks[0], currentPositionMs = 6000,
-                        durationMs = 220000, queueTracks = tracks)
-                    val quality = com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES
-                    Box(Modifier.fillMaxSize()) {
-                        PlayerBackdrop(tracks[0], Modifier.layerBackdrop(background))
-                        CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
-                            ExpandedNativePlayerContent(state, lyrics, quality,
-                                {}, remember { mutableStateOf(1f) }, {}, {}, {}, {}, {},
-                                { showQuality = true }, { showQueue = true })
-                            if (showQueue) PlaylistQueueSheet(state, {}, {}, {}, {}, { showQueue = false })
-                            if (showQuality) AudioQualitySelectionSheet(quality, {}, { showQuality = false })
-                        }
+                val lyrics = com.example.seteasecloudmusic.feature.player.util.LyricParser.parseLyricResponse(Lyrics(lrc = LyricContent(
+                    lyric = "[00:00.00]在城市的另一边\n[00:05.00]听见晚风轻轻唱\n[00:10.00]把平凡的瞬间写成旋律")))
+                val background = rememberLayerBackdrop { drawContent() }
+                val state = PlaybackState(PlayerStatus.PAUSED, tracks[0], currentPositionMs = 6000,
+                    durationMs = 220000, queueTracks = tracks)
+                Box(Modifier.fillMaxSize()) {
+                    PlayerBackdrop(tracks[0], Modifier.layerBackdrop(background))
+                    CompositionLocalProvider(LocalPlayerBackdrop provides background, LocalGlassBackdrop provides background) {
+                        NativePlayerContent(state, lyrics, com.example.seteasecloudmusic.core.settings.OnlineAudioQuality.HIRES,
+                            {}, remember { mutableStateOf(1f) }, {})
                     }
-                } else NativePlayerScreen(hiltViewModel(), {}, remember { mutableStateOf(1f) }, {})
+                }
             }
-            "home" -> HomeScreenContent(HomeUiState(tracks = tracks, favoriteTracks = tracks, radarTracks = tracks), 0.dp, bottom,
+            "home", "home_detail" -> HomeScreenContent(HomeUiState(tracks = tracks, favoriteTracks = tracks, radarTracks = tracks, activePlaylistDetail = if (page == "home_detail") playlist else null), 0.dp, bottom,
                 displayName = "Luna", onTrackClick = {}, onFavoriteTrackClick = {}, onCardPlayClick = {}, onRetryClick = {}, onRefreshClick = {}, onPosterWallClick = { _, _, _ -> })
             "radio", "radio_detail" -> RadioScreenContent(RadioUiState(
                 toplists = userPlaylists.map { RadioToplistItem(it.id, it.name, coverUrl = it.coverUrl) },
