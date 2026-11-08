@@ -870,6 +870,7 @@ fun AppleMusicBottomToolbar(
         Box(
             modifier = Modifier
                 .size(42.dp)
+                .semantics { contentDescription = "歌词" }
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -891,6 +892,7 @@ fun AppleMusicBottomToolbar(
         Box(
             modifier = Modifier
                 .size(42.dp)
+                .semantics { contentDescription = "切换播放模式" }
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -911,6 +913,7 @@ fun AppleMusicBottomToolbar(
         Box(
             modifier = Modifier
                 .size(42.dp)
+                .semantics { contentDescription = "待播清单" }
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

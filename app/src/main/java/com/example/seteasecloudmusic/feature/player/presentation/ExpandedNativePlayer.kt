@@ -52,6 +52,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,7 +102,8 @@ internal fun ExpandedNativePlayerContent(
     isLyricsLoading: Boolean = false,
     likedTrackIds: Set<Long> = emptySet(),
     onToggleStar: (Long) -> Unit = {},
-    onToggleMode: () -> Unit = {}
+    onToggleMode: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val sharedBackground = LocalPlayerBackdrop.current
     val background = sharedBackground ?: rememberLayerBackdrop { drawContent() }
@@ -140,8 +142,8 @@ internal fun ExpandedNativePlayerContent(
     }
 
     Box(
-        Modifier
-            .fillMaxSize()
+        modifier
+            .fillMaxSize().testTag("player_two_column")
             .background(if (sharedBackground == null) Color(0xFF101014) else Color.Transparent)
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }
     ) {
@@ -155,7 +157,9 @@ internal fun ExpandedNativePlayerContent(
             // 顶部居中收起小白条（仅此区域支持下拉或点按收起）
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
+                    .align(if (window.isBook) Alignment.End else Alignment.CenterHorizontally)
+                    .padding(horizontal = if (window.isBook) 20.dp else 0.dp)
+                    .testTag("player_close")
                     .size(width = 120.dp, height = 32.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -200,7 +204,7 @@ internal fun ExpandedNativePlayerContent(
                         BoxWithConstraints(
                             Modifier
                                 .weight(1f)
-                                .fillMaxWidth(),
+                                .fillMaxWidth().testTag("player_media"),
                             contentAlignment = Alignment.Center
                         ) {
                             val coverSize = minOf(maxWidth - 16.dp, maxHeight - 12.dp, 400.dp).coerceAtLeast(0.dp)
@@ -250,7 +254,7 @@ internal fun ExpandedNativePlayerContent(
                             }
                         }
 
-                        PlayerTrackCaption(
+                        if (!controlsInSecondary) PlayerTrackCaption(
                             track = track,
                             isStarred = isStarred,
                             isExplicit = isExplicit,
@@ -261,7 +265,7 @@ internal fun ExpandedNativePlayerContent(
                         if (!controlsInSecondary) {
                             LiquidGlassPanel(
                                 Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
-                                    .fillMaxWidth().padding(bottom = 12.dp).heightIn(max = 260.dp),
+                                    .fillMaxWidth().testTag("player_controls").padding(bottom = 12.dp).heightIn(max = 260.dp),
                                 backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
                             ) {
                                 Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
@@ -276,9 +280,16 @@ internal fun ExpandedNativePlayerContent(
                             .padding(end = 20.dp)
                     ) {
                         if (controlsInSecondary) {
+                            PlayerTrackCaption(
+                                track = track,
+                                isStarred = isStarred,
+                                isExplicit = isExplicit,
+                                onToggleStar = { track?.let { onToggleStar(it.id) } },
+                                onMore = onQuality
+                            )
                             LiquidGlassPanel(
                                 Modifier.align(Alignment.CenterHorizontally).widthIn(max = 620.dp)
-                                    .fillMaxWidth().padding(bottom = 12.dp).heightIn(max = 240.dp),
+                                    .fillMaxWidth().testTag("player_controls").padding(bottom = 12.dp).heightIn(max = 240.dp),
                                 backdrop = background, containerColor = Color(0xFF1C1C24), cornerRadius = 26.dp
                             ) {
                                 Box(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) { controls() }
@@ -341,7 +352,7 @@ private fun PlayerTrackCaption(
 ) {
     Row(
         Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().testTag("player_track_caption")
             .padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
