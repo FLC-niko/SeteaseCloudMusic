@@ -42,6 +42,9 @@ data class AdaptiveWindowInfo(
     val sideControlWidth get() = if (isRegularWidth) 84.dp else 72.dp
     val isTabletop get() = separatingFold != null && horizontalFold
     val isBook get() = separatingFold != null && !horizontalFold
+
+    fun showDetailAlongside(hasSelection: Boolean, contentWidth: Dp, contentHeight: Dp): Boolean =
+        hasSelection && ((contentWidth >= 720.dp && contentHeight >= 360.dp) || isBook || isTabletop)
 }
 
 val LocalAdaptiveWindow = staticCompositionLocalOf { AdaptiveWindowInfo() }

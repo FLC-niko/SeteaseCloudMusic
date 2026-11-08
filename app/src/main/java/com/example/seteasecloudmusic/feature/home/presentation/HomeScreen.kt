@@ -71,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -205,7 +206,7 @@ internal fun HomeScreenContent(
             .background(HomeBackground)
     ) {
         val window = LocalAdaptiveWindow.current
-        val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
+        val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
 
         val feedContent: @Composable () -> Unit = {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -358,7 +359,7 @@ internal fun HomeScreenContent(
 
     if (split) {
         AdaptiveTwoPane(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().testTag("home_detail_panes"),
             primaryFraction = 0.44f,
             gap = 12.dp,
             primary = feedContent,

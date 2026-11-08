@@ -56,6 +56,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -187,7 +188,7 @@ internal fun RadioScreenContent(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val window = LocalAdaptiveWindow.current
-    val split = uiState.activePlaylistDetail != null && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
+    val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
     val feed: @Composable () -> Unit = {
     Box(
         modifier = Modifier
@@ -459,7 +460,7 @@ internal fun RadioScreenContent(
     }    }
     }
     if (split) {
-        AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.44f, gap = 12.dp,
+        AdaptiveTwoPane(Modifier.fillMaxSize().testTag("radio_detail_panes"), primaryFraction = 0.44f, gap = 12.dp,
             primary = feed,
             secondary = {
                 uiState.activePlaylistDetail?.let { detail ->

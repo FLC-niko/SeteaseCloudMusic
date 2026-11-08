@@ -77,6 +77,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -201,7 +202,7 @@ fun MineScreen(
     // 代价高于系统拉伸。
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
     val window = LocalAdaptiveWindow.current
-    val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
+    val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
     val libraryContent: @Composable () -> Unit = {
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -500,7 +501,7 @@ fun MineScreen(
     }    }
     }
     if (split) {
-        AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.4f, gap = 12.dp,
+        AdaptiveTwoPane(Modifier.fillMaxSize().testTag("mine_detail_panes"), primaryFraction = 0.4f, gap = 12.dp,
             primary = libraryContent,
             secondary = {
                 val detail = uiState.activePlaylistDetail
