@@ -53,10 +53,20 @@ val LocalPaneAlreadySplit = staticCompositionLocalOf { false }
 
 @Composable
 fun ProvideAdaptiveWindow(activity: Activity, content: @Composable () -> Unit) {
-    val tracker = remember(activity) { WindowInfoTracker.getOrCreate(activity) }
-    val supportsFolding = remember(tracker) { tracker.supportedPostures.isNotEmpty() }
+    // 小米 MIUI 等设备没有 Jetpack WindowManager extension（extension version 0），
+    // 直接读 tracker.supportedPostures 会抛 UnsupportedOperationException 导致启动即崩溃。
+    // 全部分支加 runCatching 兜底：取不到折叠信息就当普通直板机处理。
+    val tracker = remember(activity) { runCatching { WindowInfoTracker.getOrCreate(activity) }.getOrNull() }
+    val supportsFolding = remember(tracker) {
+        runCatching { tracker?.supportedPostures?.isNotEmpty() }.getOrDefault(false) == true
+    }
     var foldingSeen by rememberSaveable { mutableStateOf(supportsFolding) }
-    val layoutFlow = remember(tracker, activity) { tracker.windowLayoutInfo(activity).map { it.displayFeatures } }
+    val layoutFlow = remember(tracker, activity) {
+        val upstream = tracker?.let { t ->
+            runCatching { t.windowLayoutInfo(activity) }.getOrNull()
+        } ?: kotlinx.coroutines.flow.emptyFlow()
+        upstream.map { it.displayFeatures }
+    }
     val features by layoutFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     LaunchedEffect(features) { if (features.any { it is FoldingFeature }) foldingSeen = true }
     val fold = features.filterIsInstance<FoldingFeature>().firstOrNull {
