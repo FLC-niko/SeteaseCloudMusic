@@ -1,9 +1,0 @@
-{
-	"servers": {
-		"my-mcp-server-de9b4ab9": {
-			"url": "https://kyant.gitbook.io/backdrop/~gitbook/mcp",
-			"type": "http"
-		}
-	},
-	"inputs": []
-}
