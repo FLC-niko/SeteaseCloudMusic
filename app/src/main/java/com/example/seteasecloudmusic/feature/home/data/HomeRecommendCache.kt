@@ -28,10 +28,19 @@ class HomeRecommendCache @Inject constructor(
     fun getDailyRecommend(): List<Track>? {
         val json = prefs.getString(KEY_DAILY_RECOMMEND, null) ?: return null
         return runCatching {
-            gson.fromJson<List<Track>>(
+            val tracks = gson.fromJson<List<Track>>(
                 json,
-                object : TypeToken<List<Track>>() {}.type
+                // 不用匿名 TypeToken 子类：R8 下匿名类信息不可靠，
+                // getParameterized 直接构造泛型类型，行为确定。
+                TypeToken.getParameterized(List::class.java, Track::class.java).type
             )
+            // Gson 绕过 Kotlin 构造器与非空检查：旧缓存缺字段时会留下 null，
+            // 在 R8 去掉 Intrinsics 检查后延迟爆 NPE。这里直接过滤成合法列表，
+            // 无效则视为无缓存（调用方走网络刷新）。
+            tracks
+                ?.filterNotNull()
+                ?.filter { !it.title.isNullOrBlank() && it.album != null }
+                ?.takeIf { it.isNotEmpty() }
         }.getOrNull()
     }
 
@@ -49,7 +58,14 @@ class HomeRecommendCache @Inject constructor(
             gson.fromJson<com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData>(
                 json,
                 com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData::class.java
-            )
+            )?.takeIf { data ->
+                // 同上：Gson 可能留下 null 字段，非法直接视为无缓存
+                !data.name.isNullOrBlank() && data.tracks != null &&
+                    data.tracks.filterNotNull().any { !it.title.isNullOrBlank() && it.album != null }
+            }?.let { data ->
+                data.copy(tracks = data.tracks.filterNotNull()
+                    .filter { !it.title.isNullOrBlank() && it.album != null })
+            }
         }.getOrNull()
     }
 
@@ -68,7 +84,12 @@ class HomeRecommendCache @Inject constructor(
             gson.fromJson<com.example.seteasecloudmusic.feature.home.domain.repository.FavoriteRecommendSectionData>(
                 json,
                 com.example.seteasecloudmusic.feature.home.domain.repository.FavoriteRecommendSectionData::class.java
-            )
+            )?.takeIf { data ->
+                data.tracks != null && data.tracks.filterNotNull().isNotEmpty()
+            }?.let { data ->
+                data.copy(tracks = data.tracks.filterNotNull()
+                    .filter { !it.title.isNullOrBlank() && it.album != null })
+            }
         }.getOrNull()
     }
 
