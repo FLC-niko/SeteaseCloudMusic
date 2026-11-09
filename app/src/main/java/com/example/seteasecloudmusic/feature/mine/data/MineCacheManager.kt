@@ -12,7 +12,7 @@ import javax.inject.Singleton
 /** “我的” Feature 的缓存，只依赖本 Feature 的领域模型。 */
 @Singleton
 class MineCacheManager @Inject constructor(
-    @param:ApplicationContext context: Context
+    @ApplicationContext context: Context
 ) {
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()

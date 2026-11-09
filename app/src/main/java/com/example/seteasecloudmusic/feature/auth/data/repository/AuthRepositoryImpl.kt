@@ -229,12 +229,12 @@ class AuthRepositoryImpl @Inject constructor(
             buildProfileSnapshot(
                 profile = body.profile,
                 account = body.account
-            ).also { snapshot ->
-                if (snapshot?.nickname.isNullOrBlank() || snapshot?.avatarUrl.isNullOrBlank()) {
+            )?.also { snapshot ->
+                if (snapshot.nickname.isNullOrBlank() || snapshot.avatarUrl.isNullOrBlank()) {
                     android.util.Log.d(
                         "AuthRepositoryImpl",
                         "User account profile missing: hasCookie=${!cookie.isNullOrBlank()}, " +
-                            "userId=${snapshot?.userId}, " +
+                            "userId=${snapshot.userId}, " +
                             "anonymous=${body.account?.isAnonymousAccount()}, " +
                             "profileNull=${body.profile == null}"
                     )

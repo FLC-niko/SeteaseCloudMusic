@@ -10,6 +10,7 @@ import javax.inject.Singleton
 
 /** 首页推荐数据的本地缓存，只保存首页自己的模型。 */
 @Singleton
+@Suppress("SENSELESS_COMPARISON")
 class HomeRecommendCache @Inject constructor(
     @ApplicationContext context: Context
 ) {

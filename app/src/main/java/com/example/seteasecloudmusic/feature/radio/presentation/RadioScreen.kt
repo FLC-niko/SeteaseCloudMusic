@@ -463,7 +463,8 @@ internal fun RadioScreenContent(
     }
     RetainedMusicFeed(!split) { AdaptiveContent { feed() } }
     if (split) {
-        uiState.activePlaylistDetail?.let { detail ->
+        val detail = uiState.activePlaylistDetail
+        if (detail != null) {
             PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
                 { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
                 onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },

@@ -119,7 +119,8 @@ class DiscoverRepositoryImpl @Inject constructor(
 
     private fun mapSongToTrack(song: NewsongItemResponse, fallbackCoverUrl: String?): Track {
         val qualityTags = mutableListOf<AudioQuality>()
-        if (song.privilege?.pl != null && (song.privilege.pl ?: 0L) >= 320000L) {
+        val pl = song.privilege?.pl
+        if (pl != null && pl >= 320000L) {
             qualityTags.add(AudioQuality.LOSSLESS)
         }
 
