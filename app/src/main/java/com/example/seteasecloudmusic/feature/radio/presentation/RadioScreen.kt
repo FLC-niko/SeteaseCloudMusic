@@ -463,7 +463,8 @@ internal fun RadioScreenContent(
         AdaptiveTwoPane(Modifier.fillMaxSize().testTag("radio_detail_panes"), primaryFraction = 0.44f, gap = 12.dp,
             primary = feed,
             secondary = {
-                uiState.activePlaylistDetail?.let { detail ->
+                val detail = uiState.activePlaylistDetail
+                if (detail != null) {
                     PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
                         { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
                         onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },

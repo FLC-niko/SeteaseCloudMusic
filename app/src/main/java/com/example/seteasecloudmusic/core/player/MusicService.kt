@@ -642,7 +642,7 @@ class MusicService : MediaSessionService() {
             .setArtist(displayArtist)
             .setSubtitle(displaySubtitle)
             .setDescription(if (rawLrcContent.isNotBlank()) rawLrcContent else displaySubtitle)
-            .setAlbumTitle(track.album?.title ?: track.title)
+            .setAlbumTitle(track.album.title.ifBlank { track.title })
             .setArtworkUri(track.coverUrl?.toUri())
             .setExtras(extras)
             .setIsPlayable(true)
@@ -658,7 +658,7 @@ class MusicService : MediaSessionService() {
             displayTitle = displayTitle,
             displayArtist = displayArtist,
             trackTitle = track.title,
-            albumTitle = track.album?.title ?: track.title,
+            albumTitle = track.album.title.ifBlank { track.title },
             artist = artist,
             lyricLrc = rawLrcContent,
             duration = player?.duration ?: 0L,
@@ -688,7 +688,7 @@ class MusicService : MediaSessionService() {
         val data = SuperLyricData()
             .setTitle(track.title)
             .setArtist(artist)
-            .setAlbum(track.album?.title ?: track.title)
+            .setAlbum(track.album.title.ifBlank { track.title })
             .setLyric(lyricLine)
 
         if (line.translatedLyric.isNotBlank()) {
@@ -719,7 +719,7 @@ class MusicService : MediaSessionService() {
         val metaIntent = Intent("com.android.music.metachanged").apply {
             putExtra("track", track.title)
             putExtra("artist", artist)
-            putExtra("album", track.album?.title ?: track.title)
+            putExtra("album", track.album.title.ifBlank { track.title })
             putExtra("lyric", lyric)
             putExtra("position", position)
             putExtra("duration", duration)
