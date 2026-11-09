@@ -58,7 +58,6 @@ import com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylis
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -74,6 +73,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
@@ -1005,10 +1006,10 @@ private fun SongRecommendRowItem(
             modifier = Modifier.size(36.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                painter = painterResource(id = R.drawable.ic_mini_play),
                 contentDescription = "播放",
                 tint = Color(0xFF555555),
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -1215,12 +1216,10 @@ private fun BigCardPlaylistItem(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.08f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.5f),
-                            Color.Black.copy(alpha = 0.88f)
-                        )
+                        0.0f to Color.Black.copy(alpha = 0.05f),
+                        0.18f to Color.Transparent,
+                        0.76f to Color.Transparent,
+                        1.0f to Color.Black.copy(alpha = 0.55f)
                     )
                 )
         )
@@ -1262,10 +1261,10 @@ private fun BigCardPlaylistItem(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.PlayArrow,
+                    painter = painterResource(id = R.drawable.ic_mini_play),
                     contentDescription = "播放",
                     tint = Color.White,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }

@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.outlined.Delete
@@ -24,6 +23,8 @@ import androidx.compose.runtime.*
 import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -226,12 +227,21 @@ private fun QueueTrackItemRow(
             contentAlignment = Alignment.CenterStart
         ) {
             if (isCurrent) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.AutoMirrored.Filled.VolumeUp else Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = Color(0xFFFA233B),
-                    modifier = Modifier.size(18.dp)
-                )
+                if (isPlaying) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = null,
+                        tint = Color(0xFFFA233B),
+                        modifier = Modifier.size(18.dp)
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_mini_play),
+                        contentDescription = null,
+                        tint = Color(0xFFFA233B),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             } else {
                 Text(
                     text = "${index + 1}",
