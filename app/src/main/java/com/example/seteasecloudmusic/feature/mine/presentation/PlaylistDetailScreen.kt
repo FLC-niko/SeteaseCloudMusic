@@ -57,6 +57,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -234,7 +238,8 @@ fun PlaylistDetailScreen(
                             MusicPaneHeader(
                                 if (embedded) detail.displayTitle else "歌曲",
                                 "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲",
-                                if (embedded) onClose else null
+                                if (embedded) onClose else null,
+                                onMore = if (embedded) ({ showMoreSheet = true }) else null
                             )
                         }
                         if (embedded) {
@@ -280,7 +285,8 @@ fun PlaylistDetailScreen(
                             primaryFraction = 0.38f,
                             primary = {
                                 Column(Modifier.fillMaxSize().padding(24.dp)) {
-                                    MusicPaneHeader("歌单", "为此刻，挑选喜欢的声音", onClose)
+                                    MusicPaneHeader("歌单", "为此刻，挑选喜欢的声音", onClose,
+                                        onMore = { showMoreSheet = true })
                                     RenderPlaylistHero(
                                         style = currentStyle,
                                         detail = detail,
@@ -514,6 +520,7 @@ private fun CompactPlaylistDetailScreen(
                         if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
                         CircleShape
                     )
+                    .semantics { contentDescription = "更多操作" }
                     .clickable(onClick = onOpenMoreMenu),
                 contentAlignment = Alignment.Center
             ) {
@@ -538,31 +545,33 @@ private fun RenderPlaylistHero(
     topInset: androidx.compose.ui.unit.Dp = 0.dp,
     isDark: Boolean = true
 ) {
-    when (style) {
-        PlaylistDetailStyle.APPLE_MUSIC -> {
-            PlaylistHeroAppleMusicSection(
-                detail = detail,
-                isDark = isDark,
-                onPlayAll = onPlayAll
-            )
-        }
-        PlaylistDetailStyle.POSTER_WALL -> {
-            PlaylistHeroPosterWallSection(
-                detail = detail,
-                dominantDarkColor = dominantDarkColor,
-                isDark = isDark,
-                onPlayAll = onPlayAll,
-                topInset = topInset
-            )
-        }
-        PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> {
-            PlaylistHeroDynamicPosterWallSection(
-                detail = detail,
-                dominantDarkColor = dominantDarkColor,
-                isDark = isDark,
-                onPlayAll = onPlayAll,
-                topInset = topInset
-            )
+    Box(Modifier.fillMaxWidth().testTag("playlist_hero").semantics { stateDescription = style.title }) {
+        when (style) {
+            PlaylistDetailStyle.APPLE_MUSIC -> {
+                PlaylistHeroAppleMusicSection(
+                    detail = detail,
+                    isDark = isDark,
+                    onPlayAll = onPlayAll
+                )
+            }
+            PlaylistDetailStyle.POSTER_WALL -> {
+                PlaylistHeroPosterWallSection(
+                    detail = detail,
+                    dominantDarkColor = dominantDarkColor,
+                    isDark = isDark,
+                    onPlayAll = onPlayAll,
+                    topInset = topInset
+                )
+            }
+            PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> {
+                PlaylistHeroDynamicPosterWallSection(
+                    detail = detail,
+                    dominantDarkColor = dominantDarkColor,
+                    isDark = isDark,
+                    onPlayAll = onPlayAll,
+                    topInset = topInset
+                )
+            }
         }
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,7 +30,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.shapes.RoundedRectangle
 
 @Composable
-fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Unit)? = null) {
+fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Unit)? = null, onMore: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         val sideControls = LocalAdaptiveWindow.current.useNavigationRail && !LocalAdaptiveWindow.current.sideControlsAtStart
         val back: @Composable () -> Unit = {
@@ -45,6 +46,14 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
             if (subtitle != null) {
                 Spacer(Modifier.height(6.dp))
                 Text(subtitle, fontSize = 13.sp, color = Color(0xFF81818B))
+            }
+        }
+        if (onMore != null) {
+            Spacer(Modifier.width(8.dp))
+            IconButton(onMore, Modifier.size(44.dp)
+                .background(Color.White.copy(alpha = 0.6f), RoundedRectangle(22.dp))
+                .border(0.75.dp, Color.White.copy(alpha = 0.85f), RoundedRectangle(22.dp))) {
+                Icon(Icons.Filled.MoreHoriz, "更多操作", Modifier.size(22.dp), tint = Color(0xFF393941))
             }
         }
         if (onClose != null && sideControls) { Spacer(Modifier.width(8.dp)); back() }
