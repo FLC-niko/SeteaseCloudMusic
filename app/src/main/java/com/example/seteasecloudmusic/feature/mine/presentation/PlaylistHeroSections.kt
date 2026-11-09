@@ -63,7 +63,10 @@ fun PlaylistHeroAppleMusicSection(
     detail: PlaylistDetail,
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
-    isDark: Boolean = true
+    isDark: Boolean = true,
+    coverWidthFraction: Float = 0.68f,
+    showArtwork: Boolean = true,
+    showControls: Boolean = true
 ) {
     val totalCount = detail.trackCount.coerceAtLeast(detail.tracks.size)
 
@@ -74,9 +77,9 @@ fun PlaylistHeroAppleMusicSection(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 1. 居中大正方形封面（带高品质立体投影）
-        Box(
+        if (showArtwork) Box(
             modifier = Modifier
-                .fillMaxWidth(0.68f)
+                .fillMaxWidth(coverWidthFraction)
                 .aspectRatio(1f)
                 .shadow(
                     elevation = 26.dp,
@@ -116,6 +119,8 @@ fun PlaylistHeroAppleMusicSection(
                 }
             }
         }
+
+        if (!showControls) return@Column
 
         Spacer(modifier = Modifier.height(18.dp))
 
@@ -178,7 +183,8 @@ fun PlaylistHeroPosterWallSection(
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
     topInset: androidx.compose.ui.unit.Dp = 0.dp,
-    isDark: Boolean = true
+    isDark: Boolean = true,
+    showControls: Boolean = true
 ) {
     val wallCovers = remember(detail) {
         val tracksCovers = detail.tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
@@ -225,6 +231,8 @@ fun PlaylistHeroPosterWallSection(
                     )
             )
         }
+
+        if (!showControls) return@Column
 
         // 2. 歌单主标题
         Spacer(modifier = Modifier.height(12.dp))
@@ -285,7 +293,9 @@ fun PlaylistHeroDynamicPosterWallSection(
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
     topInset: androidx.compose.ui.unit.Dp = 0.dp,
-    isDark: Boolean = true
+    isDark: Boolean = true,
+    showControls: Boolean = true,
+    artworkHeight: androidx.compose.ui.unit.Dp? = null
 ) {
     val wallCovers = remember(detail) {
         val tracksCovers = detail.tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
@@ -302,7 +312,7 @@ fun PlaylistHeroDynamicPosterWallSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (topInset > 0.dp) 350.dp + topInset else 320.dp)
+                .height(artworkHeight ?: if (topInset > 0.dp) 350.dp + topInset else 320.dp)
                 .clipToBounds()
         ) {
             ScrollingPosterWall(
@@ -333,6 +343,8 @@ fun PlaylistHeroDynamicPosterWallSection(
                     )
             )
         }
+
+        if (!showControls) return@Column
 
         // 2. 歌单主标题
         Spacer(modifier = Modifier.height(12.dp))

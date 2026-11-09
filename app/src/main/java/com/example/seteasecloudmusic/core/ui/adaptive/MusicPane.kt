@@ -18,7 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,6 +30,17 @@ import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.shapes.RoundedRectangle
+
+/** 保留返回时的列表位置；详情覆盖后，底页退出绘制、触控和无障碍树。 */
+@Composable
+fun RetainedMusicFeed(visible: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize()
+        .then(if (visible) Modifier else Modifier.clearAndSetSemantics {})
+        .layout { measurable, constraints ->
+            val page = measurable.measure(constraints)
+            layout(page.width, page.height) { if (visible) page.placeRelative(0, 0) }
+        }) { content() }
+}
 
 @Composable
 fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Unit)? = null, onMore: (() -> Unit)? = null) {

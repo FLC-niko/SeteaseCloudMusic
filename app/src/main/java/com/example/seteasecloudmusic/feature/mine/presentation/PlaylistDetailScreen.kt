@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -27,6 +28,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,10 +42,12 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -163,6 +170,8 @@ fun PlaylistDetailScreen(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
+        val expandedDark = solidBackgroundColor.luminance() < 0.4f
+        val paneDark = if (split) expandedDark else isDark
         val isCardMode = !embedded && !split
         val fullWidthPx = with(density) { maxWidth.toPx() }
         val isPredictiveGestureActive = predictiveTranslationX.value > 0.5f
@@ -210,6 +219,7 @@ fun PlaylistDetailScreen(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag(if (split) "expanded_playlist_surface" else "playlist_detail_surface")
                 .graphicsLayer {
                     translationX = predictiveTranslationX.value
                 }
@@ -235,12 +245,18 @@ fun PlaylistDetailScreen(
                         contentPadding = PaddingValues(top = 12.dp, bottom = bottom + 16.dp)
                     ) {
                         item(key = "detail_title") {
-                            MusicPaneHeader(
-                                if (embedded) detail.displayTitle else "歌曲",
-                                "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲",
-                                if (embedded) onClose else null,
-                                onMore = if (embedded) ({ showMoreSheet = true }) else null
-                            )
+                            if (split && window.isTabletop) {
+                                PlaylistHeroAppleMusicSection(detail, onPlayAll, isDark = paneDark, showArtwork = false)
+                            }
+                            if (embedded) {
+                                MusicPaneHeader(detail.displayTitle,
+                                    "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", onClose,
+                                    onMore = { showMoreSheet = true })
+                            } else {
+                                Text("${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲",
+                                    color = if (expandedDark) Color.White.copy(alpha = 0.65f) else PlaylistTextSecondary,
+                                    fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+                            }
                         }
                         if (embedded) {
                             item(key = "playlist_hero") {
@@ -258,7 +274,7 @@ fun PlaylistDetailScreen(
                         if (isLoading && detail.tracks.isEmpty()) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(color = if (isDark) Color.White else PlaylistAccentColor)
+                                    CircularProgressIndicator(color = if (paneDark) Color.White else PlaylistAccentColor)
                                 }
                             }
                         }
@@ -267,13 +283,13 @@ fun PlaylistDetailScreen(
                                 PlaylistDetailTrackRow(
                                     index = index + 1,
                                     track = track,
-                                    isDark = isDark,
+                                    isDark = paneDark,
                                     onClick = { onPlayTrack(track) }
                                 )
                             }
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 88.dp, end = 20.dp),
-                                color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor
+                                color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor
                             )
                         }
                     }
@@ -281,19 +297,32 @@ fun PlaylistDetailScreen(
                 Box(Modifier.fillMaxSize().statusBarsPadding()) {
                     if (split) {
                         AdaptiveTwoPane(
-                            Modifier.fillMaxSize(),
-                            primaryFraction = 0.38f,
+                            Modifier.fillMaxSize().testTag("expanded_playlist_panes"),
+                            primaryFraction = 0.44f,
                             primary = {
-                                Column(Modifier.fillMaxSize().padding(24.dp)) {
-                                    MusicPaneHeader("歌单", "为此刻，挑选喜欢的声音", onClose,
-                                        onMore = { showMoreSheet = true })
-                                    RenderPlaylistHero(
-                                        style = currentStyle,
-                                        detail = detail,
-                                        dominantDarkColor = solidBackgroundColor,
-                                        onPlayAll = onPlayAll,
-                                        isDark = isDark
-                                    )
+                                Column(Modifier.fillMaxSize()) {
+                                    ExpandedPlaylistToolbar(expandedDark, onClose) { showMoreSheet = true }
+                                    if (window.isTabletop) {
+                                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                            val mediaHeight = maxHeight
+                                            val cap = when (currentStyle) {
+                                                PlaylistDetailStyle.APPLE_MUSIC -> ((maxHeight - 22.dp) / 0.88f).coerceAtLeast(96.dp)
+                                                PlaylistDetailStyle.POSTER_WALL -> (maxHeight - 8.dp).coerceAtLeast(96.dp)
+                                                PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> 560.dp
+                                            }.coerceAtMost(560.dp)
+                                            Box(Modifier.widthIn(max = cap).fillMaxWidth()) {
+                                                RenderPlaylistHero(currentStyle, detail, solidBackgroundColor, onPlayAll,
+                                                    isDark = expandedDark, expanded = true, mediaOnly = true, artworkHeight = mediaHeight)
+                                            }
+                                        }
+                                    } else Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                                        .padding(start = 20.dp, end = 20.dp, bottom = bottom + 16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                                            RenderPlaylistHero(currentStyle, detail, solidBackgroundColor,
+                                                onPlayAll, isDark = expandedDark, expanded = true)
+                                        }
+                                    }
                                 }
                             },
                             secondary = songs
@@ -330,6 +359,45 @@ fun PlaylistDetailScreen(
                 )
             }
         }
+    }
+}
+
+/** 侧栏与详情共用取色背景；偏好变化只在实际切换时通知导航层。 */
+@Composable
+internal fun rememberPlaylistColorBackgroundEnabled(): Boolean {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var enabled by remember(prefs) { mutableStateOf(prefs.getBoolean(KEY_PLAYLIST_COLOR_BACKGROUND, true)) }
+    DisposableEffect(prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_PLAYLIST_COLOR_BACKGROUND) enabled = prefs.getBoolean(key, true)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    return enabled
+}
+
+@Composable
+private fun ExpandedPlaylistToolbar(isDark: Boolean, onClose: () -> Unit, onMore: () -> Unit) {
+    val sideControls = LocalAdaptiveWindow.current.useNavigationRail && !LocalAdaptiveWindow.current.sideControlsAtStart
+    val tint = if (isDark) Color.White else PlaylistTextPrimary
+    val button: @Composable (Boolean, () -> Unit) -> Unit = { back, action ->
+        IconButton(action, Modifier.size(44.dp)) {
+            Box(Modifier.size(38.dp).clip(CircleShape)
+                .background(Color.White.copy(alpha = if (isDark) 0.16f else 0.70f))
+                .border(0.5.dp, Color.White.copy(alpha = if (isDark) 0.18f else 0.85f), CircleShape),
+                contentAlignment = Alignment.Center) {
+                if (back) Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", Modifier.size(20.dp), tint = tint)
+                else Box(Modifier.semantics { contentDescription = "更多操作" }) { AppleMusicMoreIcon(tint = tint, size = 20.dp) }
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!sideControls) button(true, onClose)
+        Spacer(Modifier.weight(1f))
+        button(false, onMore)
+        if (sideControls) { Spacer(Modifier.width(8.dp)); button(true, onClose) }
     }
 }
 
@@ -543,7 +611,10 @@ private fun RenderPlaylistHero(
     dominantDarkColor: Color,
     onPlayAll: () -> Unit,
     topInset: androidx.compose.ui.unit.Dp = 0.dp,
-    isDark: Boolean = true
+    isDark: Boolean = true,
+    expanded: Boolean = false,
+    mediaOnly: Boolean = false,
+    artworkHeight: androidx.compose.ui.unit.Dp? = null
 ) {
     Box(Modifier.fillMaxWidth().testTag("playlist_hero").semantics { stateDescription = style.title }) {
         when (style) {
@@ -551,7 +622,9 @@ private fun RenderPlaylistHero(
                 PlaylistHeroAppleMusicSection(
                     detail = detail,
                     isDark = isDark,
-                    onPlayAll = onPlayAll
+                    onPlayAll = onPlayAll,
+                    coverWidthFraction = if (expanded) 0.88f else 0.68f,
+                    showControls = !mediaOnly
                 )
             }
             PlaylistDetailStyle.POSTER_WALL -> {
@@ -560,7 +633,8 @@ private fun RenderPlaylistHero(
                     dominantDarkColor = dominantDarkColor,
                     isDark = isDark,
                     onPlayAll = onPlayAll,
-                    topInset = topInset
+                    topInset = topInset,
+                    showControls = !mediaOnly
                 )
             }
             PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> {
@@ -569,7 +643,9 @@ private fun RenderPlaylistHero(
                     dominantDarkColor = dominantDarkColor,
                     isDark = isDark,
                     onPlayAll = onPlayAll,
-                    topInset = topInset
+                    topInset = topInset,
+                    showControls = !mediaOnly,
+                    artworkHeight = artworkHeight
                 )
             }
         }

@@ -461,18 +461,15 @@ internal fun RadioScreenContent(
         }
     }    }
     }
+    RetainedMusicFeed(!split) { AdaptiveContent { feed() } }
     if (split) {
-        AdaptiveTwoPane(Modifier.fillMaxSize().testTag("radio_detail_panes"), primaryFraction = 0.44f, gap = 12.dp,
-            primary = feed,
-            secondary = {
-                uiState.activePlaylistDetail?.let { detail ->
-                    PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
-                        { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
-                        onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
-                        isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
-                }
-            })
-    } else AdaptiveContent { feed() }
+        uiState.activePlaylistDetail?.let { detail ->
+            PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
+                { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
+                onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
+                isLoading = uiState.isLoadingDetail, listState = detailListState)
+        }
+    }
     }
 
 }

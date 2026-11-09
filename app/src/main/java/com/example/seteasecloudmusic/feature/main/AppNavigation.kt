@@ -529,7 +529,10 @@ fun AppNavigation(
                 // 被包进来的内容会先渲染到底层纹理，再提供给上面的导航栏做模糊采样。
                 .layerBackdrop(backdrop)
         ) {
-            if (useRail) ExpandedChromeBackground(atStart = window.sideControlsAtStart)
+            if (useRail) {
+                ExpandedChromeBackground(atStart = window.sideControlsAtStart)
+                ExpandedPlaylistChromeBackground(selectedIndexState, homeViewModel, radioViewModel, mineViewModel)
+            }
             Box(Modifier.fillMaxSize().padding(start = railStartPadding, end = railEndPadding).testTag("chrome_content")) {
             AppPageContent(
                 selectedIndex = selectedIndexState,

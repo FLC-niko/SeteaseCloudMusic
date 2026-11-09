@@ -502,23 +502,15 @@ fun MineScreen(
     }
     }    }
     }
+    RetainedMusicFeed(!split) { libraryContent() }
     if (split) {
-        AdaptiveTwoPane(Modifier.fillMaxSize().testTag("mine_detail_panes"), primaryFraction = 0.4f, gap = 12.dp,
-            primary = libraryContent,
-            secondary = {
-                val detail = uiState.activePlaylistDetail
-                if (detail != null) {
-                    PlaylistDetailScreen(detail = detail, backdrop = mineBackdrop, onClose = onCloseDetail,
-                        onPlayTrack = { onPlayTrack(it, detail.tracks) }, onPlayAll = { onPlayAll(detail.tracks) },
-                        onShufflePlay = { onPlayAll(detail.tracks.shuffled()) },
-                        isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
-                } else {
-                    Box(Modifier.fillMaxSize().padding(top = statusBarHeight + 12.dp, bottom = bottomContentPadding)) {
-                        MusicDetailPlaceholder()
-                    }
-                }
-            })
-    } else libraryContent()
+        uiState.activePlaylistDetail?.let { detail ->
+            PlaylistDetailScreen(detail, mineBackdrop, onCloseDetail,
+                { onPlayTrack(it, detail.tracks) }, { onPlayAll(detail.tracks) },
+                onShufflePlay = { onPlayAll(detail.tracks.shuffled()) },
+                isLoading = uiState.isLoadingDetail, listState = detailListState)
+        }
+    }
     }
 
 }
