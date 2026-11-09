@@ -167,6 +167,15 @@ class AdaptiveLayoutsTest {
                 compose.onNodeWithTag("account_glass_surface").assertExists()
                 androidx.test.espresso.Espresso.pressBack()
             }
+            if (name in listOf("daily", "playlist", "home_detail", "radio_detail", "mine_detail")) {
+                compose.onNodeWithContentDescription("\u66f4\u591a\u64cd\u4f5c").performClick()
+                compose.onNodeWithText("\u6b4c\u5355\u58c1\u7eb8").performClick()
+                compose.waitForIdle()
+                PlaylistDetailStyle.values().forEach { compose.onNodeWithText(it.title).assertExists() }
+                assertAwayFromFold("adaptive_modal_surface")
+                capture("$label-$name-styles")
+                compose.onNodeWithText("\u5173\u95ed").performScrollTo().performClick()
+            }
             if (name in listOf("home", "radio", "mine", "local")) {
                 compose.onNodeWithTag("music_detail_placeholder").assertDoesNotExist()
                 listOf("home_detail_panes", "radio_detail_panes", "mine_detail_panes").forEach { tag ->
@@ -249,6 +258,56 @@ class AdaptiveLayoutsTest {
                     capture("$label-search-$category")
                 }
             }
+        }
+    }
+
+    @Test fun playlistStyleSwitchingSurvivesEveryDetailLayout() {
+        val tracks = fixtures()
+        val prefs = compose.activity.getSharedPreferences("app_settings_prefs", android.content.Context.MODE_PRIVATE)
+        val originalStyle = prefs.getString("playlist_detail_style", null)
+        var width by mutableStateOf(430.dp)
+        var embedded by mutableStateOf(false)
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                val info = AdaptiveWindowInfo(width, 740.dp, isFoldable = true)
+                SideEffect { windowInfo = info }
+                MaterialTheme {
+                    val background = rememberLayerBackdrop { drawContent() }
+                    Box(Modifier.fillMaxSize()) {
+                        Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color.White) }
+                        CompositionLocalProvider(LocalAdaptiveWindow provides info, LocalGlassBackdrop provides background) {
+                            Box(Modifier.width(width).height(740.dp)) {
+                                PlaylistDetailScreen(
+                                    PlaylistDetail(1, "\u6bcf\u65e5\u63a8\u8350", tracks[0].coverUrl, "", tracks.size, 0, "Luna", tracks),
+                                    background, {}, {}, {}, embedded = embedded
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        try {
+            listOf(Triple("compact", 430.dp, false), Triple("split", 800.dp, false), Triple("embedded", 390.dp, true)).forEach { (name, size, inline) ->
+                compose.runOnUiThread { width = size; embedded = inline }
+                compose.waitForIdle()
+                PlaylistDetailStyle.values().forEach { style ->
+                    compose.onNodeWithContentDescription("\u66f4\u591a\u64cd\u4f5c").performClick()
+                    compose.onNodeWithText("\u6b4c\u5355\u58c1\u7eb8").performClick()
+                    compose.waitForIdle()
+                    compose.onNodeWithText(style.title).performScrollTo().performClick()
+                    compose.onNodeWithText("\u5173\u95ed").performScrollTo().performClick()
+                    compose.waitForIdle()
+                    compose.onNodeWithTag("playlist_hero").assert(SemanticsMatcher.expectValue(
+                        androidx.compose.ui.semantics.SemanticsProperties.StateDescription, style.title))
+                    assertEquals(style.id, prefs.getString("playlist_detail_style", null))
+                    capture("playlist-style-$name-${style.id}")
+                }
+            }
+        } finally {
+            prefs.edit().apply {
+                if (originalStyle == null) remove("playlist_detail_style") else putString("playlist_detail_style", originalStyle)
+            }.commit()
         }
     }
 
