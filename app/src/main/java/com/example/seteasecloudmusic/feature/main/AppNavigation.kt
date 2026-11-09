@@ -151,6 +151,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -305,7 +307,11 @@ fun AppNavigation(
     }
     val activeArtworkUrl by activeArtworkUrlFlow.collectAsStateWithLifecycle(initialValue = null)
     val effectiveArtworkUrl = activeArtworkUrl ?: nowPlayingArtworkUrl
-    val highResArtworkRequest = rememberHighResArtworkRequest(effectiveArtworkUrl)
+    // 1200px 大图只在播放页打开时才开始加载：冷启动时它和海报墙抢带宽抢解码，
+    // 是图片加载期卡顿、miniPlayer 手势掉帧的帮凶之一。关闭时 mini 条走 128px 缩略图。
+    val highResArtworkRequest = rememberHighResArtworkRequest(
+        effectiveArtworkUrl.takeIf { showNowPlaying }
+    )
     val sharedArtworkPainter = if (highResArtworkRequest != null) {
         rememberAsyncImagePainter(
             model = highResArtworkRequest,
@@ -2403,11 +2409,22 @@ private fun MiniPlayerArtwork(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
+                // mini 条只有 30dp：用 128px 缩略图 + 256px 解码上限，绝不用 1200px 原图。
+                // 之前 fallback 直接发 rememberHighResArtworkRequest（去 param、size 1200），
+                // 冷启动时和海报墙抢带宽抢解码，主线程掉帧、手势看着像“点不动”。
+                val context = LocalContext.current
+                val thumbRequest = remember(imageUrl) {
+                    ImageRequest.Builder(context)
+                        .data(imageUrl.toCoverThumbnailUrl(128) ?: imageUrl)
+                        .size(256)
+                        .crossfade(false)
+                        .build()
+                }
                 AsyncImage(
-                    model = rememberHighResArtworkRequest(imageUrl),
+                    model = thumbRequest,
                     contentDescription = "当前歌曲封面",
                     contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.High,
+                    filterQuality = FilterQuality.Low,
                     modifier = Modifier.fillMaxSize()
                 )
             }

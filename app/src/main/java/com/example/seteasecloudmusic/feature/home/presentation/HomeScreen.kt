@@ -542,14 +542,17 @@ internal fun ScrollingPosterWall(
         val colCount = 5
 
         // 中间 3 列均分所有封面池
+        // 启动性能上限：单列最多 5 张、整墙最多 5列×5张×2遍=50 个 AsyncImage。
+        // 之前是 8×3=120 个并发图片请求 + 120 个 crossfade 动画，图片还在加载时主线程
+        // 被解码/布局/动画三重挤压，这正是冷启动卡顿、miniPlayer 点不动的根因。
         val cycleCount = remember(distinctCovers) {
-            maxOf(distinctCovers.size / 3, 4).coerceAtMost(8)
+            maxOf(distinctCovers.size / 3, 4).coerceAtMost(5)
         }
         val cycleHeight = colWidth * cycleCount
         val cycleHeightPx = with(density) { cycleHeight.toPx() }
 
-        // 重复 3 组循环，总高度充足覆盖倾斜视口与滑动偏移
-        val totalRepetitions = 3
+        // 重复 2 组循环，总高度充足覆盖倾斜视口与滑动偏移
+        val totalRepetitions = 2
         val totalRows = cycleCount * totalRepetitions
         val canvasWidth = colWidth * colCount
         val canvasHeight = colWidth * totalRows
@@ -636,7 +639,9 @@ internal fun PosterCoverCell(
         else {
             ImageRequest.Builder(context)
                 .data(imageUrl)
-                .crossfade(true)
+                // 海报墙是 100dp 级小格：关 crossfade，省掉几十个并发的 alpha 动画，
+                // 否则加载期每一帧都在做几十层混合，miniPlayer 手势会被掉帧吞掉。
+                .crossfade(false)
                 .build()
         }
     }

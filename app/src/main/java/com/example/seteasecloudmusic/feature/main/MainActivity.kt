@@ -27,7 +27,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 启用最高屏幕刷新率（如 120Hz / 90Hz），避免被系统节流至 60Hz
+        // P1a：这台小米默认跑 144Hz（帧预算仅 6.9ms），而常驻动效
+        // （海报墙无限滚动 + backdrop + 进度动画）稳态约 7ms， chronic  miss vsync。
+        // 上限 120Hz（预算 8.3ms，视觉无差）换 20% 余量；常驻动效的根治见 P1b/c。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 display
@@ -36,10 +38,13 @@ class MainActivity : ComponentActivity() {
                 windowManager.defaultDisplay
             }
             val modes = currentDisplay?.supportedModes
-            val maxMode = modes?.maxByOrNull { it.refreshRate }
-            if (maxMode != null) {
+            val cappedMode = modes
+                ?.filter { it.refreshRate <= 120.01f }
+                ?.maxByOrNull { it.refreshRate }
+                ?: modes?.minByOrNull { it.refreshRate }
+            if (cappedMode != null) {
                 val params = window.attributes
-                params.preferredRefreshRate = maxMode.refreshRate
+                params.preferredRefreshRate = cappedMode.refreshRate
                 window.attributes = params
             }
         }

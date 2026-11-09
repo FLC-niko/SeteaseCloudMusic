@@ -21,7 +21,8 @@ class SeteaseCloudMusicApp : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.30)
+                    // 这台小米堆上限仅 256m：30%≈77MB 图片缓存太激进，GC 抖动会吞手势帧，先降到 25%
+                    .maxSizePercent(0.25)
                     .build()
             }
             .diskCache {
@@ -33,7 +34,9 @@ class SeteaseCloudMusicApp : Application(), ImageLoaderFactory {
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .respectCacheHeaders(false) // 强制本地持久化缓存所有封面图与头像，即使冷启动也能瞬间出图
-            .crossfade(true)
+            // 列表/海报墙默认不 crossfade：几十张图同时做 alpha 动画是启动掉帧大户，
+            // 需要渐显的地方各自 .crossfade(true) 显式开启
+            .crossfade(false)
             .build()
     }
 }
