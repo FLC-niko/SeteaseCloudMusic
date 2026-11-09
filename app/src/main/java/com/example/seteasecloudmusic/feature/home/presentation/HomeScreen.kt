@@ -20,6 +20,7 @@ import androidx.compose.ui.zIndex
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.PageSize
@@ -215,6 +216,7 @@ internal fun HomeScreenContent(
                     state = lazyListState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .clipBelowStatusBar()
                         .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,

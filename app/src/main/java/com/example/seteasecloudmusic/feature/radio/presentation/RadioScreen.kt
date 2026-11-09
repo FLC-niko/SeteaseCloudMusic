@@ -79,6 +79,7 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
+import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
@@ -200,6 +201,7 @@ internal fun RadioScreenContent(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
+                .clipBelowStatusBar()
                 .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,

@@ -103,6 +103,7 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
+import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSurface
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
@@ -260,6 +261,7 @@ fun MineScreen(
                 state = lazyListState,
                 modifier = Modifier
                     .fillMaxSize()
+                    .clipBelowStatusBar()
                     .verticalElasticOverscroll(),
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 8.dp,
@@ -544,7 +546,6 @@ private fun MineCollapsedTopBar(
         collapseFraction = collapseFractionState.value,
         statusBarHeight = statusBarHeight,
         backdrop = backdrop,
-        statusBarColor = MinePageBase,
         trailingContent = {
             UserAvatarButton(
                 avatarUrl = avatarUrl,
