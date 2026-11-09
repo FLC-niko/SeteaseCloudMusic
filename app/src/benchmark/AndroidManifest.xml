@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅 benchmark 变体合入：允许 shell 在非 debuggable 包上做 simpleperf / Macrobenchmark，
+  release 正式包不受影响（不上架 profileable）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <profileable android:shell="true" />
+    </application>
+</manifest>

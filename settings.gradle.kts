@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SeteaseCloudMusic"
 include(":app")
+include(":baselineprofile")

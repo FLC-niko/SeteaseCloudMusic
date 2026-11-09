@@ -27,11 +27,24 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // P0：simpleperf 实测冷启动一半 CPU 烧在 ART 验 dex/链接/解释执行
+            // （78MB dex、无 profile）。开 R8 + 资源收缩，方法数/包体先砍一刀；
+            // 配合 Baseline Profile（:baselineprofile 生成）把剩余 verify 移到安装时。
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 本地真机验证用 debug 签名（与 debug 版同签，可覆盖安装对比）。
+            // 注意：正式发版前必须换成正式签名！
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Baseline Profile 生成目标：与 release 同构（R8 后代码），仅换 debug 签名以便装到设备上跑
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {
@@ -117,6 +130,9 @@ dependencies {
 
     // Palette API for extracting dominant colors from album artwork
     implementation("androidx.palette:palette-ktx:1.0.0")
+
+    // Baseline Profile 安装时转码为 AOT（P0）：无它则 baseline-prof.txt 只是个摆设
+    implementation(libs.androidx.profileinstaller)
 
     //hilt依赖注入框架
     implementation(libs.hilt.android)
