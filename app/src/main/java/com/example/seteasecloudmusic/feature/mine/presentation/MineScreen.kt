@@ -544,6 +544,7 @@ private fun MineCollapsedTopBar(
         collapseFraction = collapseFractionState.value,
         statusBarHeight = statusBarHeight,
         backdrop = backdrop,
+        statusBarColor = MinePageBase,
         trailingContent = {
             UserAvatarButton(
                 avatarUrl = avatarUrl,
