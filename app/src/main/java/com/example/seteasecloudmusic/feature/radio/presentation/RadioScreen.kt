@@ -41,8 +41,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -58,6 +56,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -545,7 +545,7 @@ private fun ToplistSection(
                                 modifier = Modifier.align(Alignment.TopStart)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Headphones,
+                                    painter = painterResource(id = R.drawable.ic_headphone),
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.9f),
                                     modifier = Modifier.size(11.dp)
@@ -574,16 +574,14 @@ private fun ToplistSection(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.25f))
                                 .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayArrow,
+                                painter = painterResource(id = R.drawable.ic_mini_play),
                                 contentDescription = "播放",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -648,68 +646,34 @@ private fun RadarSection(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.45f),
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.75f)
-                                        )
-                                    )
-                                )
-                        )
 
+                        // 播放量 (避开封面自带的网易云 Logo，文字往右偏移且不展示耳机图标)
                         if (item.playCount != null && item.playCount > 0L) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                            Text(
+                                text = formatPlayCount(item.playCount),
+                                color = Color.White.copy(alpha = 0.95f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Headphones,
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = formatPlayCount(item.playCount),
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                                    .padding(start = 26.dp, top = 8.dp)
+                            )
                         }
 
-                        Text(
-                            text = item.title,
-                            color = Color.White,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 10.dp, bottom = 10.dp)
-                        )
-
+                        // 快速播放按钮（右下角，封面已自带标题故不再重复绘制标题文本）
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(8.dp)
+                                .padding(end = 8.dp, bottom = 5.dp)
                                 .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.25f))
                                 .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayArrow,
+                                painter = painterResource(id = R.drawable.ic_mini_play),
                                 contentDescription = "播放",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -985,18 +949,16 @@ private fun RecommendedPlaylistsSection(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(8.dp)
+                                .padding(end = 6.dp, bottom = 5.dp)
                                 .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f))
                                 .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayArrow,
+                                painter = painterResource(id = R.drawable.ic_mini_play),
                                 contentDescription = "播放",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -1065,19 +1027,6 @@ private fun ArtistHotSection(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.4f),
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.65f)
-                                        )
-                                    )
-                                )
-                        )
 
                         // 顶部播放量
                         if (item.playCount != null && item.playCount > 0L) {
@@ -1088,7 +1037,7 @@ private fun ArtistHotSection(
                                     .padding(8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Headphones,
+                                painter = painterResource(id = R.drawable.ic_headphone),
                                 contentDescription = null,
                                 tint = Color.White.copy(alpha = 0.9f),
                                 modifier = Modifier.size(11.dp)
@@ -1118,17 +1067,15 @@ private fun ArtistHotSection(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(8.dp)
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f)),
+                                .padding(end = 6.dp, bottom = 5.dp)
+                                .size(28.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayArrow,
+                                painter = painterResource(id = R.drawable.ic_mini_play),
                                 contentDescription = "播放",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -1187,11 +1134,10 @@ private fun WeeklyTrendsSection(
                                 .fillMaxSize()
                                 .background(
                                     Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.45f),
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.7f)
-                                        )
+                                        0.0f to Color.Black.copy(alpha = 0.28f),
+                                        0.22f to Color.Transparent,
+                                        0.78f to Color.Transparent,
+                                        1.0f to Color.Black.copy(alpha = 0.48f)
                                     )
                                 )
                         )
@@ -1205,7 +1151,7 @@ private fun WeeklyTrendsSection(
                                     .padding(8.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Headphones,
+                                    painter = painterResource(id = R.drawable.ic_headphone),
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.9f),
                                     modifier = Modifier.size(11.dp)
@@ -1235,18 +1181,16 @@ private fun WeeklyTrendsSection(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(8.dp)
+                                .padding(end = 6.dp, bottom = 5.dp)
                                 .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f))
                                 .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayArrow,
+                                painter = painterResource(id = R.drawable.ic_mini_play),
                                 contentDescription = "播放",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -1306,11 +1250,10 @@ private fun MoodSection(
                                 .fillMaxSize()
                                 .background(
                                     Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.45f),
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.7f)
-                                        )
+                                        0.0f to Color.Black.copy(alpha = 0.28f),
+                                        0.22f to Color.Transparent,
+                                        0.78f to Color.Transparent,
+                                        1.0f to Color.Black.copy(alpha = 0.48f)
                                     )
                                 )
                         )
@@ -1324,7 +1267,7 @@ private fun MoodSection(
                                     .padding(8.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Headphones,
+                                    painter = painterResource(id = R.drawable.ic_headphone),
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.9f),
                                     modifier = Modifier.size(11.dp)
@@ -1354,18 +1297,16 @@ private fun MoodSection(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(8.dp)
+                                .padding(end = 6.dp, bottom = 5.dp)
                                 .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f))
                                 .clickable { onPlayClick(item) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayArrow,
+                                painter = painterResource(id = R.drawable.ic_mini_play),
                                 contentDescription = "播放",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -1553,16 +1494,14 @@ private fun FollowedArtistCardItem(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.28f)),
+                .size(28.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                painter = painterResource(id = R.drawable.ic_mini_play),
                 contentDescription = "播放",
                 tint = Color.White,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
     }

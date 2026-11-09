@@ -13,8 +13,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
@@ -206,8 +204,14 @@ internal fun SideMiniPlayer(
             else Icon(painterResource(R.drawable.ic_nav_radio), null, Modifier.size(22.dp), tint = Color.Gray)
         }
         IconButton(onPlayPause, Modifier.size(44.dp), enabled = track != null) {
-            Icon(if (state.status == PlayerStatus.PLAYING) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                if (state.status == PlayerStatus.PLAYING) "暂停" else "播放", tint = Color(0xFF494950))
+            Icon(
+                painter = painterResource(
+                    id = if (state.status == PlayerStatus.PLAYING) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
+                ),
+                contentDescription = if (state.status == PlayerStatus.PLAYING) "暂停" else "播放",
+                tint = Color(0xFF494950),
+                modifier = Modifier.size(20.dp)
+            )
         }
         IconButton(onQueue, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Filled.QueueMusic, "播放列表", tint = Color(0xFF494950)) }
     }

@@ -39,7 +39,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -1897,7 +1896,7 @@ private fun MovingPlayerArtwork(
             }
         } else {
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                painter = painterResource(id = R.drawable.ic_mini_play),
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)
@@ -2430,7 +2429,7 @@ private fun MiniPlayerArtwork(
             }
         } else {
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                painter = painterResource(id = R.drawable.ic_mini_play),
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)

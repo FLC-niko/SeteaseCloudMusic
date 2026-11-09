@@ -49,9 +49,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
@@ -79,6 +77,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
@@ -870,7 +870,7 @@ private fun MineLoggedOutView(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Headphones,
+                        painter = painterResource(id = R.drawable.ic_headphone),
                         contentDescription = null,
                         tint = MineAccentRed,
                         modifier = Modifier.size(38.dp)
@@ -971,10 +971,10 @@ private fun LikedSongsHeroCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.PlayArrow,
+                    painter = painterResource(id = R.drawable.ic_mini_play),
                     contentDescription = "播放我喜欢的音乐",
                     tint = Color.White,
-                    modifier = Modifier.size(27.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
