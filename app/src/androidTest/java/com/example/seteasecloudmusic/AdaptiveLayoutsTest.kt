@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -257,6 +258,68 @@ class AdaptiveLayoutsTest {
                     compose.waitForIdle()
                     capture("$label-search-$category")
                 }
+            }
+        }
+    }
+
+    @Test fun primaryHeadersKeepStatusAreaClearWhileScrolling() {
+        val tracks = fixtures()
+        var page by mutableStateOf("home")
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                ProvideAdaptiveWindow(activity) {
+                    val info = LocalAdaptiveWindow.current
+                    SideEffect { windowInfo = info }
+                    MaterialTheme {
+                        val background = rememberLayerBackdrop { drawContent() }
+                        Box(Modifier.fillMaxSize().testTag("header_fixture")) {
+                            Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color.White) }
+                            CompositionLocalProvider(LocalGlassBackdrop provides background) { FixturePage(page, tracks, playlistCount = 24) }
+                        }
+                    }
+                }
+            }
+        }
+        val statusTop = requireNotNull(androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView))
+            .getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars()).top
+        assertTrue("Device must expose its real status-bar inset", statusTop > 0)
+        val density = compose.activity.resources.displayMetrics.density
+        listOf("home", "radio", "mine").forEach { name ->
+            compose.runOnUiThread { page = name }
+            compose.waitForIdle()
+            val list = compose.onAllNodes(SemanticsMatcher.keyIsDefined(
+                androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange)).onFirst()
+            list.performScrollToIndex(0)
+            listOf(0f, 36f, 44f, 160f).forEachIndexed { step, delta ->
+                if (delta > 0) list.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { scroll ->
+                    assertTrue("$name fixture must actually scroll", scroll(0f, delta * density))
+                }
+                compose.waitForIdle()
+                val mask = compose.onNodeWithTag("page_status_bar_scrim").assertIsDisplayed().fetchSemanticsNode().boundsInWindow
+                assertEquals("Status guard must use the device inset", statusTop.toFloat(), mask.bottom, 1f)
+                if (step == 1) {
+                    val large = compose.onNodeWithTag("page_large_title").fetchSemanticsNode().boundsInWindow
+                    val small = compose.onNodeWithTag("page_collapsed_title").fetchSemanticsNode().boundsInWindow
+                    assertTrue("$name title must stay below the status bar", large.top >= statusTop - 1f)
+                    assertEquals("$name titles must share a center during handoff", small.center.y, large.center.y, density)
+                }
+                if (step >= 2) {
+                    val small = compose.onNodeWithTag("page_collapsed_title").fetchSemanticsNode().boundsInWindow
+                    assertTrue("$name collapsed title must stay below the status bar", small.top >= statusTop - 1f)
+                }
+                val image = compose.onNodeWithTag("header_fixture").captureToImage().toPixelMap()
+                val expected = if (name == "mine") Color(0xFFF7F7FA) else Color.White
+                // Inspect rendered app pixels, including the 36dp scroll position that overlapped on Xiaomi.
+                for (y in (statusTop * 2 / 3) until statusTop - 1 step 3) {
+                    for (x in image.width / 20 until image.width * 19 / 20 step 7) {
+                        val actual = image[x, y]
+                        assertTrue("$name/$step drew content into the status area at ($x,$y)",
+                            kotlin.math.abs(actual.red - expected.red) < 0.02f &&
+                            kotlin.math.abs(actual.green - expected.green) < 0.02f &&
+                            kotlin.math.abs(actual.blue - expected.blue) < 0.02f)
+                    }
+                }
+                capture("headers-$name-$step")
             }
         }
     }
@@ -666,11 +729,11 @@ class AdaptiveLayoutsTest {
 }
 
 @Composable
-private fun FixturePage(page: String, tracks: List<Track>) {
+private fun FixturePage(page: String, tracks: List<Track>, playlistCount: Int = 8) {
     val backdrop = rememberLayerBackdrop { drawContent() }
     val bottom = 90.dp
     val playlist = PlaylistDetail(1, "日落之后 · 私人音乐时光", tracks[0].coverUrl, "适合独处时循环播放的声音", tracks.size, 12000, "Luna", tracks)
-    val userPlaylists = (1L..8L).map { UserPlaylist(it, listOf("夜晚漫游", "微风与海", "工作时听", "周末慢生活")[(it % 4).toInt()], tracks[(it % 4).toInt()].coverUrl, 24, 1200) }
+    val userPlaylists = (1L..playlistCount.toLong()).map { UserPlaylist(it, listOf("夜晚漫游", "微风与海", "工作时听", "周末慢生活")[(it % 4).toInt()], tracks[(it % 4).toInt()].coverUrl, 24, 1200) }
     CompositionLocalProvider(LocalContentBottomPadding provides bottom) {
         when (page) {
             "chrome" -> AppNavigation()
