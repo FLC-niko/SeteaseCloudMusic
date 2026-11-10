@@ -525,17 +525,17 @@ internal fun ScrollingPosterWall(
         val colCount = 5
 
         // 中间 3 列均分所有封面池
-        // 启动性能上限：单列最多 5 张、整墙最多 5列×5张×2遍=50 个 AsyncImage。
-        // 之前是 8×3=120 个并发图片请求 + 120 个 crossfade 动画，图片还在加载时主线程
-        // 被解码/布局/动画三重挤压，这正是冷启动卡顿、miniPlayer 点不动的根因。
+        // 启动性能上限：单列最多 5 张。之前是 8×3=120 个并发图片请求 + 120 个 crossfade 动画。
+        // 必须保留 3 组循环（totalRepetitions = 3）：因为奇数列初始向上偏移 1 周期（-1f * cycleHeightPx），
+        // 若只有 2 组循环，奇数列底部半区会完全镂空，在 30° 旋转后暴露 2 个空白格子。
         val cycleCount = remember(distinctCovers) {
             maxOf(distinctCovers.size / 3, 4).coerceAtMost(5)
         }
         val cycleHeight = colWidth * cycleCount
         val cycleHeightPx = with(density) { cycleHeight.toPx() }
 
-        // 重复 2 组循环，总高度充足覆盖倾斜视口与滑动偏移
-        val totalRepetitions = 2
+        // 重复 3 组循环，总高度充足覆盖倾斜视口与滑动偏移
+        val totalRepetitions = 3
         val totalRows = cycleCount * totalRepetitions
         val canvasWidth = colWidth * colCount
         val canvasHeight = colWidth * totalRows
