@@ -30,6 +30,7 @@ import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.ui.adaptive.*
 import com.example.seteasecloudmusic.feature.main.MainActivity
 import com.example.seteasecloudmusic.feature.main.AppNavigation
+import com.example.seteasecloudmusic.feature.main.ExpandedPlaylistBackdrop
 import com.example.seteasecloudmusic.feature.main.MusicNavigationRail
 import com.example.seteasecloudmusic.feature.main.SearchMiniPlayerBar
 import com.example.seteasecloudmusic.feature.main.navigation.horizontalChromeFrame
@@ -110,9 +111,10 @@ class AdaptiveLayoutsTest {
             val expected = when (name) {
                 "chrome" -> "首页"
                 "native_music" -> "\u65e5\u843d\u4e4b\u524d"
-                "home", "home_detail" -> "首页"
-                "radio", "radio_detail" -> "电台"
-                "mine", "mine_detail", "local" -> "我的"
+                "home" -> "首页"
+                "radio" -> "电台"
+                "mine", "local" -> "我的"
+                "home_detail", "radio_detail", "mine_detail" -> "日落之后"
                 "playlist" -> "日落之后"
                 "daily" -> "每日推荐"
                 "artist" -> "Luna Ensemble"
@@ -169,6 +171,20 @@ class AdaptiveLayoutsTest {
                 androidx.test.espresso.Espresso.pressBack()
             }
             if (name in listOf("daily", "playlist", "home_detail", "radio_detail", "mine_detail")) {
+                val expanded = compose.onAllNodesWithTag("expanded_playlist_surface").fetchSemanticsNodes()
+                if (expanded.isNotEmpty()) {
+                    val root = compose.onNodeWithTag("fixture").fetchSemanticsNode().boundsInWindow
+                    val surface = expanded.single().boundsInWindow
+                    assertEquals("Expanded detail must own the full content width", root.width, surface.width, 1f)
+                    compose.onNodeWithTag("expanded_playlist_panes").assertExists()
+                    compose.onNodeWithTag("playlist_hero").assertExists()
+                    if (windowInfo?.isTabletop == true) compose.onNodeWithText("播放").assertIsDisplayed()
+                    assertAwayFromFold("adaptive_primary")
+                    assertAwayFromFold("adaptive_secondary")
+                    listOf("home_detail_panes", "radio_detail_panes", "mine_detail_panes").forEach { tag ->
+                        compose.onNodeWithTag(tag).assertDoesNotExist()
+                    }
+                }
                 compose.onNodeWithContentDescription("\u66f4\u591a\u64cd\u4f5c").performClick()
                 compose.onNodeWithText("\u6b4c\u5355\u58c1\u7eb8").performClick()
                 compose.waitForIdle()
@@ -262,6 +278,114 @@ class AdaptiveLayoutsTest {
         }
     }
 
+    @Test fun expandedPlaylistBackgroundContinuesUnderSideControls() {
+        val tracks = fixtures()
+        val prefs = compose.activity.getSharedPreferences("app_settings_prefs", android.content.Context.MODE_PRIVATE)
+        val key = "playlist_color_background_enabled"
+        val hadPreference = prefs.contains(key)
+        val original = prefs.getBoolean(key, true)
+        prefs.edit().putBoolean(key, true).commit()
+        val bitmap = requireNotNull(android.graphics.BitmapFactory.decodeFile(java.net.URI(tracks[0].coverUrl!!).path))
+        val extracted = try { extractDominantDarkColor(bitmap) } finally { bitmap.recycle() }
+        // 使用真实本地封面的确定取色，聚焦共用背景与偏好同步。
+        PlaylistCoverColorCache.put(tracks[0].coverUrl, extracted)
+        try {
+            compose.activityRule.scenario.onActivity { activity ->
+                activity.setContent {
+                    val info = AdaptiveWindowInfo(851.dp, 883.dp, isFoldable = true)
+                    SideEffect { windowInfo = info }
+                    MaterialTheme {
+                        val background = rememberLayerBackdrop { drawContent() }
+                        CompositionLocalProvider(LocalAdaptiveWindow provides info, LocalGlassBackdrop provides background) {
+                            Box(Modifier.fillMaxSize().testTag("expanded_background_fixture")) {
+                                Box(Modifier.fillMaxSize().layerBackdrop(background)) {
+                                    Canvas(Modifier.fillMaxSize()) { drawRect(Color.White) }
+                                    ExpandedPlaylistBackdrop(tracks[0].coverUrl)
+                                    Box(Modifier.fillMaxSize().padding(end = 84.dp)) {
+                                        PlaylistDetailScreen(
+                                            PlaylistDetail(1, "夜晚漫游", tracks[0].coverUrl, "", tracks.size, 0, "Luna", tracks),
+                                            background, {}, {}, {})
+                                    }
+                                }
+                                MusicNavigationRail(0, {}, background, Modifier.align(androidx.compose.ui.Alignment.CenterEnd))
+                            }
+                        }
+                    }
+                }
+            }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(1_000)
+            compose.waitForIdle()
+            listOf(true, false).forEach { colored ->
+                if (!colored) {
+                    compose.onNodeWithContentDescription("更多操作").performClick()
+                    compose.onNodeWithText("歌单壁纸").performClick()
+                    compose.onNodeWithText("取色背景").performClick()
+                    compose.onNodeWithText("关闭").performScrollTo().performClick()
+                }
+                capture("expanded-background-$colored")
+                val image = compose.onNodeWithTag("expanded_background_fixture").captureToImage().toPixelMap()
+                val status = requireNotNull(androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView))
+                    .getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars()).top
+                val y = status + 4
+                val left = image[8, y]
+                val right = image[image.width - 8, y]
+                val expected = if (colored) extracted else Color.White
+                listOf(left, right).forEach { pixel ->
+                    assertTrue("Detail and side controls must share the same backdrop", kotlin.math.abs(pixel.red - expected.red) < 0.02f &&
+                        kotlin.math.abs(pixel.green - expected.green) < 0.02f && kotlin.math.abs(pixel.blue - expected.blue) < 0.02f)
+                }
+            }
+        } finally {
+            prefs.edit().apply { if (hadPreference) putBoolean(key, original) else remove(key) }.commit()
+        }
+    }
+
+    @Test fun expandedPlaylistKeepsSelectionAcrossResizeAndReturnsToFeed() {
+        val tracks = fixtures()
+        val playlist = PlaylistDetail(1, "夜晚漫游", tracks[0].coverUrl, "", tracks.size, 0, "Luna", tracks)
+        var selected by mutableStateOf<PlaylistDetail?>(playlist)
+        var width by mutableStateOf(800.dp)
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                val info = AdaptiveWindowInfo(width, 740.dp, isFoldable = true)
+                SideEffect { windowInfo = info }
+                MaterialTheme {
+                    val background = rememberLayerBackdrop { drawContent() }
+                    Box(Modifier.fillMaxSize()) {
+                        Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color.White) }
+                        CompositionLocalProvider(LocalAdaptiveWindow provides info, LocalGlassBackdrop provides background) {
+                            Box(Modifier.width(width).height(740.dp)) {
+                                HomeScreenContent(HomeUiState(tracks = tracks, activePlaylistDetail = selected),
+                                    0.dp, 150.dp, onTrackClick = {}, onFavoriteTrackClick = {}, onCardPlayClick = {},
+                                    onRetryClick = {}, onRefreshClick = {},
+                                    onPosterWallClick = { _, _, _ -> selected = playlist },
+                                    onClosePlaylistDetail = { selected = null })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        listOf(800.dp, 430.dp, 800.dp).forEach { size ->
+            compose.runOnUiThread { width = size }
+            compose.waitForIdle()
+            compose.onNodeWithTag("playlist_hero").assertExists()
+            assertEquals(playlist.id, selected?.id)
+            if (size >= 720.dp) compose.onNodeWithTag("expanded_playlist_surface").assertExists()
+            else compose.onNodeWithTag("expanded_playlist_surface").assertDoesNotExist()
+        }
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("expanded_playlist_surface").assertDoesNotExist()
+        compose.onNodeWithTag("playlist_hero").assertDoesNotExist()
+        assertNull(selected)
+        compose.onNodeWithText("每日推荐").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("expanded_playlist_surface").assertExists()
+        capture("expanded-detail-reopened")
+    }
+
     @Test fun primaryHeadersKeepStatusAreaClearWhileScrolling() {
         val tracks = fixtures()
         var page by mutableStateOf("home")
@@ -295,28 +419,18 @@ class AdaptiveLayoutsTest {
                     assertTrue("$name fixture must actually scroll", scroll(0f, delta * density))
                 }
                 compose.waitForIdle()
-                val mask = compose.onNodeWithTag("page_status_bar_scrim").assertIsDisplayed().fetchSemanticsNode().boundsInWindow
-                assertEquals("Status guard must use the device inset", statusTop.toFloat(), mask.bottom, 1f)
-                if (step == 1) {
-                    val large = compose.onNodeWithTag("page_large_title").fetchSemanticsNode().boundsInWindow
-                    val small = compose.onNodeWithTag("page_collapsed_title").fetchSemanticsNode().boundsInWindow
-                    assertTrue("$name title must stay below the status bar", large.top >= statusTop - 1f)
-                    assertEquals("$name titles must share a center during handoff", small.center.y, large.center.y, density)
-                }
                 if (step >= 2) {
-                    val small = compose.onNodeWithTag("page_collapsed_title").fetchSemanticsNode().boundsInWindow
+                    val title = when (name) { "home" -> "首页"; "radio" -> "电台"; else -> "我的" }
+                    val small = compose.onAllNodesWithText(title).onLast().fetchSemanticsNode().boundsInWindow
                     assertTrue("$name collapsed title must stay below the status bar", small.top >= statusTop - 1f)
                 }
                 val image = compose.onNodeWithTag("header_fixture").captureToImage().toPixelMap()
-                val expected = if (name == "mine") Color(0xFFF7F7FA) else Color.White
-                // Inspect rendered app pixels, including the 36dp scroll position that overlapped on Xiaomi.
+                // 历史页面背景均为浅色；保留原渐变，只检查标题、头像等深色内容越界。
                 for (y in (statusTop * 2 / 3) until statusTop - 1 step 3) {
                     for (x in image.width / 20 until image.width * 19 / 20 step 7) {
                         val actual = image[x, y]
                         assertTrue("$name/$step drew content into the status area at ($x,$y)",
-                            kotlin.math.abs(actual.red - expected.red) < 0.02f &&
-                            kotlin.math.abs(actual.green - expected.green) < 0.02f &&
-                            kotlin.math.abs(actual.blue - expected.blue) < 0.02f)
+                            actual.red > 0.70f && actual.green > 0.70f && actual.blue > 0.70f)
                     }
                 }
                 capture("headers-$name-$step")

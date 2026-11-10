@@ -79,6 +79,7 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
+import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
@@ -200,6 +201,7 @@ internal fun RadioScreenContent(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
+                .clipBelowStatusBar()
                 .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
@@ -459,19 +461,16 @@ internal fun RadioScreenContent(
         }
     }    }
     }
+    RetainedMusicFeed(!split) { AdaptiveContent { feed() } }
     if (split) {
-        AdaptiveTwoPane(Modifier.fillMaxSize().testTag("radio_detail_panes"), primaryFraction = 0.44f, gap = 12.dp,
-            primary = feed,
-            secondary = {
-                val detail = uiState.activePlaylistDetail
-                if (detail != null) {
-                    PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
-                        { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
-                        onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
-                        isLoading = uiState.isLoadingDetail, embedded = true, listState = detailListState)
-                }
-            })
-    } else AdaptiveContent { feed() }
+        val detail = uiState.activePlaylistDetail
+        if (detail != null) {
+            PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
+                { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
+                onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
+                isLoading = uiState.isLoadingDetail, listState = detailListState)
+        }
+    }
     }
 
 }

@@ -21,10 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,9 +33,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -81,33 +76,22 @@ fun rememberAppleMusicCollapseFraction(
  * @param collapseFraction 折叠进度 (0f..1f)
  * @param modifier 外部修饰符
  * @param trailingContent 大标题右侧操作组件（如头像）
- * @param collapseThresholdDp 与列表的折叠阈值保持一致，用于补偿标题的滚动位移
  */
 @Composable
 fun AppleMusicLargeTitle(
     title: String,
     collapseFraction: Float,
     modifier: Modifier = Modifier,
-    trailingContent: (@Composable () -> Unit)? = null,
-    collapseThresholdDp: Dp = 76.dp
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
-    val density = LocalDensity.current
-    var rowHeightPx by remember(density) { mutableFloatStateOf(with(density) { 56.dp.toPx() }) }
-    val collapseTravelPx = with(density) { collapseThresholdDp.toPx() }
-    // 列表标题从状态栏下 8dp 起步，固定顶栏的中心位于状态栏下 26dp。
-    // 收缩过程中先向上移动到同一中心，再停住；布局行仍随列表滚动并保留原锚点。
-    val travelToToolbarCenterPx = with(density) { 8.dp.toPx() + rowHeightPx / 2 - 26.dp.toPx() }
     // 平滑连续缩小：从 1.0f 缩小到 0.62f（34sp -> 21sp），始终严格以左侧为锚点缩放
     val titleScale = 1f - collapseFraction * 0.38f
+    // 当完全缩小到位时淡出，由顶栏左侧同等大小的固定标题平滑接管
     val titleAlpha = (1f - ((collapseFraction - 0.70f) / 0.30f)).coerceIn(0f, 1f)
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .onSizeChanged { rowHeightPx = it.height.toFloat() }
-            .graphicsLayer {
-                translationY = (collapseFraction * collapseTravelPx - travelToToolbarCenterPx).coerceAtLeast(0f)
-            }
             .padding(horizontal = 20.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -118,7 +102,7 @@ fun AppleMusicLargeTitle(
             fontWeight = FontWeight.Bold,
             color = Color(0xFF111111),
             letterSpacing = (-0.8).sp,
-            modifier = Modifier.testTag("page_large_title").graphicsLayer {
+            modifier = Modifier.graphicsLayer {
                 alpha = titleAlpha
                 scaleX = titleScale
                 scaleY = titleScale
@@ -129,9 +113,6 @@ fun AppleMusicLargeTitle(
             Box(
                 modifier = Modifier.graphicsLayer {
                     alpha = titleAlpha
-                    scaleX = 1f - collapseFraction * (1f - 34f / 46f)
-                    scaleY = scaleX
-                    transformOrigin = TransformOrigin(1f, 0.5f)
                 }
             ) {
                 trailingContent()
@@ -164,8 +145,7 @@ fun AppleMusicCollapsedTopBar(
     backdrop: Backdrop? = null,
     showBackButton: Boolean = false,
     onBackClick: (() -> Unit)? = null,
-    trailingContent: (@Composable () -> Unit)? = null,
-    statusBarColor: Color = Color.White
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     val blurAlpha = if (showBackButton) {
         (0.20f + collapseFraction * 0.80f).coerceIn(0f, 1f)
@@ -282,7 +262,7 @@ fun AppleMusicCollapsedTopBar(
                     letterSpacing = (-0.5).sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("page_collapsed_title").graphicsLayer {
+                    modifier = Modifier.graphicsLayer {
                         alpha = titleAlpha
                     }
                 )
@@ -300,13 +280,6 @@ fun AppleMusicCollapsedTopBar(
                     trailingContent()
                 }
             }
-        }
-
-        // 列表的 contentPadding 会随滚动离开视口，并不是固定的安全区域。
-        // 一级页面始终遮住状态栏下方的滚动文字；详情页保留封面沉浸效果。
-        if (!showBackButton) {
-            Box(Modifier.fillMaxWidth().height(statusBarHeight)
-                .background(statusBarColor).testTag("page_status_bar_scrim"))
         }
     }
 }

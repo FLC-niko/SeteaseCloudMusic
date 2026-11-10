@@ -20,6 +20,7 @@ import androidx.compose.ui.zIndex
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.PageSize
@@ -216,6 +217,7 @@ internal fun HomeScreenContent(
                     state = lazyListState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .clipBelowStatusBar()
                         .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
@@ -358,38 +360,18 @@ internal fun HomeScreenContent(
     }
     }
 
+    RetainedMusicFeed(!split) { feedContent() }
     if (split) {
-        AdaptiveTwoPane(
-            modifier = Modifier.fillMaxSize().testTag("home_detail_panes"),
-            primaryFraction = 0.44f,
-            gap = 12.dp,
-            primary = feedContent,
-            secondary = {
-                val detail = uiState.activePlaylistDetail
-                if (detail != null) {
-                    val fallbackBackdrop = rememberLayerBackdrop { drawContent() }
-                    val glassBackdrop = LocalGlassBackdrop.current ?: fallbackBackdrop
-                    PlaylistDetailScreen(
-                        detail = detail,
-                        backdrop = glassBackdrop,
-                        onClose = onClosePlaylistDetail,
-                        onPlayTrack = onTrackClick,
-                        onPlayAll = { onPlayAll(detail.tracks) },
-                        onShufflePlay = { onShufflePlay(detail.tracks) },
-                        isLoading = false,
-                        embedded = true,
-                        listState = detailListState
-                    )
-                } else {
-                    Box(Modifier.fillMaxSize().padding(top = statusBarHeight + 12.dp, bottom = bottomContentPadding)) {
-                        MusicDetailPlaceholder()
-                    }
-                }
-            }
-        )
+        uiState.activePlaylistDetail?.let { detail ->
+            val fallbackBackdrop = rememberLayerBackdrop { drawContent() }
+            val glassBackdrop = LocalGlassBackdrop.current ?: fallbackBackdrop
+            PlaylistDetailScreen(
+                detail, glassBackdrop, onClosePlaylistDetail, onTrackClick,
+                { onPlayAll(detail.tracks) },
+                onShufflePlay = { onShufflePlay(detail.tracks) }, listState = detailListState
+            )
+        }
     } else {
-        feedContent()
-
         AnimatedVisibility(
             visible = uiState.activePlaylistDetail != null,
             enter = slideInHorizontally(
