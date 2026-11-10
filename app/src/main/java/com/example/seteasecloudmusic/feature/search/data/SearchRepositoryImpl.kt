@@ -8,6 +8,7 @@ import com.example.seteasecloudmusic.core.local.LocalMusicRepository
 import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
+import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
@@ -242,21 +243,78 @@ class SearchRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getHotSearches(): Result<List<HotSearchItem>> = withContext(Dispatchers.IO) {
+        try {
+            // 1. 优先尝试获取详细热搜列表
+            val detailResponse = musicService.getHotSearchDetail()
+            if (detailResponse.code == 200 && !detailResponse.data.isNullOrEmpty()) {
+                val list = detailResponse.data.mapNotNull { item ->
+                    val word = item.searchWord?.trim() ?: return@mapNotNull null
+                    if (word.isEmpty()) return@mapNotNull null
+                    HotSearchItem(
+                        searchWord = word,
+                        score = item.score ?: 0L,
+                        content = item.content ?: "",
+                        iconUrl = item.iconUrl,
+                        iconType = item.iconType ?: 0
+                    )
+                }
+                return@withContext Result.success(list)
+            }
+
+            // 2. 兜底获取简略热搜列表
+            val briefResponse = musicService.getHotSearch()
+            if (briefResponse.code == 200 && !briefResponse.result?.hots.isNullOrEmpty()) {
+                val list = briefResponse.result.hots.mapNotNull { item ->
+                    val word = item.first?.trim() ?: return@mapNotNull null
+                    if (word.isEmpty()) return@mapNotNull null
+                    HotSearchItem(
+                        searchWord = word,
+                        score = item.second ?: 0L,
+                        iconType = item.iconType ?: 0
+                    )
+                }
+                return@withContext Result.success(list)
+            }
+
+            Result.failure(Exception("热搜数据获取失败: ${detailResponse.code}"))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override suspend fun getSearchSuggestions(
         query: String,
         type: String?
     ): Result<SearchSuggestions> = withContext(Dispatchers.IO) {
         try {
-            val response = musicService.getSearchSuggestions(query, type)
+            val response = musicService.getSearchSuggestions(query, type ?: "mobile")
             if (response.code == 200) {
                 val result = response.result
+                var allMatch = result?.allMatch?.mapNotNull { it.keyword?.trim() }
+                    ?.filter { it.isNotEmpty() } ?: emptyList()
+                var songs = result?.songs?.map { mapToDomainTrackFromSuggest(it) } ?: emptyList()
+                var artists = result?.artists?.map { mapToArtistSuggestion(it) } ?: emptyList()
+                var playlists = result?.playlists?.map { mapToPlaylistSuggestion(it) } ?: emptyList()
+
+                // 如果移动端模式没有返回匹配关键字，但用户可能想要单曲/艺人建议，尝试以默认模式兜底补全
+                if (allMatch.isEmpty() && songs.isEmpty() && artists.isEmpty() && playlists.isEmpty() && (type == "mobile" || type == null)) {
+                    val fallbackResponse = musicService.getSearchSuggestions(query, null)
+                    if (fallbackResponse.code == 200) {
+                        val fallbackResult = fallbackResponse.result
+                        songs = fallbackResult?.songs?.map { mapToDomainTrackFromSuggest(it) } ?: emptyList()
+                        artists = fallbackResult?.artists?.map { mapToArtistSuggestion(it) } ?: emptyList()
+                        playlists = fallbackResult?.playlists?.map { mapToPlaylistSuggestion(it) } ?: emptyList()
+                    }
+                }
+
                 val suggestions = SearchSuggestions(
-                    songs = result?.songs?.map { mapToDomainTrackFromSuggest(it) } ?: emptyList(),
-                    artists = result?.artists?.map { mapToArtistSuggestion(it) } ?: emptyList(),
-                    playlists = result?.playlists?.map { mapToPlaylistSuggestion(it) }
-                        ?: emptyList(),
-                    allMatch = result?.allMatch?.map { it.keyword ?: "" }
-                        ?.filter { it.isNotEmpty() } ?: emptyList()
+                    songs = songs,
+                    artists = artists,
+                    playlists = playlists,
+                    allMatch = allMatch
                 )
                 Result.success(suggestions)
             } else {

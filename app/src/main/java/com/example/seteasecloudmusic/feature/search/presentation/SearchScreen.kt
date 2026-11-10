@@ -1,7 +1,13 @@
 package com.example.seteasecloudmusic.feature.search.presentation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -9,11 +15,15 @@ import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,15 +39,19 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,16 +62,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import java.util.Locale
 
 private val PageBackground = Color.White
 private val PrimaryText = Color(0xFF111111)
@@ -68,11 +92,10 @@ private val TabActiveText = Color.White
 
 private enum class SearchTab(val title: String) {
     BEST("最佳结果"),
+    SONG("歌曲"),
     ARTIST("艺人"),
     ALBUM("专辑"),
-    SONG("歌曲"),
-    PLAYLIST("歌单"),
-    MV("音乐视频")
+    PLAYLIST("歌单")
 }
 
 private sealed interface SearchRowItem {
@@ -129,7 +152,12 @@ fun SearchRoute(
         uiState = uiState,
         topContentPadding = topContentPadding,
         bottomContentPadding = bottomContentPadding,
+        onSearchSubmit = { viewModel.onSearchSubmit() },
         onSuggestionClick = { viewModel.onSuggestionClick(it) },
+        onHotSearchClick = { viewModel.onHotSearchClick(it) },
+        onHistoryClick = { viewModel.onHistoryClick(it) },
+        onClearHistory = { viewModel.onClearHistory() },
+        onRemoveHistory = { viewModel.onRemoveHistory(it) },
         onArtistClick = onArtistClick,
         onTrackClick = { viewModel.onTrackClick(it) },
         onRetryClick = { viewModel.onRetryClick() }
@@ -141,10 +169,15 @@ fun SearchScreenContent(
     uiState: SearchUiState,
     topContentPadding: Dp,
     bottomContentPadding: Dp = 180.dp,
-    onSuggestionClick: (String) -> Unit,
-    onArtistClick: (Long, String, String?) -> Unit,
-    onTrackClick: (Track) -> Unit,
-    onRetryClick: () -> Unit
+    onSearchSubmit: () -> Unit = {},
+    onSuggestionClick: (String) -> Unit = {},
+    onHotSearchClick: (String) -> Unit = onSuggestionClick,
+    onHistoryClick: (String) -> Unit = onSuggestionClick,
+    onClearHistory: () -> Unit = {},
+    onRemoveHistory: (String) -> Unit = {},
+    onArtistClick: (Long, String, String?) -> Unit = { _, _, _ -> },
+    onTrackClick: (Track) -> Unit = {},
+    onRetryClick: () -> Unit = {}
 ) {
     var selectedTab by rememberSaveable(uiState.query) { mutableStateOf(SearchTab.BEST) }
 
@@ -152,66 +185,106 @@ fun SearchScreenContent(
         buildSearchItems(uiState = uiState, selectedTab = selectedTab)
     }
 
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    val handleSelect = { action: () -> Unit ->
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        action()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(PageBackground)
-            .padding(top = topContentPadding, bottom = bottomContentPadding)
+            .padding(top = topContentPadding)
     ) {
-        SearchTabsRow(
-            selectedTab = selectedTab,
-            onSelect = { selectedTab = it },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         when {
-            shouldShowInitialEmptyState(uiState) -> {
-                InitialEmptyStateSection(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+            // 1. 用户尚未输入：展示空白状态（顶部搜索历史 + 底部热搜列表）
+            uiState.query.isEmpty() -> {
+                InitialSearchPage(
+                    history = uiState.searchHistory,
+                    hotSearches = uiState.hotSearches,
+                    isHotSearchLoading = uiState.isHotSearchLoading,
+                    bottomContentPadding = bottomContentPadding,
+                    onHistoryClick = { handleSelect { onHistoryClick(it) } },
+                    onClearHistory = onClearHistory,
+                    onRemoveHistory = onRemoveHistory,
+                    onHotSearchClick = { handleSelect { onHotSearchClick(it) } },
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            uiState.isLoading || uiState.isSuggestionLoading -> {
-                ResultLoadingSection(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
-            }
-
-            shouldShowResultError(uiState) -> {
-                ResultErrorSection(
-                    errorMessage = uiState.errorMessage ?: "搜索失败",
-                    onRetryClick = onRetryClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
-            }
-
-            items.isEmpty() -> {
-                EmptyResultsSection(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
-            }
-
-            else -> {
-                SearchResultsList(
-                    items = items,
-                    artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
-                    onRowClick = onSuggestionClick,
-                    onArtistClick = onArtistClick,
+            // 2. 用户开始输入但尚未提交正式搜索：即时展示联想搜索建议
+            !uiState.isSearchSubmitted -> {
+                SearchSuggestionsSection(
+                    query = uiState.query,
+                    suggestions = uiState.suggestions,
+                    isLoading = uiState.isSuggestionLoading,
+                    bottomContentPadding = bottomContentPadding,
+                    onSearchSubmit = { handleSelect { onSearchSubmit() } },
+                    onSuggestionClick = { handleSelect { onSuggestionClick(it) } },
                     onTrackClick = onTrackClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                    onArtistClick = onArtistClick,
+                    modifier = Modifier.weight(1f)
                 )
+            }
+
+            // 3. 用户提交搜索后：展示正式分类标签与搜索结果
+            else -> {
+                SearchTabsRow(
+                    selectedTab = selectedTab,
+                    onSelect = { selectedTab = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                when {
+                    uiState.isLoading -> {
+                        ResultLoadingSection(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(bottom = bottomContentPadding)
+                        )
+                    }
+
+                    shouldShowResultError(uiState) -> {
+                        ResultErrorSection(
+                            errorMessage = uiState.errorMessage ?: "搜索失败",
+                            onRetryClick = onRetryClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(bottom = bottomContentPadding)
+                        )
+                    }
+
+                    items.isEmpty() -> {
+                        EmptyResultsSection(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(bottom = bottomContentPadding)
+                        )
+                    }
+
+                    else -> {
+                        SearchResultsList(
+                            items = items,
+                            artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
+                            bottomContentPadding = bottomContentPadding,
+                            onRowClick = onSuggestionClick,
+                            onArtistClick = onArtistClick,
+                            onTrackClick = onTrackClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        )
+                    }
+                }
             }
         }
     }
@@ -223,23 +296,31 @@ private fun SearchTabsRow(
     onSelect: (SearchTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyRow(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        items(SearchTab.entries) { tab ->
+        SearchTab.entries.forEach { tab ->
             val selected = tab == selectedTab
             Surface(
                 color = if (selected) TabActiveBg else Color.Transparent,
                 shape = RoundedCornerShape(999.dp),
-                modifier = Modifier.clickable { onSelect(tab) }
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onSelect(tab) }
             ) {
                 Text(
                     text = tab.title,
                     fontSize = 15.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
                     color = if (selected) TabActiveText else PrimaryText,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                 )
             }
         }
@@ -250,6 +331,7 @@ private fun SearchTabsRow(
 private fun SearchResultsList(
     items: List<SearchRowItem>,
     artworkGrid: Boolean,
+    bottomContentPadding: Dp,
     onRowClick: (String) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     onTrackClick: (Track) -> Unit,
@@ -305,7 +387,11 @@ private fun SearchResultsList(
         }
         val mixedResults = items.any { it is SearchRowItem.Song } && items.any { it is SearchRowItem.Artist || it is SearchRowItem.Album || it is SearchRowItem.Playlist }
         val resultsList: @Composable (List<SearchRowItem>) -> Unit = { results ->
-            LazyColumn(Modifier.fillMaxSize().verticalElasticOverscroll(), state = listState) {
+            LazyColumn(
+                Modifier.fillMaxSize().verticalElasticOverscroll(),
+                state = listState,
+                contentPadding = PaddingValues(bottom = bottomContentPadding)
+            ) {
                 items(results, key = { it.key }) { item ->
                     renderRow(item)
                     HorizontalDivider(Modifier.padding(start = 84.dp, end = 20.dp), color = DividerColor)
@@ -317,14 +403,24 @@ private fun SearchResultsList(
             val trailing = if (mixedResults) items.filterIsInstance<SearchRowItem.Song>() else items.drop((items.size + 1) / 2)
             AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.42f,
                 primary = {
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomContentPadding),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
                         items(leading, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
                     }
                 },
                 secondary = { resultsList(trailing) })
         } else if (useGrid) {
-            LazyVerticalGrid(GridCells.Adaptive(168.dp), Modifier.fillMaxSize(), state = gridState,
-                contentPadding = PaddingValues(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            LazyVerticalGrid(
+                GridCells.Adaptive(168.dp),
+                Modifier.fillMaxSize(),
+                state = gridState,
+                contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = bottomContentPadding),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
                 items(items, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
             }
         } else {
@@ -682,26 +778,380 @@ fun ResultErrorSection(
 }
 
 @Composable
-fun InitialEmptyStateSection(modifier: Modifier = Modifier) {
-    Column(
+private fun InitialSearchPage(
+    history: List<String>,
+    hotSearches: List<HotSearchItem>,
+    isHotSearchLoading: Boolean,
+    bottomContentPadding: Dp,
+    onHistoryClick: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    onRemoveHistory: (String) -> Unit,
+    onHotSearchClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .verticalElasticOverscroll(),
+        contentPadding = PaddingValues(bottom = bottomContentPadding)
+    ) {
+        // 顶部搜索历史
+        if (history.isNotEmpty()) {
+            item(key = "search_history") {
+                SearchHistorySection(
+                    history = history,
+                    onHistoryClick = onHistoryClick,
+                    onClearHistory = onClearHistory,
+                    onRemoveHistory = onRemoveHistory
+                )
+            }
+        }
+
+        // 下方热搜列表：直接展示在搜索历史下方，弹出键盘时底部抬起覆盖
+        item(key = "hot_search") {
+            HotSearchSection(
+                hotSearches = hotSearches,
+                isLoading = isHotSearchLoading,
+                onHotSearchClick = onHotSearchClick
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SearchHistorySection(
+    history: List<String>,
+    onHistoryClick: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    onRemoveHistory: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showClearDialog by remember { mutableStateOf(false) }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = {
+                Text(
+                    text = "清空搜索历史",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = PrimaryText
+                )
+            },
+            text = {
+                Text(
+                    text = "确定要清空全部搜索历史吗？",
+                    fontSize = 14.sp,
+                    color = SecondaryText
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onClearHistory()
+                        showClearDialog = false
+                    }
+                ) {
+                    Text("清空", color = Color(0xFFFF2442), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("取消", color = PrimaryText)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "搜索历史",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = PrimaryText
+            )
+            Icon(
+                painter = painterResource(id = R.drawable.ic_delete_history),
+                contentDescription = "清空搜索历史",
+                tint = SecondaryText,
+                modifier = Modifier
+                    .size(19.dp)
+                    .clickable { showClearDialog = true }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            history.forEach { keyword ->
+                Surface(
+                    color = Color(0xFFF4F4F6),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onHistoryClick(keyword) }
+                ) {
+                    Text(
+                        text = keyword,
+                        fontSize = 13.sp,
+                        color = Color(0xFF333333),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HotSearchSection(
+    hotSearches: List<HotSearchItem>,
+    isLoading: Boolean,
+    onHotSearchClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
         Text(
-            text = "在底栏输入关键词开始搜索",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
+            text = "热搜榜",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
             color = PrimaryText
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "支持歌曲、艺人、专辑、播放列表",
-            fontSize = 13.sp,
-            color = SecondaryText
-        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (isLoading && hotSearches.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Color(0xFF888888),
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        } else {
+            hotSearches.forEachIndexed { index, item ->
+                val rank = index + 1
+                val isTopThree = rank <= 3
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onHotSearchClick(item.searchWord) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = rank.toString(),
+                        fontSize = 16.sp,
+                        fontWeight = if (isTopThree) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isTopThree) Color(0xFFFF2442) else Color(0xFF999999),
+                        modifier = Modifier.width(32.dp),
+                        textAlign = TextAlign.Start
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item.searchWord,
+                                fontSize = 15.sp,
+                                fontWeight = if (isTopThree) FontWeight.SemiBold else FontWeight.Normal,
+                                color = PrimaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            if (!item.iconUrl.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                AsyncImage(
+                                    model = item.iconUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.height(14.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+
+                        if (item.content.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = item.content,
+                                fontSize = 12.sp,
+                                color = SecondaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    if (item.score > 0) {
+                        Text(
+                            text = formatHotScore(item.score),
+                            fontSize = 12.sp,
+                            color = Color(0xFFCCCCCC)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatHotScore(score: Long): String {
+    return when {
+        score >= 10_000 -> String.format(Locale.CHINA, "%.1f万", score / 10000.0)
+        score > 0 -> score.toString()
+        else -> ""
+    }
+}
+
+@Composable
+private fun SearchSuggestionsSection(
+    query: String,
+    suggestions: SearchSuggestions,
+    isLoading: Boolean,
+    bottomContentPadding: Dp,
+    onSearchSubmit: () -> Unit,
+    onSuggestionClick: (String) -> Unit,
+    onTrackClick: (Track) -> Unit,
+    onArtistClick: (Long, String, String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalElasticOverscroll(),
+        contentPadding = PaddingValues(bottom = bottomContentPadding)
+    ) {
+        // 第一项：直接搜索输入的当前关键词
+        item(key = "suggest_current_query") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSearchSubmit() }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = Color(0xFFFF2442),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = buildAnnotatedString {
+                        append("搜索 “")
+                        withStyle(style = SpanStyle(color = Color(0xFFFF2442), fontWeight = FontWeight.SemiBold)) {
+                            append(query)
+                        }
+                        append("”")
+                    },
+                    fontSize = 16.sp,
+                    color = PrimaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 54.dp, end = 20.dp),
+                color = DividerColor
+            )
+        }
+
+        // 匹配建议关键词列表
+        items(suggestions.allMatch, key = { "suggest_match_$it" }) { keyword ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSuggestionClick(keyword) }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = SecondaryText,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = keyword,
+                    fontSize = 16.sp,
+                    color = PrimaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 54.dp, end = 20.dp),
+                color = DividerColor
+            )
+        }
+
+        // 单曲联想
+        if (suggestions.songs.isNotEmpty()) {
+            items(suggestions.songs, key = { "suggest_song_${it.id}" }) { track ->
+                SongRow(
+                    track = track,
+                    onClick = { onTrackClick(track) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 84.dp, end = 20.dp),
+                    color = DividerColor
+                )
+            }
+        }
+
+        // 艺人联想
+        if (suggestions.artists.isNotEmpty()) {
+            items(suggestions.artists, key = { "suggest_artist_${it.id}" }) { artist ->
+                ArtistRow(
+                    name = artist.name,
+                    coverUrl = artist.coverUrl,
+                    onClick = { onArtistClick(artist.id, artist.name, artist.coverUrl) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 84.dp, end = 20.dp),
+                    color = DividerColor
+                )
+            }
+        }
     }
 }
 
@@ -786,11 +1236,10 @@ private fun buildSearchItems(
             mixed
         }
 
+        SearchTab.SONG -> tracks.map { SearchRowItem.Song(it) }
         SearchTab.ARTIST -> artists
         SearchTab.ALBUM -> albums
-        SearchTab.SONG -> tracks.map { SearchRowItem.Song(it) }
         SearchTab.PLAYLIST -> playlists
-        SearchTab.MV -> emptyList()
     }
 }
 

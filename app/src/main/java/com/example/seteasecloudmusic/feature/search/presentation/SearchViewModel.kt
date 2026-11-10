@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.common.toUserFriendlyMessage
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlayerStatus
+import com.example.seteasecloudmusic.feature.search.data.SearchHistoryManager
+import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.GetSearchSuggestionsUseCase
 import com.example.seteasecloudmusic.feature.search.domain.SearchMusicUseCase
+import com.example.seteasecloudmusic.feature.search.domain.usecase.GetHotSearchUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,6 +27,10 @@ import javax.inject.Inject
  * 1. `query` 负责输入框内容。
  * 2. `suggestions` 负责联想建议列表，与正式搜索结果分开维护。
  * 3. `tracks` 只承载用户“提交搜索”后的结果，避免和建议数据混用。
+ * 4. `searchHistory` 本地持久化搜索历史。
+ * 5. `hotSearches` 热门搜索列表。
+ * 6. `isSearchSubmitted` 标记用户是否已触发正式搜索（点击回车/点击建议/点击热搜/点击历史），
+ *    区分“即时联想状态”与“搜索结果展示状态”。
  */
 data class SearchUiState(
     val query: String = "",
@@ -32,13 +39,19 @@ data class SearchUiState(
     val suggestionErrorMessage: String? = null,
     val isLoading: Boolean = false,
     val tracks: List<Track> = emptyList(),
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val searchHistory: List<String> = emptyList(),
+    val hotSearches: List<HotSearchItem> = emptyList(),
+    val isHotSearchLoading: Boolean = false,
+    val isSearchSubmitted: Boolean = false
 )
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val searchMusicUseCase: SearchMusicUseCase,
     private val getSearchSuggestionsUseCase: GetSearchSuggestionsUseCase,
+    private val getHotSearchUseCase: GetHotSearchUseCase,
+    private val searchHistoryManager: SearchHistoryManager,
     val musicPlayerController: MusicPlayerController
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -54,9 +67,43 @@ class SearchViewModel @Inject constructor(
 
     companion object {
         // 输入联想不需要每次敲字都立刻请求，做一层轻量防抖更节省接口调用。
-        private const val SEARCH_SUGGEST_DEBOUNCE_MS = 300L
-        // 输入时自动搜索的防抖，比建议稍长一点，减少接口调用。
-        private const val AUTO_SEARCH_DEBOUNCE_MS = 500L
+        private const val SEARCH_SUGGEST_DEBOUNCE_MS = 250L
+    }
+
+    init {
+        // 观察本地持久化搜索历史变更
+        viewModelScope.launch {
+            searchHistoryManager.historyFlow.collect { history ->
+                _uiState.update { it.copy(searchHistory = history) }
+            }
+        }
+        // 加载热搜列表
+        loadHotSearches()
+    }
+
+    /**
+     * 获取热搜列表。
+     */
+    fun loadHotSearches() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isHotSearchLoading = true) }
+            val result = getHotSearchUseCase()
+            result.fold(
+                onSuccess = { items ->
+                    _uiState.update {
+                        it.copy(
+                            hotSearches = items,
+                            isHotSearchLoading = false
+                        )
+                    }
+                },
+                onFailure = {
+                    _uiState.update {
+                        it.copy(isHotSearchLoading = false)
+                    }
+                }
+            )
+        }
     }
 
     /**
@@ -64,7 +111,7 @@ class SearchViewModel @Inject constructor(
      *
      * 当输入变化时会同步更新输入态、重置上一轮建议态；
      * 当输入为空时会清空相关状态并停止建议请求；
-     * 当输入非空时会触发新的联想建议请求。
+     * 当输入非空时会触发新的联想建议请求（即时搜索建议）。
      *
      * @param newQuery 输入框当前文本（保留原始输入展示）。
      */
@@ -77,7 +124,7 @@ class SearchViewModel @Inject constructor(
             searchJob = null
         }
 
-        // 输入变化后先更新输入态，并清空上一轮建议的加载/错误，等待新的建议请求返回。
+        // 输入变化后先更新输入态，并重置提交状态（进入建议模式）
         _uiState.update { state ->
             if (normalizedQuery.isEmpty()) {
                 state.copy(
@@ -87,7 +134,8 @@ class SearchViewModel @Inject constructor(
                     suggestionErrorMessage = null,
                     tracks = emptyList(),
                     errorMessage = null,
-                    isLoading = false
+                    isLoading = false,
+                    isSearchSubmitted = false
                 )
             } else {
                 state.copy(
@@ -96,7 +144,8 @@ class SearchViewModel @Inject constructor(
                     isSuggestionLoading = false,
                     suggestionErrorMessage = null,
                     errorMessage = null,
-                    isLoading = false
+                    isLoading = false,
+                    isSearchSubmitted = false
                 )
             }
         }
@@ -111,14 +160,14 @@ class SearchViewModel @Inject constructor(
             return
         }
 
+        // 即时获取搜索建议
         requestSearchSuggestions(normalizedQuery)
-        requestAutoSearch(normalizedQuery)
     }
 
     /**
      * 处理用户提交正式搜索（例如点击搜索按钮或键盘搜索）。
      *
-     * 仅在关键词非空时执行：先收起联想建议，再记录本次提交关键词并发起正式搜索。
+     * 仅在关键词非空时执行：记录历史、收起联想建议，再记录本次提交关键词并发起正式搜索。
      */
     fun onSearchSubmit() {
         val query = uiState.value.query.trim()
@@ -126,15 +175,17 @@ class SearchViewModel @Inject constructor(
             return
         }
 
+        searchHistoryManager.addHistory(query)
         clearSearchSuggestions()
         lastSubmittedQuery = query
+        _uiState.update { it.copy(isSearchSubmitted = true) }
         search(query)
     }
 
     /**
      * 处理用户点击联想建议词。
      *
-     * 将建议词写回输入框后，复用正式搜索流程直接搜索该关键词。
+     * 将建议词写入历史并写回输入框后，复用正式搜索流程直接搜索该关键词。
      *
      * @param keyword 用户点击的建议词。
      */
@@ -144,17 +195,46 @@ class SearchViewModel @Inject constructor(
             return
         }
 
-        // 点击建议后，把建议词写回输入框，并直接复用正式搜索流程。
+        searchHistoryManager.addHistory(query)
         _uiState.update { state ->
             state.copy(
                 query = query,
-                suggestionErrorMessage = null
+                suggestionErrorMessage = null,
+                isSearchSubmitted = true
             )
         }
 
         clearSearchSuggestions()
         lastSubmittedQuery = query
         search(query)
+    }
+
+    /**
+     * 处理用户点击热搜榜项。
+     */
+    fun onHotSearchClick(searchWord: String) {
+        onSuggestionClick(searchWord)
+    }
+
+    /**
+     * 处理用户点击历史搜索词。
+     */
+    fun onHistoryClick(historyWord: String) {
+        onSuggestionClick(historyWord)
+    }
+
+    /**
+     * 清空全部搜索历史。
+     */
+    fun onClearHistory() {
+        searchHistoryManager.clearHistory()
+    }
+
+    /**
+     * 删除单条搜索历史。
+     */
+    fun onRemoveHistory(keyword: String) {
+        searchHistoryManager.removeHistory(keyword)
     }
 
     /**
@@ -290,7 +370,7 @@ class SearchViewModel @Inject constructor(
         // 2) 重置“可重试关键词”，确保后续重试行为与当前输入一致。
         lastSubmittedQuery = null
 
-        // 3) 回到初始 UI 状态：输入为空、非加载、无结果、无错误。
+        // 3) 回到初始 UI 状态：输入为空、非加载、无结果、无错误、未提交搜索。
         _uiState.update { state ->
             state.copy(
                 query = "",
@@ -299,63 +379,8 @@ class SearchViewModel @Inject constructor(
                 suggestionErrorMessage = null,
                 isLoading = false,
                 tracks = emptyList(),
-                errorMessage = null
-            )
-        }
-    }
-
-    /**
-     * 输入变化时自动发起搜索（cloudsearch）。
-     *
-     * 带防抖处理，避免每次敲字都请求；
-     * 返回后会校验输入是否仍匹配，防止慢请求覆盖新结果。
-     */
-    private fun requestAutoSearch(query: String) {
-        searchJob?.cancel()
-        val requestId = ++searchRequestId
-
-        searchJob = viewModelScope.launch {
-            delay(AUTO_SEARCH_DEBOUNCE_MS)
-
-            if (!isActive || requestId != searchRequestId || uiState.value.query.trim() != query) {
-                return@launch
-            }
-
-            _uiState.update { state ->
-                state.copy(
-                    isLoading = true,
-                    errorMessage = null
-                )
-            }
-
-            val result = searchMusicUseCase(query)
-
-            if (!isActive || requestId != searchRequestId || uiState.value.query.trim() != query) {
-                return@launch
-            }
-
-            result.fold(
-                onSuccess = { tracks ->
-                    if (requestId == searchRequestId) {
-                        _uiState.update { state ->
-                            state.copy(
-                                isLoading = false,
-                                tracks = tracks,
-                                errorMessage = null
-                            )
-                        }
-                    }
-                },
-                onFailure = { throwable ->
-                    if (requestId == searchRequestId) {
-                        _uiState.update { state ->
-                            state.copy(
-                                isLoading = false,
-                                errorMessage = throwable.toUserFriendlyMessage("搜索")
-                            )
-                        }
-                    }
-                }
+                errorMessage = null,
+                isSearchSubmitted = false
             )
         }
     }

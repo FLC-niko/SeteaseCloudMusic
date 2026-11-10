@@ -43,6 +43,18 @@ interface NeteaseMusicService {
     ): SearchSuggestResponse
 
     /**
+     * 获取详细热搜列表。
+     */
+    @GET("search/hot/detail")
+    suspend fun getHotSearchDetail(): HotSearchDetailResponse
+
+    /**
+     * 获取简略热门搜索列表。
+     */
+    @GET("search/hot")
+    suspend fun getHotSearch(): HotSearchResponse
+
+    /**
      * 听歌打卡与收听时长上报接口（/scrobble 对应底层 /api/feedback/weblog）
      * 写入听歌排行、累计听歌量与年度听歌报告
      */

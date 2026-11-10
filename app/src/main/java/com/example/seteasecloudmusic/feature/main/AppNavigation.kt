@@ -37,6 +37,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
@@ -1614,6 +1618,8 @@ private fun SearchQueryInputContent(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     val searchTextStyle = MaterialTheme.typography.bodyLarge.copy(
         color = Color.Black,
@@ -1625,16 +1631,24 @@ private fun SearchQueryInputContent(
         )
     )
 
+    val performSearch = {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        viewModel.onSearchSubmit()
+    }
+
     BasicTextField(
         value = uiState.query,
         onValueChange = { viewModel.onQueryChanged(it) },
         enabled = enabled,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { performSearch() }),
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
             .onKeyEvent { keyEvent ->
                 if (keyEvent.key == Key.Enter) {
-                    viewModel.onSearchSubmit()
+                    performSearch()
                     true
                 } else {
                     false

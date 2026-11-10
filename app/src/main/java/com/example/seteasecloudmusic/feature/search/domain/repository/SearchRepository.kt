@@ -22,6 +22,9 @@ interface SearchRepository {
         type: String? = null
     ): Result<SearchSuggestions>
 
+    // 获取热门搜索列表。
+    suspend fun getHotSearches(): Result<List<HotSearchItem>>
+
     // 听歌打卡与时长上报接口（NCBL + Weblog）
     suspend fun scrobble(
         trackId: Long,
