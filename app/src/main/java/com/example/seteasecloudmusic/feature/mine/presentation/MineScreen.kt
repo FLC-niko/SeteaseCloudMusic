@@ -1050,12 +1050,20 @@ private fun MinePlaylistTabs(
 
             GlassThumb(
                 backdrop = backdrop,
-                geometry = geometry
+                geometry = geometry,
+                surfaceColor = MineAccentRed,
+                surfaceAlpha = 0.95f
             )
 
             // 文字层（各项具备独立点击保障与高亮指示）
             Row(modifier = Modifier.fillMaxSize()) {
                 tabs.forEachIndexed { index, (tab, title) ->
+                    val isSelected = index == selectedIndex
+                    val textColor by animateColorAsState(
+                        targetValue = if (isSelected) Color.White else MineTextSecondary,
+                        animationSpec = tween(durationMillis = 200),
+                        label = "mineTabTextColor"
+                    )
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -1072,8 +1080,8 @@ private fun MinePlaylistTabs(
                             text = title,
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 13.sp,
-                                fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Medium,
-                                color = if (index == selectedIndex) MineAccentRed else MineTextSecondary
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = textColor
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

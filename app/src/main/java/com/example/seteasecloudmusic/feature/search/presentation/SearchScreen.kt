@@ -46,6 +46,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,12 +60,15 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -75,19 +83,28 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
+import com.example.seteasecloudmusic.core.ui.components.GlassThumb
+import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.liquidGlass
+import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
+import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
-import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 private val PageBackground = Color.White
 private val PrimaryText = Color(0xFF111111)
 private val SecondaryText = Color(0xFF909094)
 private val DividerColor = Color(0xFFE2E2E6)
-private val TabActiveBg = Color(0xFFFF2442)
+private val TabActiveBg = Color(0xFFFA233B)
 private val TabActiveText = Color.White
 
 private enum class SearchTab(val title: String) {
@@ -179,6 +196,11 @@ fun SearchScreenContent(
     onTrackClick: (Track) -> Unit = {},
     onRetryClick: () -> Unit = {}
 ) {
+    val searchBackdrop = rememberLayerBackdrop {
+        drawRect(PageBackground)
+        drawContent()
+    }
+
     var selectedTab by rememberSaveable(uiState.query) { mutableStateOf(SearchTab.BEST) }
 
     val items = remember(uiState, selectedTab) {
@@ -234,12 +256,15 @@ fun SearchScreenContent(
             // 3. 用户提交搜索后：展示正式分类标签与搜索结果
             else -> {
                 SearchTabsRow(
+                    backdrop = searchBackdrop,
                     selectedTab = selectedTab,
                     onSelect = { selectedTab = it },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 when {
                     uiState.isLoading -> {
@@ -292,36 +317,106 @@ fun SearchScreenContent(
 
 @Composable
 private fun SearchTabsRow(
+    backdrop: Backdrop,
     selectedTab: SearchTab,
     onSelect: (SearchTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    val tabs = remember { SearchTab.entries }
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentSelectedTab by rememberUpdatedState(selectedTab)
+    val selectedIndex = tabs.indexOf(currentSelectedTab).coerceAtLeast(0)
+
+    val navBarHeight = 44.dp
+    val cornerRadius = navBarHeight / 2
+    val thumbPadding = GlassSliderDefaults.ThumbPadding
+
+    val animationScope = rememberCoroutineScope()
+    val pressAnimation = remember { Animatable(0f) }
+    val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
+
+    var dragOffsetX by remember { mutableStateOf<Float?>(null) }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .height(navBarHeight)
+            .graphicsLayer {
+                val progress = pressAnimation.value
+                val maxScale = (size.width + 6f.dp.toPx()) / size.width
+                val scale = lerp(1f, maxScale, progress)
+                scaleX = scale
+                scaleY = scale
+            }
+            .liquidGlass(
+                backdrop = backdrop,
+                cornerRadius = cornerRadius
+            )
+            .glassSegmentDrag(
+                itemCount = tabs.size,
+                onDragOffsetChange = { dragOffsetX = it },
+                onSettle = { settledIndex -> currentOnSelect(tabs[settledIndex]) },
+                onPressChanged = { pressed ->
+                    animationScope.launch {
+                        pressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
+                    }
+                }
+            )
     ) {
-        SearchTab.entries.forEach { tab ->
-            val selected = tab == selectedTab
-            Surface(
-                color = if (selected) TabActiveBg else Color.Transparent,
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onSelect(tab) }
-            ) {
-                Text(
-                    text = tab.title,
-                    fontSize = 15.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                    color = if (selected) TabActiveText else PrimaryText,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                )
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = thumbPadding),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            val geometry = rememberGlassThumbGeometry(
+                containerWidth = maxWidth,
+                itemCount = tabs.size,
+                selectedIndex = selectedIndex,
+                dragOffsetX = dragOffsetX,
+                barHeight = navBarHeight,
+                cornerRadius = cornerRadius
+            )
+
+            GlassThumb(
+                backdrop = backdrop,
+                geometry = geometry,
+                surfaceColor = TabActiveBg,
+                surfaceAlpha = 0.95f
+            )
+
+            Row(modifier = Modifier.fillMaxSize()) {
+                tabs.forEachIndexed { index, tab ->
+                    val isSelected = index == selectedIndex
+                    val textColor by animateColorAsState(
+                        targetValue = if (isSelected) TabActiveText else SecondaryText,
+                        animationSpec = tween(durationMillis = 200),
+                        label = "searchTabTextColor"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                currentOnSelect(tab)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = tab.title,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = textColor
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }

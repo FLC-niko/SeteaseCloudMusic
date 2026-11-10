@@ -193,6 +193,7 @@ fun GlassThumb(
     geometry: GlassThumbGeometry,
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
+    surfaceColor: Color = Color.White,
     surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha,
     blurRadius: Dp = GlassSliderDefaults.BlurRadius,
     orientation: Orientation = Orientation.Horizontal
@@ -239,7 +240,7 @@ fun GlassThumb(
                     if (surfaceAlpha > 0f) {
                         val rPx = innerCornerRadius.toPx()
                         drawRoundRect(
-                            color = Color.White.copy(alpha = surfaceAlpha),
+                            color = surfaceColor.copy(alpha = surfaceAlpha),
                             cornerRadius = CornerRadius(rPx, rPx)
                         )
                     }
