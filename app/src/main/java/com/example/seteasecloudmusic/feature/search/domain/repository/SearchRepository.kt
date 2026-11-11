@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.search.domain
 
+import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 
 interface SearchRepository {
@@ -9,6 +10,20 @@ interface SearchRepository {
         limit: Int = 30,
         offset: Int = 0
     ): Result<List<Track>>
+
+    // 搜索歌手，返回包含真实头像的歌手列表。
+    suspend fun searchArtists(
+        query: String,
+        limit: Int = 30,
+        offset: Int = 0
+    ): Result<List<Artist>>
+
+    // 搜索歌单，返回匹配的歌单列表。
+    suspend fun searchPlaylists(
+        query: String,
+        limit: Int = 30,
+        offset: Int = 0
+    ): Result<List<PlaylistSuggestion>>
 
     // 获取指定歌曲的可播放 URL。
     suspend fun getTrackUrl(

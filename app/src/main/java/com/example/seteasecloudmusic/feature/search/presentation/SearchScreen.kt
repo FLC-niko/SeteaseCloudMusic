@@ -37,7 +37,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
@@ -540,8 +539,15 @@ private fun SearchArtworkCard(item: SearchRowItem, onQuery: (String) -> Unit, on
     }
     Column(Modifier.fillMaxWidth().clickable(onClick = action).padding(4.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(if (item is SearchRowItem.Artist) CircleShape else RoundedCornerShape(20.dp)).background(Color(0xFFF2F2F6)), contentAlignment = Alignment.Center) {
-            if (image != null) AsyncImage(image, title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else Icon(Icons.Filled.Search, null, tint = SecondaryText)
+            Icon(
+                painter = painterResource(id = R.drawable.ic_nav_search),
+                contentDescription = null,
+                tint = SecondaryText,
+                modifier = Modifier.size(32.dp)
+            )
+            if (!image.isNullOrBlank()) {
+                AsyncImage(model = image, contentDescription = title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
         }
         Spacer(Modifier.height(12.dp))
         Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, color = PrimaryText)
@@ -764,7 +770,7 @@ private fun SuggestionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Filled.Search,
+            painter = painterResource(id = R.drawable.ic_nav_search),
             contentDescription = null,
             tint = SecondaryText,
             modifier = Modifier.size(20.dp)
@@ -798,6 +804,12 @@ private fun Artwork(
             .background(Color(0xFFE3E3E6)),
         contentAlignment = Alignment.Center
     ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_nav_search),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(size * 0.45f)
+        )
         if (!imageUrl.isNullOrBlank()) {
             AsyncImage(
                 model = imageUrl,
@@ -806,13 +818,6 @@ private fun Artwork(
                     .fillMaxSize()
                     .clip(shape),
                 contentScale = ContentScale.Crop
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -1161,7 +1166,7 @@ private fun SearchSuggestionsSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Search,
+                    painter = painterResource(id = R.drawable.ic_nav_search),
                     contentDescription = null,
                     tint = Color(0xFFFF2442),
                     modifier = Modifier.size(20.dp)
@@ -1198,7 +1203,7 @@ private fun SearchSuggestionsSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Search,
+                    painter = painterResource(id = R.drawable.ic_nav_search),
                     contentDescription = null,
                     tint = SecondaryText,
                     modifier = Modifier.size(20.dp)
@@ -1278,21 +1283,38 @@ private fun buildSearchItems(
     uiState: SearchUiState,
     selectedTab: SearchTab
 ): List<SearchRowItem> {
-    // 歌曲、艺人、专辑统一只使用正式搜索（cloudsearch）结果，
-    // 保证图片、艺人名等数据完整正确。
     val tracks = uiState.tracks
 
-    val artists = tracks
-        .flatMap { track ->
-            track.artists.map { artist ->
-                SearchRowItem.Artist(
-                    id = artist.id,
-                    name = artist.name,
-                    coverUrl = artist.coverUrl
-                )
-            }
+    // 建立歌手头像高速索引表，优先从搜索歌手列表与建议歌手列表中提取真实头像
+    val artistAvatarMap = mutableMapOf<Long, String>()
+    uiState.artists.forEach { artist ->
+        artist.coverUrl?.takeIf { it.isNotBlank() }?.let { artistAvatarMap[artist.id] = it }
+    }
+    uiState.suggestions.artists.forEach { suggestion ->
+        suggestion.coverUrl?.takeIf { it.isNotBlank() }?.let { artistAvatarMap.putIfAbsent(suggestion.id, it) }
+    }
+
+    val artists: List<SearchRowItem.Artist> = if (uiState.artists.isNotEmpty()) {
+        uiState.artists.map {
+            SearchRowItem.Artist(
+                id = it.id,
+                name = it.name,
+                coverUrl = it.coverUrl ?: artistAvatarMap[it.id]
+            )
         }
-        .distinctBy { it.id }
+    } else {
+        tracks
+            .flatMap { track ->
+                track.artists.map { artist ->
+                    SearchRowItem.Artist(
+                        id = artist.id,
+                        name = artist.name,
+                        coverUrl = artistAvatarMap[artist.id] ?: artist.coverUrl
+                    )
+                }
+            }
+            .distinctBy { it.id }
+    }
 
     val albums = tracks
         .map {
@@ -1305,14 +1327,25 @@ private fun buildSearchItems(
         }
         .distinctBy { it.id }
 
-    val playlists = uiState.suggestions.playlists.map {
-        SearchRowItem.Playlist(
-            id = it.id,
-            name = it.name,
-            trackCount = it.trackCount,
-            coverUrl = it.coverUrl
-        )
-    }
+    val playlists = (if (uiState.playlists.isNotEmpty()) {
+        uiState.playlists.map {
+            SearchRowItem.Playlist(
+                id = it.id,
+                name = it.name,
+                trackCount = it.trackCount,
+                coverUrl = it.coverUrl
+            )
+        }
+    } else {
+        uiState.suggestions.playlists.map {
+            SearchRowItem.Playlist(
+                id = it.id,
+                name = it.name,
+                trackCount = it.trackCount,
+                coverUrl = it.coverUrl
+            )
+        }
+    }).distinctBy { it.id }
 
     return when (selectedTab) {
         SearchTab.BEST -> {
@@ -1325,9 +1358,8 @@ private fun buildSearchItems(
             mixed += artists.take(4)
             // 4) 专辑
             mixed += albums.take(4)
-            if (mixed.isEmpty()) {
-                mixed += playlists.take(6)
-            }
+            // 5) 歌单
+            mixed += playlists.take(4)
             mixed
         }
 

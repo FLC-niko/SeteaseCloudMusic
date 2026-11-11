@@ -12,11 +12,17 @@ data class SearchResultResponse(
 )
 
 /**
- * 搜索结果主体，包含歌曲列表与总数。
+ * 搜索结果主体，包含歌曲、歌手、歌单、专辑列表与总数。
  */
 data class SearchResultBodyResponse(
 	val songs: List<SearchSongItemResponse> = emptyList(),
 	val songCount: Int = 0,
+	val artists: List<SearchArtistResponse> = emptyList(),
+	val artistCount: Int = 0,
+	val albums: List<SearchAlbumResponse> = emptyList(),
+	val albumCount: Int = 0,
+	val playlists: List<SearchPlaylistResponse> = emptyList(),
+	val playlistCount: Int = 0,
 	val hasMore: Boolean? = null
 )
 
@@ -148,7 +154,22 @@ data class SearchArtistResponse(
 	val tns: List<String> = emptyList(),
 	val alias: List<String> = emptyList(),
 	val id: Long? = null,
-	val alia: List<String> = emptyList()
+	val alia: List<String> = emptyList(),
+	@SerializedName("picUrl")
+	val picUrl: String? = null,
+	@SerializedName("img1v1Url")
+	val img1v1Url: String? = null
+)
+
+/**
+ * 歌单搜索条目。
+ */
+data class SearchPlaylistResponse(
+	val id: Long = 0L,
+	val name: String? = null,
+	@SerializedName("coverImgUrl")
+	val coverImgUrl: String? = null,
+	val trackCount: Int = 0
 )
 
 /**

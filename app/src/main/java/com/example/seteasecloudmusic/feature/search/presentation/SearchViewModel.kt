@@ -3,10 +3,14 @@ package com.example.seteasecloudmusic.feature.search.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.common.toUserFriendlyMessage
+import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlayerStatus
+import com.example.seteasecloudmusic.feature.artist.domain.usecase.GetArtistDetailUseCase
 import com.example.seteasecloudmusic.feature.search.data.SearchHistoryManager
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
+import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
+import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.search.domain.GetSearchSuggestionsUseCase
@@ -14,6 +18,7 @@ import com.example.seteasecloudmusic.feature.search.domain.SearchMusicUseCase
 import com.example.seteasecloudmusic.feature.search.domain.usecase.GetHotSearchUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,10 +31,12 @@ import javax.inject.Inject
  * 搜索页 UI 状态：
  * 1. `query` 负责输入框内容。
  * 2. `suggestions` 负责联想建议列表，与正式搜索结果分开维护。
- * 3. `tracks` 只承载用户“提交搜索”后的结果，避免和建议数据混用。
- * 4. `searchHistory` 本地持久化搜索历史。
- * 5. `hotSearches` 热门搜索列表。
- * 6. `isSearchSubmitted` 标记用户是否已触发正式搜索（点击回车/点击建议/点击热搜/点击历史），
+ * 3. `tracks` 承载用户“提交搜索”后的歌曲结果。
+ * 4. `artists` 承载用户“提交搜索”后的歌手结果（含真实头像）。
+ * 5. `playlists` 承载用户“提交搜索”后的歌单结果。
+ * 6. `searchHistory` 本地持久化搜索历史。
+ * 7. `hotSearches` 热门搜索列表。
+ * 8. `isSearchSubmitted` 标记用户是否已触发正式搜索（点击回车/点击建议/点击热搜/点击历史），
  *    区分“即时联想状态”与“搜索结果展示状态”。
  */
 data class SearchUiState(
@@ -39,6 +46,8 @@ data class SearchUiState(
     val suggestionErrorMessage: String? = null,
     val isLoading: Boolean = false,
     val tracks: List<Track> = emptyList(),
+    val artists: List<Artist> = emptyList(),
+    val playlists: List<PlaylistSuggestion> = emptyList(),
     val errorMessage: String? = null,
     val searchHistory: List<String> = emptyList(),
     val hotSearches: List<HotSearchItem> = emptyList(),
@@ -52,6 +61,8 @@ class SearchViewModel @Inject constructor(
     private val getSearchSuggestionsUseCase: GetSearchSuggestionsUseCase,
     private val getHotSearchUseCase: GetHotSearchUseCase,
     private val searchHistoryManager: SearchHistoryManager,
+    private val searchRepository: SearchRepository,
+    private val getArtistDetailUseCase: GetArtistDetailUseCase,
     val musicPlayerController: MusicPlayerController
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -133,6 +144,8 @@ class SearchViewModel @Inject constructor(
                     isSuggestionLoading = false,
                     suggestionErrorMessage = null,
                     tracks = emptyList(),
+                    artists = emptyList(),
+                    playlists = emptyList(),
                     errorMessage = null,
                     isLoading = false,
                     isSearchSubmitted = false
@@ -285,38 +298,84 @@ class SearchViewModel @Inject constructor(
                 )
             }
 
-            // 3) 调用 UseCase。它会返回 Result<List<Track>>。
-            val result = searchMusicUseCase(query)
+            // 3) 并发请求单曲、歌手、歌单（歌手结果自带真实头像）
+            val tracksDeferred = async { searchMusicUseCase(query) }
+            val artistsDeferred = async { searchRepository.searchArtists(query) }
+            val playlistsDeferred = async { searchRepository.searchPlaylists(query) }
+
+            val tracksResult = tracksDeferred.await()
+            val artistsResult = artistsDeferred.await()
+            val playlistsResult = playlistsDeferred.await()
 
             if (!isActive || requestId != searchRequestId || uiState.value.query.trim() != query) {
                 return@launch
             }
 
+            val tracks = tracksResult.getOrElse { emptyList() }
+            val artists = artistsResult.getOrElse { emptyList() }
+            val playlists = playlistsResult.getOrElse { emptyList() }
+
             // 4) 按成功/失败分别更新 UI 状态。
-            result.fold(
-                onSuccess = { tracks ->
-                    if (requestId == searchRequestId) {
-                        _uiState.update { state ->
-                            state.copy(
-                                isLoading = false,
-                                tracks = tracks,
-                                errorMessage = null
-                            )
-                        }
+            if (tracks.isEmpty() && artists.isEmpty() && playlists.isEmpty() && tracksResult.isFailure) {
+                val throwable = tracksResult.exceptionOrNull() ?: Exception("搜索失败")
+                if (requestId == searchRequestId) {
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            tracks = emptyList(),
+                            artists = emptyList(),
+                            playlists = emptyList(),
+                            errorMessage = throwable.toUserFriendlyMessage("搜索")
+                        )
                     }
-                },
-                onFailure = { throwable ->
-                    if (requestId == searchRequestId) {
-                        _uiState.update { state ->
-                            state.copy(
-                                isLoading = false,
-                                tracks = emptyList(),
-                                errorMessage = throwable.toUserFriendlyMessage("搜索")
-                            )
+                }
+            } else {
+                if (requestId == searchRequestId) {
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            tracks = tracks,
+                            artists = artists,
+                            playlists = playlists,
+                            errorMessage = null
+                        )
+                    }
+                }
+
+                // 5) 为歌曲中可能缺少头像的歌手做异步兜底补充
+                val missingArtistIds = tracks
+                    .flatMap { it.artists }
+                    .filter { it.coverUrl.isNullOrBlank() && it.id > 0L }
+                    .map { it.id }
+                    .distinct()
+                    .filter { id -> artists.none { it.id == id && !it.coverUrl.isNullOrBlank() } }
+                    .take(8)
+
+                if (missingArtistIds.isNotEmpty()) {
+                    launch {
+                        val supplemented = artists.toMutableList()
+                        var updated = false
+                        for (id in missingArtistIds) {
+                            if (!isActive || requestId != searchRequestId) break
+                            val detail = getArtistDetailUseCase(id).getOrNull()
+                            val cover = detail?.coverUrl
+                            if (!cover.isNullOrBlank()) {
+                                updated = true
+                                val idx = supplemented.indexOfFirst { it.id == id }
+                                if (idx >= 0) {
+                                    supplemented[idx] = supplemented[idx].copy(coverUrl = cover)
+                                } else {
+                                    val name = tracks.flatMap { it.artists }.firstOrNull { it.id == id }?.name ?: detail.name
+                                    supplemented.add(Artist(id = id, name = name, coverUrl = cover))
+                                }
+                            }
+                        }
+                        if (updated && isActive && requestId == searchRequestId) {
+                            _uiState.update { it.copy(artists = supplemented) }
                         }
                     }
                 }
-            )
+            }
         }
     }
 
@@ -379,6 +438,8 @@ class SearchViewModel @Inject constructor(
                 suggestionErrorMessage = null,
                 isLoading = false,
                 tracks = emptyList(),
+                artists = emptyList(),
+                playlists = emptyList(),
                 errorMessage = null,
                 isSearchSubmitted = false
             )

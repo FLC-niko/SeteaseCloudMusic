@@ -34,6 +34,28 @@ interface NeteaseMusicService {
     ): SearchResultResponse
 
     /**
+     * 搜索歌手（包含真实头像）。
+     */
+    @GET("cloudsearch")
+    suspend fun searchArtists(
+        @Query("keywords") keywords: String,
+        @Query("limit") limit: Int = 30,
+        @Query("offset") offset: Int = 0,
+        @Query("type") type: Int = SearchType.ARTIST.value
+    ): SearchResultResponse
+
+    /**
+     * 搜索歌单。
+     */
+    @GET("cloudsearch")
+    suspend fun searchPlaylists(
+        @Query("keywords") keywords: String,
+        @Query("limit") limit: Int = 30,
+        @Query("offset") offset: Int = 0,
+        @Query("type") type: Int = SearchType.PLAYLIST.value
+    ): SearchResultResponse
+
+    /**
      * 获取搜索建议（包含单曲、歌手、歌单）。
      */
     @GET("search/suggest")

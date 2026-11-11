@@ -54,9 +54,19 @@ data class SearchSuggestArtistResponse(
     val id: Long = 0L,
     val name: String? = null,
     @SerializedName("picUrl")
-    val coverUrl: String? = null,
+    val picUrl: String? = null,
+    @SerializedName("img1v1Url")
+    val img1v1Url: String? = null,
     val alias: List<String>? = null
-)
+) {
+    val coverUrl: String?
+        get() {
+            val pic = picUrl?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
+            val img = img1v1Url?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
+            val chosen = pic ?: img ?: picUrl?.trim()?.takeIf { it.isNotBlank() } ?: img1v1Url?.trim()?.takeIf { it.isNotBlank() }
+            return chosen?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
+        }
+}
 
 /**
  * 搜索建议中的歌单条目。

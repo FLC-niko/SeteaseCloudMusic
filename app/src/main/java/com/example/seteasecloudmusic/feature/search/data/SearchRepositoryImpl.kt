@@ -43,6 +43,15 @@ class SearchRepositoryImpl @Inject constructor(
 
     // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链与获取时间 (0ms 极速切歌)
     private val trackUrlCache = ConcurrentHashMap<String, CachedTrackUrl>()
+    // 歌手头像高速缓存：按 artistId 缓存已解析的歌手头像，避免重复解析与空白占位
+    private val artistAvatarCache = ConcurrentHashMap<Long, String>()
+
+    private fun resolveCoverUrl(picUrl: String?, img1v1Url: String?): String? {
+        val pic = picUrl?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
+        val img = img1v1Url?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
+        val chosen = pic ?: img ?: picUrl?.trim()?.takeIf { it.isNotBlank() } ?: img1v1Url?.trim()?.takeIf { it.isNotBlank() }
+        return chosen?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
+    }
 
     override suspend fun searchTracks(
         query: String,
@@ -56,6 +65,69 @@ class SearchRepositoryImpl @Inject constructor(
                     mapToDomainTrack(song)
                 } ?: emptyList()
                 Result.success(tracks)
+            } else {
+                Result.failure(Exception("API Error with code: ${response.code}"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun searchArtists(
+        query: String,
+        limit: Int,
+        offset: Int
+    ): Result<List<Artist>> = withContext(Dispatchers.IO) {
+        try {
+            val response = musicService.searchArtists(query, limit, offset)
+            if (response.code == 200) {
+                val artists = response.result?.artists?.mapNotNull { item ->
+                    val id = item.id ?: return@mapNotNull null
+                    val name = item.name ?: return@mapNotNull null
+                    val cover = resolveCoverUrl(item.picUrl, item.img1v1Url)
+                    if (cover != null && id > 0L) {
+                        artistAvatarCache[id] = cover
+                    }
+                    Artist(
+                        id = id,
+                        name = name,
+                        coverUrl = cover
+                    )
+                } ?: emptyList()
+                Result.success(artists)
+            } else {
+                Result.failure(Exception("API Error with code: ${response.code}"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun searchPlaylists(
+        query: String,
+        limit: Int,
+        offset: Int
+    ): Result<List<PlaylistSuggestion>> = withContext(Dispatchers.IO) {
+        try {
+            val response = musicService.searchPlaylists(query, limit, offset)
+            if (response.code == 200) {
+                val playlists = response.result?.playlists?.mapNotNull { item ->
+                    val id = item.id.takeIf { it > 0L } ?: return@mapNotNull null
+                    val name = item.name ?: "未知歌单"
+                    val rawCover = item.coverImgUrl?.takeIf { it.isNotBlank() }
+                    val cover = rawCover?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
+                    PlaylistSuggestion(
+                        id = id,
+                        name = name,
+                        coverUrl = cover,
+                        trackCount = item.trackCount
+                    )
+                } ?: emptyList()
+                Result.success(playlists)
             } else {
                 Result.failure(Exception("API Error with code: ${response.code}"))
             }
@@ -332,23 +404,26 @@ class SearchRepositoryImpl @Inject constructor(
      * 把搜索建议中的歌曲响应转换成 domain 层的 Track。
      */
     private fun mapToDomainTrackFromSuggest(song: SearchSuggestSongResponse): Track {
+        val albumCover = song.album?.coverUrl?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
         return Track(
             id = song.id,
             title = song.name ?: "",
             durationMs = song.duration,
             artists = song.artists?.map { artist ->
+                val id = artist.id ?: 0L
+                val cover = if (id > 0L) artistAvatarCache[id] else null
                 Artist(
-                    id = artist.id ?: 0L,
+                    id = id,
                     name = artist.name ?: "未知歌手",
-                    coverUrl = null
+                    coverUrl = cover
                 )
             } ?: emptyList(),
             album = Album(
                 id = song.album?.id ?: 0L,
                 title = song.album?.name ?: "未知专辑",
-                coverUrl = song.album?.coverUrl
+                coverUrl = albumCover
             ),
-            coverUrl = song.album?.coverUrl,
+            coverUrl = albumCover,
             qualityTags = emptyList(),
             playableUrl = null,
             isPlayable = true
@@ -360,10 +435,14 @@ class SearchRepositoryImpl @Inject constructor(
      * 把搜索建议中的歌手响应转换成 domain 层的 ArtistSuggestion。
      */
     private fun mapToArtistSuggestion(artist: SearchSuggestArtistResponse): ArtistSuggestion {
+        val cover = artist.coverUrl?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
+        if (cover != null && artist.id > 0L) {
+            artistAvatarCache[artist.id] = cover
+        }
         return ArtistSuggestion(
             id = artist.id,
             name = artist.name ?: "未知歌手",
-            coverUrl = artist.coverUrl
+            coverUrl = cover
         )
     }
 
@@ -372,10 +451,11 @@ class SearchRepositoryImpl @Inject constructor(
      * 把搜索建议中的歌单响应转换成 domain 层的 PlaylistSuggestion。
      */
     private fun mapToPlaylistSuggestion(playlist: SearchSuggestPlaylistResponse): PlaylistSuggestion {
+        val cover = playlist.coverUrl?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
         return PlaylistSuggestion(
             id = playlist.id,
             name = playlist.name ?: "未知歌单",
-            coverUrl = playlist.coverUrl,
+            coverUrl = cover,
             trackCount = playlist.trackCount ?: 0
         )
     }
@@ -391,23 +471,31 @@ class SearchRepositoryImpl @Inject constructor(
         if (song.h != null) qualityTags.add(AudioQuality.HIGH)
         if (song.l != null || song.m != null) qualityTags.add(AudioQuality.STANDARD)
 
+        val albumCover = song.al?.picUrl?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
+
         return Track(
             id = song.id,
             title = song.name,
             durationMs = song.dt,
             artists = song.ar.map { artist ->
+                val id = artist.id ?: 0L
+                val rawCover = resolveCoverUrl(artist.picUrl, artist.img1v1Url) ?: (if (id > 0L) artistAvatarCache[id] else null)
+                val cover = rawCover?.let { if (it.startsWith("http://")) it.replaceFirst("http://", "https://") else it }
+                if (cover != null && id > 0L) {
+                    artistAvatarCache[id] = cover
+                }
                 Artist(
-                    id = artist.id ?: 0L,
+                    id = id,
                     name = artist.name ?: "未知歌手",
-                    coverUrl = null
+                    coverUrl = cover
                 )
             },
             album = Album(
                 id = song.al?.id ?: 0L,
                 title = song.al?.name ?: "未知专辑",
-                coverUrl = song.al?.picUrl
+                coverUrl = albumCover
             ),
-            coverUrl = song.al?.picUrl,
+            coverUrl = albumCover,
             qualityTags = qualityTags,
             playableUrl = null,
             isPlayable = song.fee != 4
