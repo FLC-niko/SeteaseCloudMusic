@@ -11,11 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.Icons
@@ -177,63 +181,13 @@ fun AddToPlaylistContent(
             modifier = Modifier.padding(horizontal = 20.dp)
         )
 
-        // 2. “新建歌单”快捷入口
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showCreateDialog = true }
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFF2F2F7)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "新建歌单",
-                    tint = Color(0xFF515151),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column {
-                Text(
-                    text = "新建歌单",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = Color(0xFF1E1E24),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "创建新歌单并加入此歌曲",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color(0xFF8E8E93),
-                        fontSize = 12.sp
-                    )
-                )
-            }
-        }
-
-        HorizontalDivider(
-            color = Color(0xFFF0F0F2),
-            thickness = 0.5.dp,
-            modifier = Modifier.padding(horizontal = 20.dp)
-        )
-
-        // 3. 歌单列表区域（包括首位的“我喜欢的音乐”和随后的自建歌单）
+        // 2. 歌单列表区域（包括首位的“新建歌单”、“我喜欢的音乐”和随后的自建歌单，完全合并流动，按数量自适应高度）
         if (!uiState.isLoggedIn) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 36.dp, horizontal = 24.dp),
+                    .padding(vertical = 36.dp, horizontal = 24.dp)
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -248,7 +202,8 @@ fun AddToPlaylistContent(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 40.dp),
+                    .padding(vertical = 40.dp)
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
@@ -274,12 +229,26 @@ fun AddToPlaylistContent(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 380.dp)
+                    .heightIn(max = 520.dp),
+                contentPadding = PaddingValues(bottom = 6.dp)
             ) {
-                items(
+                // 1. “新建歌单”入口：画一条分割线但依然在同一滚动流中
+                item(key = "create_new_playlist") {
+                    NewPlaylistPickerItem(
+                        onClick = { showCreateDialog = true }
+                    )
+                    HorizontalDivider(
+                        color = Color(0xFFF0F0F2),
+                        thickness = 0.5.dp,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                }
+
+                // 2. 歌单项（首项为“我喜欢的音乐”，随后为自建歌单；我喜欢的音乐后面也加一条分割线）
+                itemsIndexed(
                     items = allPlaylists,
-                    key = { it.id }
-                ) { playlist ->
+                    key = { _, playlist -> playlist.id }
+                ) { index, playlist ->
                     val isLikedHero = playlist.isLikedHero || playlist.name.contains("喜欢")
                     // 判断该歌单是否已包含当前歌曲
                     val isAlreadyAdded = if (isLikedHero) {
@@ -341,6 +310,15 @@ fun AddToPlaylistContent(
                             }
                         }
                     )
+
+                    // 我喜欢的音乐下方紧跟一条细分割线，保持整洁一体
+                    if (isLikedHero) {
+                        HorizontalDivider(
+                            color = Color(0xFFF0F0F2),
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(horizontal = 20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -507,6 +485,59 @@ private fun PlaylistPickerItem(
                 modifier = Modifier
                     .background(Color(0xFFF2F2F7), RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun NewPlaylistPickerItem(
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFFF2F2F7)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "新建歌单",
+                tint = Color(0xFF515151),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "新建歌单",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = Color(0xFF1E1E24),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "创建新歌单并加入此歌曲",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color(0xFF8E8E93),
+                    fontSize = 12.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

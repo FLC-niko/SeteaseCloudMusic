@@ -70,10 +70,13 @@ fun AdaptiveModalSheet(
 ) {
     val window = LocalAdaptiveWindow.current
     if (window.width < 600.dp && window.separatingFold == null) {
-        ModalBottomSheet(onDismissRequest = onDismissRequest,
+        ModalBottomSheet(
+            onDismissRequest = onDismissRequest,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = containerColor, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            modifier = modifier) { content() }
+            containerColor = containerColor,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            modifier = modifier
+        ) { content() }
     } else {
         Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             var appeared by remember { mutableStateOf(false) }

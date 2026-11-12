@@ -99,7 +99,10 @@ fun TrackActionSheet(
             )
         } else {
             Column(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 12.dp)
             ) {
             // 头部歌曲信息预览区：左侧较大封面（60dp），右侧歌曲名（去除“歌曲：”）及歌手名
             Row(
