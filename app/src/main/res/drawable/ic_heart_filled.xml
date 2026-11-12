@@ -1,9 +1,16 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFA233B"
-        android:pathData="M12,21.35l-1.45,-1.32C5.4,15.36 2,12.28 2,8.5 2,5.42 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.09C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.42 22,8.5c0,3.78 -3.4,6.86 -8.55,11.54L12,21.35z"/>
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- 用户最新原版爱心（实心状态）：居中等比缩放至 0.88，与空心状态轮廓 100% 严丝合缝重合 -->
+    <group
+        android:pivotX="512"
+        android:pivotY="512"
+        android:scaleX="0.88"
+        android:scaleY="0.88">
+        <path
+            android:fillColor="#FFFA233B"
+            android:pathData="M703.488 42.496c-69.12 0-136.192 22.528-191.488 63.488-55.296-40.96-122.368-63.488-191.488-63.488C143.872 42.496 0 185.856 0 363.008 0 757.76 483.84 970.752 504.832 979.968c3.072 1.536 6.656 2.048 9.728 2.048 4.096 0 8.704-1.024 12.288-3.584 20.48-11.776 497.152-291.84 497.152-615.424 0-177.152-143.872-320.512-320.512-320.512z" />
+    </group>
 </vector>

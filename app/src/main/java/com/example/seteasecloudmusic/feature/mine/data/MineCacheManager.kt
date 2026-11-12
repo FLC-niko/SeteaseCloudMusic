@@ -58,6 +58,12 @@ class MineCacheManager @Inject constructor(
         }.getOrNull()
     }
 
+    fun evictPlaylistDetail(playlistId: Long) {
+        runCatching {
+            prefs.edit().remove("${KEY_PLAYLIST_DETAIL_PREVIEW}_$playlistId").apply()
+        }
+    }
+
     companion object {
         // 与旧 DataCacheManager 保持相同键，升级后不丢失已有缓存。
         private const val PREF_NAME = "app_data_cache_prefs"

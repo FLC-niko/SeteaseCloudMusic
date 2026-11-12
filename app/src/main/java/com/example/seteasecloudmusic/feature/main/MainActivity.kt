@@ -7,7 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 
 /**
  * `presentation` 模块说明：
@@ -26,12 +28,18 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var musicPlayerController: MusicPlayerController
 
+    @Inject
+    lateinit var mineRepository: MineRepository
+
     /**
      * 创建页面并挂载应用导航。
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PlayerEntryPoints.init(musicPlayerController)
+        FavoriteTracksManager.setLikeApiHandler { trackId, like ->
+            mineRepository.likeTrack(trackId, like)
+        }
         enableEdgeToEdge()
 
         // P1a：这台小米默认跑 144Hz（帧预算仅 6.9ms），而常驻动效

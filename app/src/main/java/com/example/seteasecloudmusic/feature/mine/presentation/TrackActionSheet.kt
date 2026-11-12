@@ -24,6 +24,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,37 +44,63 @@ import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
+
+/**
+ * 歌曲操作面板页面状态：
+ * ACTIONS: 默认动作菜单（下一首播放、喜欢/取消喜欢、收藏到歌单、下载、歌手、专辑）
+ * ADD_TO_PLAYLIST: 收藏到歌单（内嵌平滑无缝切页，带返回箭头与新建歌单）
+ */
+enum class TrackActionSheetPage {
+    ACTIONS,
+    ADD_TO_PLAYLIST
+}
 
 /**
  * 歌单曲目更多操作二级菜单（底栏抽屉）。
  * 背景为纯白色，顺序严格为：
  * 1. 下一首播放
- * 2. 收藏到歌单
- * 3. 下载
- * 4. 歌手
- * 5. 专辑
+ * 2. 喜欢 / 取消喜欢
+ * 3. 收藏到歌单
+ * 4. 下载
+ * 5. 歌手
+ * 6. 专辑
  */
 @Composable
 fun TrackActionSheet(
     track: Track,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currentPlaylistId: Long? = null,
+    onToggleLiked: ((Track, Boolean) -> Unit)? = null,
+    onAddToPlaylistClick: ((Track) -> Unit)? = null,
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    var currentPage by remember { mutableStateOf(TrackActionSheetPage.ACTIONS) }
 
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
         containerColor = Color.White,
         modifier = modifier
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(bottom = 12.dp)
-        ) {
+        if (currentPage == TrackActionSheetPage.ADD_TO_PLAYLIST) {
+            AddToPlaylistContent(
+                track = track,
+                onDismiss = onDismiss,
+                onBack = { currentPage = TrackActionSheetPage.ACTIONS },
+                currentPlaylistId = currentPlaylistId,
+                onTrackLikedChanged = onToggleLiked,
+                onTrackAdded = { pid, t ->
+                    onTrackAddedToPlaylist?.invoke(pid, t)
+                }
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
             // 头部歌曲信息预览区：左侧较大封面（60dp），右侧歌曲名（去除“歌曲：”）及歌手名
             Row(
                 modifier = Modifier
@@ -147,6 +178,9 @@ fun TrackActionSheet(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            val likedTrackIds by FavoriteTracksManager.likedTrackIds.collectAsState()
+            val isLiked = track.id in likedTrackIds
+
             // 1. 下一首播放
             TrackActionItem(
                 icon = {
@@ -167,7 +201,29 @@ fun TrackActionSheet(
                 }
             )
 
-            // 2. 收藏到歌单
+            // 2. 喜欢 / 取消喜欢
+            TrackActionItem(
+                icon = {
+                    Icon(
+                        painter = painterResource(id = if (isLiked) R.drawable.ic_heart_filled else R.drawable.ic_heart),
+                        contentDescription = if (isLiked) "取消喜欢" else "喜欢",
+                        tint = if (isLiked) Color(0xFFFA233B) else Color(0xFF515151),
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                title = if (isLiked) "取消喜欢" else "喜欢",
+                onClick = {
+                    val willBeLiked = FavoriteTracksManager.toggleLiked(track.id)
+                    onToggleLiked?.invoke(track, willBeLiked)
+                    val msg = if (willBeLiked) "已添加到我喜欢的音乐" else "已从我喜欢的音乐中移除"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    if (!willBeLiked) {
+                        onDismiss()
+                    }
+                }
+            )
+
+            // 3. 收藏到歌单
             TrackActionItem(
                 icon = {
                     Icon(
@@ -179,12 +235,12 @@ fun TrackActionSheet(
                 },
                 title = "收藏到歌单",
                 onClick = {
-                    Toast.makeText(context, "已收藏到歌单", Toast.LENGTH_SHORT).show()
-                    onDismiss()
+                    currentPage = TrackActionSheetPage.ADD_TO_PLAYLIST
+                    onAddToPlaylistClick?.invoke(track)
                 }
             )
 
-            // 3. 下载
+            // 4. 下载
             TrackActionItem(
                 icon = {
                     Icon(
@@ -201,7 +257,7 @@ fun TrackActionSheet(
                 }
             )
 
-            // 4. 歌手
+            // 5. 歌手
             val artistNames = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
             TrackActionItem(
                 icon = {
@@ -219,7 +275,7 @@ fun TrackActionSheet(
                 }
             )
 
-            // 5. 专辑
+            // 6. 专辑
             val albumTitle = track.album.title.ifBlank { "未知专辑" }
             TrackActionItem(
                 icon = {
@@ -238,6 +294,7 @@ fun TrackActionSheet(
             )
         }
     }
+}
 }
 
 @Composable

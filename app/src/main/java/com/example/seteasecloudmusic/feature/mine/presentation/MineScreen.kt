@@ -141,7 +141,9 @@ fun MineScreen(
     onSetLocalDirectory: (String) -> Unit,
     modifier: Modifier = Modifier,
     lazyListState: LazyListState = rememberLazyListState(),
-    isForeground: Boolean = true
+    isForeground: Boolean = true,
+    onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -495,7 +497,9 @@ fun MineScreen(
                     onClose = onCloseDetail,
                     onPlayTrack = { track -> onPlayTrack(track, detail.tracks) },
                     onPlayAll = { onPlayAll(detail.tracks) },
-                    onShufflePlay = { onPlayAll(detail.tracks.shuffled()) }
+                    onShufflePlay = { onPlayAll(detail.tracks.shuffled()) },
+                    onTrackLikedChanged = onTrackLikedChanged,
+                    onTrackAddedToPlaylist = onTrackAddedToPlaylist
                 )
             }
         }
@@ -505,10 +509,18 @@ fun MineScreen(
     RetainedMusicFeed(!split) { libraryContent() }
     if (split) {
         uiState.activePlaylistDetail?.let { detail ->
-            PlaylistDetailScreen(detail, mineBackdrop, onCloseDetail,
-                { onPlayTrack(it, detail.tracks) }, { onPlayAll(detail.tracks) },
+            PlaylistDetailScreen(
+                detail = detail,
+                backdrop = mineBackdrop,
+                onClose = onCloseDetail,
+                onPlayTrack = { onPlayTrack(it, detail.tracks) },
+                onPlayAll = { onPlayAll(detail.tracks) },
                 onShufflePlay = { onPlayAll(detail.tracks.shuffled()) },
-                isLoading = uiState.isLoadingDetail, listState = detailListState)
+                isLoading = uiState.isLoadingDetail,
+                listState = detailListState,
+                onTrackLikedChanged = onTrackLikedChanged,
+                onTrackAddedToPlaylist = onTrackAddedToPlaylist
+            )
         }
     }
     }

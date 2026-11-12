@@ -48,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,6 +78,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveTwoPane
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
@@ -112,12 +114,41 @@ fun PlaylistDetailScreen(
     onShufflePlay: (() -> Unit)? = null,
     isLoading: Boolean = false,
     embedded: Boolean = false,
-    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState()
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
+    onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null
 ) {
     val bottom = LocalContentBottomPadding.current
     val window = LocalAdaptiveWindow.current
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+
+    val isLikedPlaylist = remember(detail.name, detail.id) {
+        detail.name.contains("喜欢") || (detail.id != LOCAL_PLAYLIST_ID && detail.description?.contains("红心") == true)
+    }
+
+    val likedTrackIds by FavoriteTracksManager.likedTrackIds.collectAsState()
+
+    val effectiveTracks = remember(detail.tracks, isLikedPlaylist, likedTrackIds) {
+        if (isLikedPlaylist) {
+            detail.tracks.filter { it.id in likedTrackIds }
+        } else {
+            detail.tracks
+        }
+    }
+
+    var localTracks by remember(detail.id, effectiveTracks) { mutableStateOf(effectiveTracks) }
+
+    LaunchedEffect(effectiveTracks) {
+        localTracks = effectiveTracks
+    }
+
+    val currentDetail = remember(detail, localTracks) {
+        detail.copy(
+            tracks = localTracks,
+            trackCount = if (isLikedPlaylist) localTracks.size else detail.trackCount.coerceAtLeast(localTracks.size)
+        )
+    }
 
     var currentStyle by remember {
         val saved = prefs.getString(KEY_PLAYLIST_STYLE, PlaylistDetailStyle.APPLE_MUSIC.id)
@@ -248,14 +279,14 @@ fun PlaylistDetailScreen(
                     ) {
                         item(key = "detail_title") {
                             if (split && window.isTabletop) {
-                                PlaylistHeroAppleMusicSection(detail, onPlayAll, isDark = paneDark, showArtwork = false)
+                                PlaylistHeroAppleMusicSection(currentDetail, onPlayAll, isDark = paneDark, showArtwork = false)
                             }
                             if (embedded) {
-                                MusicPaneHeader(detail.displayTitle,
-                                    "${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲", onClose,
+                                MusicPaneHeader(currentDetail.displayTitle,
+                                    "${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲", onClose,
                                     onMore = { showMoreSheet = true })
                             } else {
-                                Text("${detail.trackCount.coerceAtLeast(detail.tracks.size)} 首歌曲",
+                                Text("${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲",
                                     color = if (expandedDark) Color.White.copy(alpha = 0.65f) else PlaylistTextSecondary,
                                     fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
                             }
@@ -265,7 +296,7 @@ fun PlaylistDetailScreen(
                                 Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                                     RenderPlaylistHero(
                                         style = currentStyle,
-                                        detail = detail,
+                                        detail = currentDetail,
                                         dominantDarkColor = solidBackgroundColor,
                                         onPlayAll = onPlayAll,
                                         isDark = isDark
@@ -273,14 +304,14 @@ fun PlaylistDetailScreen(
                                 }
                             }
                         }
-                        if (isLoading && detail.tracks.isEmpty()) {
+                        if (isLoading && currentDetail.tracks.isEmpty()) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(color = if (paneDark) Color.White else PlaylistAccentColor)
                                 }
                             }
                         }
-                        itemsIndexed(detail.tracks, key = { _, track -> track.id }) { index, track ->
+                        itemsIndexed(currentDetail.tracks, key = { _, track -> track.id }) { index, track ->
                             Box(Modifier.padding(horizontal = 12.dp)) {
                                 PlaylistDetailTrackRow(
                                     index = index + 1,
@@ -336,7 +367,7 @@ fun PlaylistDetailScreen(
                 }
             } else {
                 CompactPlaylistDetailScreen(
-                    detail = detail,
+                    detail = currentDetail,
                     currentStyle = currentStyle,
                     dominantDarkColor = solidBackgroundColor,
                     isDark = isDark,
@@ -356,7 +387,14 @@ fun PlaylistDetailScreen(
             selectedTrackForAction?.let { track ->
                 TrackActionSheet(
                     track = track,
-                    onDismiss = { selectedTrackForAction = null }
+                    currentPlaylistId = currentDetail.id,
+                    onDismiss = { selectedTrackForAction = null },
+                    onToggleLiked = { t, willBeLiked ->
+                        onTrackLikedChanged?.invoke(t, willBeLiked)
+                    },
+                    onTrackAddedToPlaylist = { playlistId, t ->
+                        onTrackAddedToPlaylist?.invoke(playlistId, t)
+                    }
                 )
             }
 

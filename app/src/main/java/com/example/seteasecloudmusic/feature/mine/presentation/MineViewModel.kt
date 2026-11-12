@@ -8,8 +8,10 @@ import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.local.LocalMusicRepository
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.core.auth.AuthStateProvider
+import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
+import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetPlaylistDetailUseCase
 import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetUserPlaylistsUseCase
 import com.example.seteasecloudmusic.core.network.NetworkMonitor
@@ -66,6 +68,7 @@ data class MineUiState(
 @HiltViewModel
 class MineViewModel @Inject constructor(
     private val authStateProvider: AuthStateProvider,
+    private val mineRepository: MineRepository,
     private val getUserPlaylistsUseCase: GetUserPlaylistsUseCase,
     private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
     private val localMusicRepository: LocalMusicRepository,
@@ -133,6 +136,10 @@ class MineViewModel @Inject constructor(
                         silent = cachedGroup != null,
                         requestId = loadRequestId
                     )
+                    // 同步网易云云端已喜欢的音乐 ID 列表
+                    viewModelScope.launch {
+                        mineRepository.getLikelist(session.userId)
+                    }
                 } else {
                     _uiState.update {
                         it.copy(
@@ -198,6 +205,8 @@ class MineViewModel @Inject constructor(
                         silent = false,
                         requestId = requestId
                     )
+                    // 刷新时同步网易云云端喜欢的音乐 ID 列表
+                    mineRepository.getLikelist(session.userId)
                 } finally {
                     if (isActive && requestId == playlistRequestId) {
                         _uiState.update { it.copy(isRefreshing = false) }
@@ -355,15 +364,19 @@ class MineViewModel @Inject constructor(
         }
 
         // 2. 在线歌单逻辑
+        val isLikedPlaylist = playlist.isLikedHero || playlist.name.contains("喜欢") || playlist.id == _uiState.value.likedPlaylist?.id
+
         val cached = playlistDetailCache[playlist.id]
             ?: getPlaylistDetailUseCase.getCachedPreview(playlist.id)
 
         val instantPreview = cached?.let {
-            if (playlist.trackCount > 0 && it.trackCount != playlist.trackCount) {
-                it.copy(trackCount = playlist.trackCount)
+            val validTracks = if (isLikedPlaylist) {
+                it.tracks.filter { t -> FavoriteTracksManager.isLiked(t.id) }
             } else {
-                it
+                it.tracks
             }
+            val count = if (isLikedPlaylist) validTracks.size else (if (playlist.trackCount > 0) playlist.trackCount else it.trackCount)
+            it.copy(tracks = validTracks, trackCount = count)
         } ?: PlaylistDetail(
             id = playlist.id,
             name = playlist.name,
@@ -391,11 +404,24 @@ class MineViewModel @Inject constructor(
             result.fold(
                 onSuccess = { detail ->
                     if (requestId != playlistDetailRequestId) return@fold
-                    playlistDetailCache[playlist.id] = detail
+                    // 若当前打开的是“我喜欢的音乐”，以本地 FavoriteTracksManager 的喜欢状态为准强校验过滤，
+                    // 彻底阻断任何服务端内存旧缓存中已取消喜欢的曲目被带回复活。
+                    val finalTracks = if (isLikedPlaylist) {
+                        detail.tracks.filter { t -> FavoriteTracksManager.isLiked(t.id) }
+                    } else {
+                        detail.tracks
+                    }
+                    val finalDetail = detail.copy(
+                        tracks = finalTracks,
+                        trackCount = if (isLikedPlaylist) finalTracks.size else detail.trackCount
+                    )
+                    playlistDetailCache[playlist.id] = finalDetail
+                    mineRepository.savePlaylistDetailPreview(finalDetail)
+
                     _uiState.update { current ->
                         if (requestId == playlistDetailRequestId && current.activePlaylistDetail?.id == playlist.id) {
                             current.copy(
-                                activePlaylistDetail = detail,
+                                activePlaylistDetail = finalDetail,
                                 isLoadingDetail = false
                             )
                         } else {
@@ -442,6 +468,97 @@ class MineViewModel @Inject constructor(
     fun playAll(trackList: List<Track>) {
         if (trackList.isNotEmpty()) {
             musicPlayerController.replaceQueueAndPlay(trackList, 0)
+        }
+    }
+
+    /**
+     * 当某首歌曲在列表/菜单中触发喜欢/取消喜欢时，动态同步当前打开歌单与我喜欢的音乐数据
+     */
+    fun onTrackLikedChanged(track: Track, willBeLiked: Boolean) {
+        val currentLikedId = _uiState.value.likedPlaylist?.id
+        val activeDetail = _uiState.value.activePlaylistDetail
+
+        // 1. 若当前详情页恰好是“我喜欢的音乐”，动态增删歌曲列表
+        if (activeDetail?.id == currentLikedId || activeDetail?.name?.contains("喜欢") == true) {
+            _uiState.update { current ->
+                val detail = current.activePlaylistDetail ?: return@update current
+                val updatedTracks = if (willBeLiked) {
+                    listOf(track) + detail.tracks.filter { it.id != track.id }
+                } else {
+                    detail.tracks.filter { it.id != track.id }
+                }
+                val updatedDetail = detail.copy(
+                    tracks = updatedTracks,
+                    trackCount = updatedTracks.size
+                )
+                playlistDetailCache[detail.id] = updatedDetail
+                mineRepository.savePlaylistDetailPreview(updatedDetail)
+                current.copy(
+                    activePlaylistDetail = updatedDetail,
+                    likedPlaylist = current.likedPlaylist?.copy(trackCount = updatedTracks.size)
+                )
+            }
+        } else {
+            // 2. 若当前在其它歌单，仅更新我喜欢的音乐的曲目计数
+            _uiState.update { current ->
+                val count = current.likedPlaylist?.trackCount ?: 0
+                val newCount = if (willBeLiked) count + 1 else (count - 1).coerceAtLeast(0)
+                current.copy(likedPlaylist = current.likedPlaylist?.copy(trackCount = newCount))
+            }
+            // 同步更新缓存中“我喜欢的音乐”
+            currentLikedId?.let { likedId ->
+                playlistDetailCache[likedId]?.let { cachedLiked ->
+                    val updatedTracks = if (willBeLiked) {
+                        listOf(track) + cachedLiked.tracks.filter { it.id != track.id }
+                    } else {
+                        cachedLiked.tracks.filter { it.id != track.id }
+                    }
+                    val updated = cachedLiked.copy(
+                        tracks = updatedTracks,
+                        trackCount = updatedTracks.size
+                    )
+                    playlistDetailCache[likedId] = updated
+                    mineRepository.savePlaylistDetailPreview(updated)
+                } ?: run {
+                    mineRepository.getCachedPlaylistDetailPreview(likedId)?.let { cachedPreview ->
+                        val updatedTracks = if (willBeLiked) {
+                            listOf(track) + cachedPreview.tracks.filter { it.id != track.id }
+                        } else {
+                            cachedPreview.tracks.filter { it.id != track.id }
+                        }
+                        val updated = cachedPreview.copy(
+                            tracks = updatedTracks,
+                            trackCount = updatedTracks.size
+                        )
+                        mineRepository.savePlaylistDetailPreview(updated)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 当单曲成功收藏到目标自建歌单时，更新歌单曲目数与详情缓存
+     */
+    fun onTrackAddedToPlaylist(playlistId: Long, track: Track) {
+        _uiState.update { current ->
+            val updatedCreated = current.createdPlaylists.map { pl ->
+                if (pl.id == playlistId) pl.copy(trackCount = pl.trackCount + 1) else pl
+            }
+            val active = current.activePlaylistDetail
+            val updatedActive = if (active?.id == playlistId) {
+                val newTracks = active.tracks + track
+                active.copy(tracks = newTracks, trackCount = newTracks.size)
+            } else active
+
+            if (updatedActive != null && active?.id == playlistId) {
+                playlistDetailCache[playlistId] = updatedActive
+            }
+
+            current.copy(
+                createdPlaylists = updatedCreated,
+                activePlaylistDetail = updatedActive
+            )
         }
     }
 }

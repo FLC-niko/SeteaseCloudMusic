@@ -4,10 +4,12 @@ import com.example.seteasecloudmusic.core.common.runCatchingCancellable
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylistsGroup
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
+import com.example.seteasecloudmusic.feature.mine.domain.repository.PlaylistTrackAlreadyExistsException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -25,9 +27,17 @@ class MineRepositoryImpl @Inject constructor(
         return mineCacheManager.getPlaylistDetailPreview(playlistId)
     }
 
+    override fun savePlaylistDetailPreview(detail: PlaylistDetail) {
+        mineCacheManager.savePlaylistDetailPreview(detail)
+    }
+
+    override fun evictPlaylistDetailPreview(playlistId: Long) {
+        mineCacheManager.evictPlaylistDetail(playlistId)
+    }
+
     override suspend fun getUserPlaylists(userId: Long): Result<UserPlaylistsGroup> = withContext(Dispatchers.IO) {
         runCatchingCancellable {
-            val response = mineService.getUserPlaylists(uid = userId)
+            val response = mineService.getUserPlaylists(uid = userId, timestamp = System.currentTimeMillis())
             if ((response.code ?: 0) != 200) {
                 // 异常时若有缓存则优先返回缓存
                 val cached = mineCacheManager.getUserPlaylists(userId)
@@ -103,7 +113,7 @@ class MineRepositoryImpl @Inject constructor(
 
     override suspend fun getPlaylistDetail(playlistId: Long): Result<PlaylistDetail> = withContext(Dispatchers.IO) {
         runCatchingCancellable {
-            val response = mineService.getPlaylistDetail(id = playlistId)
+            val response = mineService.getPlaylistDetail(id = playlistId, timestamp = System.currentTimeMillis())
             if ((response.code ?: 0) != 200) {
                 val cached = mineCacheManager.getPlaylistDetailPreview(playlistId)
                 if (cached != null) return@runCatchingCancellable cached
@@ -153,6 +163,86 @@ class MineRepositoryImpl @Inject constructor(
         }.recoverCatching { err ->
             val cached = mineCacheManager.getPlaylistDetailPreview(playlistId)
             cached ?: throw err
+        }
+    }
+
+    override suspend fun getLikelist(userId: Long): Result<List<Long>> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val response = mineService.getLikelist(uid = userId)
+            if ((response.code ?: 0) != 200) {
+                throw Exception("获取喜欢音乐列表失败: code=${response.code}")
+            }
+            val ids = response.ids ?: emptyList()
+            FavoriteTracksManager.syncLikedTrackIds(ids, replace = true)
+            ids
+        }
+    }
+
+    override suspend fun likeTrack(trackId: Long, like: Boolean): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val response = mineService.likeTrack(id = trackId, like = like)
+            if ((response.code ?: 0) != 200) {
+                throw Exception("喜欢/取消喜欢失败: code=${response.code}")
+            }
+            FavoriteTracksManager.setLiked(trackId, like)
+            like
+        }
+    }
+
+    override suspend fun addTrackToPlaylist(playlistId: Long, trackId: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val response = mineService.updatePlaylistTracks(
+                op = "add",
+                pid = playlistId,
+                tracks = trackId.toString(),
+                timestamp = System.currentTimeMillis()
+            )
+            if (response.isAlreadyExists) {
+                throw PlaylistTrackAlreadyExistsException("歌单中已存在该歌曲")
+            }
+            if (response.isSuccess) {
+                mineCacheManager.evictPlaylistDetail(playlistId)
+                Unit
+            } else {
+                val errMsg = response.errorMessage ?: "添加失败"
+                throw Exception(errMsg)
+            }
+        }
+    }
+
+    override suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val response = mineService.updatePlaylistTracks(
+                op = "del",
+                pid = playlistId,
+                tracks = trackId.toString()
+            )
+            if (response.isSuccess) {
+                mineCacheManager.evictPlaylistDetail(playlistId)
+                Unit
+            } else {
+                throw Exception(response.errorMessage ?: "移除失败")
+            }
+        }
+    }
+
+    override suspend fun createPlaylist(name: String, privacy: Int): Result<UserPlaylist> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val response = mineService.createPlaylist(name = name, privacy = privacy)
+            if ((response.code ?: 0) != 200) {
+                throw Exception("新建歌单失败: code=${response.code}")
+            }
+            val pl = response.playlist
+            UserPlaylist(
+                id = pl?.id ?: response.id ?: 0L,
+                name = pl?.name ?: name,
+                coverUrl = pl?.coverImgUrl,
+                trackCount = pl?.trackCount ?: 0,
+                playCount = pl?.playCount ?: 0L,
+                isLikedHero = false,
+                creatorName = pl?.creator?.nickname,
+                description = pl?.description
+            )
         }
     }
 }
