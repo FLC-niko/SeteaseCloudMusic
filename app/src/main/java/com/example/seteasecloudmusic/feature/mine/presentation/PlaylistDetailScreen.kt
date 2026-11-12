@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -124,6 +125,7 @@ fun PlaylistDetailScreen(
     }
 
     var showMoreSheet by remember { mutableStateOf(false) }
+    var selectedTrackForAction by remember { mutableStateOf<Track?>(null) }
 
     val handleStyleChange: (PlaylistDetailStyle) -> Unit = { newStyle ->
         currentStyle = newStyle
@@ -284,7 +286,8 @@ fun PlaylistDetailScreen(
                                     index = index + 1,
                                     track = track,
                                     isDark = paneDark,
-                                    onClick = { onPlayTrack(track) }
+                                    onClick = { onPlayTrack(track) },
+                                    onMoreClick = { selectedTrackForAction = track }
                                 )
                             }
                             HorizontalDivider(
@@ -343,8 +346,17 @@ fun PlaylistDetailScreen(
                     onPlayAll = onPlayAll,
                     onShufflePlay = handleShuffle,
                     onOpenMoreMenu = { showMoreSheet = true },
+                    onTrackMoreClick = { selectedTrackForAction = it },
                     isLoading = isLoading,
                     lazyListState = listState
+                )
+            }
+
+            // 歌曲更多操作二级菜单底栏（竖置三点点击后弹出的抽屉）
+            selectedTrackForAction?.let { track ->
+                TrackActionSheet(
+                    track = track,
+                    onDismiss = { selectedTrackForAction = null }
                 )
             }
 
@@ -413,6 +425,7 @@ private fun CompactPlaylistDetailScreen(
     onPlayAll: () -> Unit,
     onShufflePlay: () -> Unit,
     onOpenMoreMenu: () -> Unit,
+    onTrackMoreClick: (Track) -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     lazyListState: androidx.compose.foundation.lazy.LazyListState
@@ -486,7 +499,8 @@ private fun CompactPlaylistDetailScreen(
                             index = index + 1,
                             track = track,
                             isDark = isDark,
-                            onClick = { onPlayTrack(track) }
+                            onClick = { onPlayTrack(track) },
+                            onMoreClick = { onTrackMoreClick(track) }
                         )
                     }
                     if (index < detail.tracks.lastIndex) {
@@ -660,7 +674,8 @@ private fun PlaylistDetailTrackRow(
     index: Int,
     track: Track,
     isDark: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -739,6 +754,19 @@ private fun PlaylistDetailTrackRow(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // 4. 右侧竖置三个点（更多操作）
+        IconButton(
+            onClick = onMoreClick,
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "更多操作",
+                tint = if (isDark) Color.White.copy(alpha = 0.60f) else PlaylistTextSecondary,
+                modifier = Modifier.size(20.dp)
             )
         }
     }

@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- 三条列表横线（线条粗细统一为 50） -->
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="50"
+        android:strokeLineCap="round"
+        android:pathData="M160,280 L520,280" />
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="50"
+        android:strokeLineCap="round"
+        android:pathData="M160,512 L864,512" />
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="50"
+        android:strokeLineCap="round"
+        android:pathData="M160,744 L864,744" />
+    <!-- 右上角加号（线条粗细统一为 50） -->
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="50"
+        android:strokeLineCap="round"
+        android:pathData="M740,163 L740,397" />
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="50"
+        android:strokeLineCap="round"
+        android:pathData="M623,280 L857,280" />
+</vector>

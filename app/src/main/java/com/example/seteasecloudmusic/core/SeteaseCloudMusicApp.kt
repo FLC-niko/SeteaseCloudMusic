@@ -7,12 +7,14 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import dagger.hilt.android.HiltAndroidApp
+import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 
 @HiltAndroidApp
 class SeteaseCloudMusicApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        FavoriteTracksManager.init(this)
         // 全局注册带磁盘持久化缓存的 ImageLoader，确保冷启动与离线秒显图片
         coil.Coil.setImageLoader(newImageLoader())
     }

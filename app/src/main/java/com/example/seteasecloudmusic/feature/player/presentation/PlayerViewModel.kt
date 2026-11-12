@@ -44,8 +44,7 @@ class PlayerViewModel @Inject constructor(
     private val _isLyricsLoading = MutableStateFlow(false)
     val isLyricsLoading: StateFlow<Boolean> = _isLyricsLoading.asStateFlow()
 
-    private val _likedTrackIds = MutableStateFlow<Set<Long>>(emptySet())
-    val likedTrackIds: StateFlow<Set<Long>> = _likedTrackIds.asStateFlow()
+    val likedTrackIds: StateFlow<Set<Long>> = com.example.seteasecloudmusic.core.player.FavoriteTracksManager.likedTrackIds
 
     private var currentLyricTrackId: Long? = null
     private var lyricRequestId = 0L
@@ -99,8 +98,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun toggleTrackLiked(trackId: Long) {
-        val current = _likedTrackIds.value
-        _likedTrackIds.value = if (trackId in current) current - trackId else current + trackId
+        com.example.seteasecloudmusic.core.player.FavoriteTracksManager.toggleLiked(trackId)
     }
 
     fun onPlayPause() {

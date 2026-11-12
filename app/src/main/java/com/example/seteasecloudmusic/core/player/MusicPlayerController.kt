@@ -508,6 +508,46 @@ class MusicPlayerController @Inject constructor(
         replaceQueueAndPlay(listOf(track), startIndex = 0)
     }
 
+    /**
+     * 将歌曲插入到当前播放队列中紧接着当前播放曲目的位置（下一首播放）
+     */
+    fun insertNext(track: Track) {
+        val state = _playbackState.value
+        val queue = state.queueTracks.toMutableList()
+        if (queue.isEmpty()) {
+            replaceQueueAndPlay(listOf(track), startIndex = 0)
+            return
+        }
+
+        val currentIndex = state.currentQueueIndex
+        val existingIndex = queue.indexOfFirst { it.id == track.id }
+
+        if (existingIndex == currentIndex && currentIndex != -1) {
+            return
+        }
+
+        var newCurrentIndex = currentIndex
+        if (existingIndex != -1) {
+            queue.removeAt(existingIndex)
+            if (existingIndex < currentIndex) {
+                newCurrentIndex--
+            }
+        }
+
+        val insertIndex = if (newCurrentIndex in queue.indices) newCurrentIndex + 1 else queue.size
+        queue.add(insertIndex, track)
+
+        _playbackState.update {
+            it.copy(
+                queueTracks = queue,
+                currentQueueIndex = newCurrentIndex
+            )
+        }
+
+        prefetchNeighbors(newCurrentIndex)
+        persistCurrentState()
+    }
+
     fun playNext() {
         playNextInternal()
     }
