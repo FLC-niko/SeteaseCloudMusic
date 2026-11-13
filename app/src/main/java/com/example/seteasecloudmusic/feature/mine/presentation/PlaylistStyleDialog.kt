@@ -74,7 +74,8 @@ fun PlaylistMoreActionSheet(
     onToggleColorBackground: (Boolean) -> Unit,
     onSelectStyle: (PlaylistDetailStyle) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onEnterEditMode: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var currentLevel by remember { mutableStateOf(PlaylistMoreMenuLevel.MAIN) }
@@ -190,7 +191,12 @@ fun PlaylistMoreActionSheet(
                                         shape = RoundedCornerShape(18.dp)
                                     )
                                     .clickable {
-                                        Toast.makeText(context, "歌曲排序功能即将推出", Toast.LENGTH_SHORT).show()
+                                        if (onEnterEditMode != null) {
+                                            onDismiss()
+                                            onEnterEditMode()
+                                        } else {
+                                            Toast.makeText(context, "歌曲排序功能即将推出", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                     .padding(horizontal = 16.dp, vertical = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically

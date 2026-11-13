@@ -587,7 +587,13 @@ fun AppNavigation(
             }
         }
         // --- 顶层悬浮导航栏及独立搜索按钮 ---
-        if (!useRail) {
+        val isBottomChromeHidden by PlayerEntryPoints.isBottomChromeHidden.collectAsStateWithLifecycle()
+        val bottomChromeHideProgress by animateFloatAsState(
+            targetValue = if (isBottomChromeHidden) 1f else 0f,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 340f),
+            label = "bottomChromeHideProgress"
+        )
+        if (!useRail && bottomChromeHideProgress < 0.999f) {
         AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(2f)) {
         BoxWithConstraints(
             modifier = Modifier
@@ -602,8 +608,8 @@ fun AppNavigation(
                 .height(navBarHeight).testTag("horizontal_glass_dock")
                 .graphicsLayer {
                     val playerOpenSink = (nowPlayingProgress.value * 1.25f).coerceIn(0f, 1f)
-                    alpha = 1f - playerOpenSink
-                    translationY = playerOpenSink * 48.dp.toPx()
+                    alpha = (1f - playerOpenSink) * (1f - bottomChromeHideProgress)
+                    translationY = playerOpenSink * 48.dp.toPx() + bottomChromeHideProgress * 150.dp.toPx()
                     scaleX = hintScale
                     scaleY = hintScale
                     transformOrigin = TransformOrigin(0.5f, 1f)
@@ -943,7 +949,7 @@ fun AppNavigation(
         val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
         val searchFadeOut = if (useRail) 1f else (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
-        val isMiniPlayerVisible = searchFadeOut > 0.001f
+        val isMiniPlayerVisible = searchFadeOut > 0.001f && bottomChromeHideProgress < 0.999f
 
         if (isMiniPlayerVisible && !useRail) {
             val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
@@ -957,7 +963,7 @@ fun AppNavigation(
                 playbackStateFlow = playerViewModel.playbackState,
                 contentProgress = miniPlayerChromeMotion.contentProgress,
                 playerTransitionProgress = nowPlayingProgress.asState(),
-                enabled = (useRail || (!isSearchExpanded && searchProgress < 0.01f)) && !showNowPlaying,
+                enabled = (useRail || (!isSearchExpanded && searchProgress < 0.01f)) && !showNowPlaying && !isBottomChromeHidden,
                 onPlayPauseClick = { playerViewModel.onPlayPause() },
                 onPlaylistClick = { showPlaylistQueueSheet = true },
                 onNextClick = { playerViewModel.onNext() },
@@ -994,8 +1000,8 @@ fun AppNavigation(
                         val shellFade = if (showNowPlaying) {
                             (1f - playerBackgroundAlpha(nowPlayingProgress.value) * 1.15f).coerceIn(0f, 1f)
                         } else 1f
-                        alpha = searchFadeOut * shellFade
-                        translationY = if (useRail) 0f else searchProgress * 60.dp.toPx()
+                        alpha = searchFadeOut * shellFade * (1f - bottomChromeHideProgress)
+                        translationY = (if (useRail) 0f else searchProgress * 60.dp.toPx()) + bottomChromeHideProgress * 180.dp.toPx()
                         scaleX = hintScale
                         scaleY = hintScale
                         transformOrigin = TransformOrigin(0.5f, 1f)

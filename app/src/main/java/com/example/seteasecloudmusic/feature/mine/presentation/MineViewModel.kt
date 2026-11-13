@@ -561,4 +561,120 @@ class MineViewModel @Inject constructor(
             )
         }
     }
+
+    /**
+     * 更新歌单内部曲目排序（包括我喜欢的音乐、自建歌单与本地音乐）
+     */
+    fun updateTrackOrder(playlistId: Long, reorderedTracks: List<Track>) {
+        val active = _uiState.value.activePlaylistDetail
+        val updatedActive = if (active?.id == playlistId) {
+            active.copy(tracks = reorderedTracks)
+        } else active
+
+        if (playlistId == LOCAL_PLAYLIST_ID) {
+            localMusicRepository.updateTrackOrder(reorderedTracks)
+            _uiState.update { current ->
+                current.copy(
+                    localSongs = reorderedTracks,
+                    activePlaylistDetail = updatedActive
+                )
+            }
+        } else {
+            _uiState.update { current ->
+                current.copy(activePlaylistDetail = updatedActive)
+            }
+            updatedActive?.let { detail ->
+                playlistDetailCache[playlistId] = detail
+                mineRepository.savePlaylistDetailPreview(detail)
+            }
+            viewModelScope.launch {
+                val result = mineRepository.updatePlaylistTrackOrder(
+                    playlistId = playlistId,
+                    trackIds = reorderedTracks.map { it.id }
+                )
+                if (result.isSuccess && updatedActive != null) {
+                    mineRepository.savePlaylistDetailPreview(updatedActive)
+                }
+            }
+        }
+    }
+
+    /**
+     * 批量从歌单中移除歌曲（我喜欢的音乐则取消喜欢，自建歌单则网络删除，本地音乐则从本地移除）
+     */
+    fun removeTracksFromPlaylist(playlistId: Long, trackIds: Set<Long>) {
+        if (trackIds.isEmpty()) return
+        val active = _uiState.value.activePlaylistDetail ?: return
+        val remainingTracks = active.tracks.filterNot { it.id in trackIds }
+        val updatedDetail = active.copy(
+            tracks = remainingTracks,
+            trackCount = remainingTracks.size
+        )
+
+        if (playlistId == LOCAL_PLAYLIST_ID) {
+            localMusicRepository.removeTracks(trackIds)
+            _uiState.update { current ->
+                current.copy(
+                    localSongs = remainingTracks,
+                    activePlaylistDetail = updatedDetail
+                )
+            }
+        } else if (active.id == _uiState.value.likedPlaylist?.id || active.name.contains("喜欢")) {
+            trackIds.forEach { id ->
+                FavoriteTracksManager.setLiked(id, false)
+                viewModelScope.launch {
+                    mineRepository.likeTrack(id, false)
+                }
+            }
+            playlistDetailCache[playlistId] = updatedDetail
+            mineRepository.savePlaylistDetailPreview(updatedDetail)
+            _uiState.update { current ->
+                current.copy(
+                    activePlaylistDetail = updatedDetail,
+                    likedPlaylist = current.likedPlaylist?.copy(trackCount = remainingTracks.size)
+                )
+            }
+        } else {
+            viewModelScope.launch {
+                mineRepository.removeTracksFromPlaylist(playlistId, trackIds.toList())
+            }
+            playlistDetailCache[playlistId] = updatedDetail
+            mineRepository.savePlaylistDetailPreview(updatedDetail)
+            _uiState.update { current ->
+                val updatedCreated = current.createdPlaylists.map { pl ->
+                    if (pl.id == playlistId) pl.copy(trackCount = remainingTracks.size) else pl
+                }
+                current.copy(
+                    activePlaylistDetail = updatedDetail,
+                    createdPlaylists = updatedCreated
+                )
+            }
+        }
+    }
+
+    /**
+     * 当多首歌曲成功收藏到目标自建歌单时，批量更新歌单曲目数与详情缓存
+     */
+    fun onTracksAddedToPlaylist(playlistId: Long, newAddedTracks: List<Track>) {
+        if (newAddedTracks.isEmpty()) return
+        _uiState.update { current ->
+            val updatedCreated = current.createdPlaylists.map { pl ->
+                if (pl.id == playlistId) pl.copy(trackCount = pl.trackCount + newAddedTracks.size) else pl
+            }
+            val active = current.activePlaylistDetail
+            val updatedActive = if (active?.id == playlistId) {
+                val newTracks = active.tracks + newAddedTracks.filterNot { nt -> active.tracks.any { it.id == nt.id } }
+                active.copy(tracks = newTracks, trackCount = newTracks.size)
+            } else active
+
+            if (updatedActive != null && active?.id == playlistId) {
+                playlistDetailCache[playlistId] = updatedActive
+            }
+
+            current.copy(
+                createdPlaylists = updatedCreated,
+                activePlaylistDetail = updatedActive
+            )
+        }
+    }
 }

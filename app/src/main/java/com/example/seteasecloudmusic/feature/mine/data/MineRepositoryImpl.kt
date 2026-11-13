@@ -12,12 +12,15 @@ import com.example.seteasecloudmusic.feature.mine.domain.repository.MineReposito
 import com.example.seteasecloudmusic.feature.mine.domain.repository.PlaylistTrackAlreadyExistsException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 class MineRepositoryImpl @Inject constructor(
     private val mineService: MineService,
     private val mineCacheManager: MineCacheManager
 ) : MineRepository {
+
+    private val playlistServerTrackIds = ConcurrentHashMap<Long, List<Long>>()
 
     override fun getCachedUserPlaylists(userId: Long): UserPlaylistsGroup? {
         return mineCacheManager.getUserPlaylists(userId)
@@ -156,6 +159,13 @@ class MineRepositoryImpl @Inject constructor(
                 tracks = tracks
             )
 
+            val allServerIds = (pl.trackIds ?: emptyList()).mapNotNull { it.id?.takeIf { id -> id > 0L } }
+            if (allServerIds.isNotEmpty()) {
+                playlistServerTrackIds[playlistId] = allServerIds
+            } else if (tracks.isNotEmpty()) {
+                playlistServerTrackIds[playlistId] = tracks.map { it.id }
+            }
+
             // 轻量持久化歌单首屏曲目（前20首）
             mineCacheManager.savePlaylistDetailPreview(detail)
 
@@ -210,6 +220,24 @@ class MineRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun addTracksToPlaylist(playlistId: Long, trackIds: List<Long>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            if (trackIds.isEmpty()) return@runCatchingCancellable Unit
+            val response = mineService.updatePlaylistTracks(
+                op = "add",
+                pid = playlistId,
+                tracks = trackIds.joinToString(","),
+                timestamp = System.currentTimeMillis()
+            )
+            if (response.isSuccess || response.isAlreadyExists) {
+                mineCacheManager.evictPlaylistDetail(playlistId)
+                Unit
+            } else {
+                throw Exception(response.errorMessage ?: "添加失败")
+            }
+        }
+    }
+
     override suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long): Result<Unit> = withContext(Dispatchers.IO) {
         runCatchingCancellable {
             val response = mineService.updatePlaylistTracks(
@@ -218,6 +246,27 @@ class MineRepositoryImpl @Inject constructor(
                 tracks = trackId.toString()
             )
             if (response.isSuccess) {
+                mineCacheManager.evictPlaylistDetail(playlistId)
+                Unit
+            } else {
+                throw Exception(response.errorMessage ?: "移除失败")
+            }
+        }
+    }
+
+    override suspend fun removeTracksFromPlaylist(playlistId: Long, trackIds: List<Long>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            if (trackIds.isEmpty()) return@runCatchingCancellable Unit
+            val response = mineService.updatePlaylistTracks(
+                op = "del",
+                pid = playlistId,
+                tracks = trackIds.joinToString(",")
+            )
+            if (response.isSuccess) {
+                val removedSet = trackIds.toHashSet()
+                playlistServerTrackIds[playlistId]?.let { existing ->
+                    playlistServerTrackIds[playlistId] = existing.filterNot { it in removedSet }
+                }
                 mineCacheManager.evictPlaylistDetail(playlistId)
                 Unit
             } else {
@@ -243,6 +292,28 @@ class MineRepositoryImpl @Inject constructor(
                 creatorName = pl?.creator?.nickname,
                 description = pl?.description
             )
+        }
+    }
+
+    override suspend fun updatePlaylistTrackOrder(playlistId: Long, trackIds: List<Long>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            if (trackIds.isEmpty()) return@runCatchingCancellable Unit
+            val passedSet = trackIds.toHashSet()
+            val tailIds = playlistServerTrackIds[playlistId]?.filterNot { it in passedSet }.orEmpty()
+            val finalIds = trackIds + tailIds
+            val idsJson = finalIds.joinToString(prefix = "[", postfix = "]", separator = ",")
+            val response = mineService.updatePlaylistTrackOrder(
+                pid = playlistId,
+                ids = idsJson,
+                timestamp = System.currentTimeMillis()
+            )
+            if ((response.code ?: 0) == 200) {
+                playlistServerTrackIds[playlistId] = finalIds
+                mineCacheManager.evictPlaylistDetail(playlistId)
+                Unit
+            } else {
+                throw Exception(response.message ?: "同步歌曲排序失败: code=${response.code}")
+            }
         }
     }
 }

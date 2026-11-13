@@ -263,6 +263,15 @@ class LocalMusicRepositoryImpl @Inject constructor(
             .trim()
     }
 
+    override fun removeTracks(trackIds: Set<Long>) {
+        val updated = _localTracksFlow.value.filterNot { it.id in trackIds }
+        _localTracksFlow.value = updated
+    }
+
+    override fun updateTrackOrder(tracks: List<Track>) {
+        _localTracksFlow.value = tracks
+    }
+
     companion object {
         private const val KEY_CUSTOM_DIR = "custom_music_dir_path"
     }

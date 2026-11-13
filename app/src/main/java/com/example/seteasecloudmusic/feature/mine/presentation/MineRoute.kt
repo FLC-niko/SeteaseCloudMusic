@@ -36,6 +36,9 @@ fun MineRoute(
         onSetLocalDirectory = viewModel::setLocalDirectoryAndScan,
         onTrackLikedChanged = viewModel::onTrackLikedChanged,
         onTrackAddedToPlaylist = viewModel::onTrackAddedToPlaylist,
+        onTracksAddedToPlaylist = viewModel::onTracksAddedToPlaylist,
+        onTracksReordered = viewModel::updateTrackOrder,
+        onDeleteTracks = viewModel::removeTracksFromPlaylist,
         modifier = modifier,
         lazyListState = lazyListState,
         isForeground = isForeground

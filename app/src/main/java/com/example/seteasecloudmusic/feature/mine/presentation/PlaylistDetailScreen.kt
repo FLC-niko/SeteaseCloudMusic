@@ -1,28 +1,53 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
 import android.content.Context
+import android.widget.Toast
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -38,8 +63,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,15 +74,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,19 +95,27 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
@@ -87,6 +127,7 @@ import com.example.seteasecloudmusic.core.ui.adaptive.MusicPaneHeader
 import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicMoreIcon
 import com.kyant.backdrop.Backdrop
@@ -116,7 +157,10 @@ fun PlaylistDetailScreen(
     embedded: Boolean = false,
     listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
     onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
-    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
+    onTracksAddedToPlaylist: ((Long, List<Track>) -> Unit)? = null,
+    onTracksReordered: ((List<Track>) -> Unit)? = null,
+    onDeleteTracks: ((Set<Long>) -> Unit)? = null
 ) {
     val bottom = LocalContentBottomPadding.current
     val window = LocalAdaptiveWindow.current
@@ -130,17 +174,31 @@ fun PlaylistDetailScreen(
     val likedTrackIds by FavoriteTracksManager.likedTrackIds.collectAsState()
 
     val effectiveTracks = remember(detail.tracks, isLikedPlaylist, likedTrackIds) {
-        if (isLikedPlaylist) {
+        if (isLikedPlaylist && likedTrackIds.isNotEmpty()) {
             detail.tracks.filter { it.id in likedTrackIds }
         } else {
             detail.tracks
         }
     }
 
-    var localTracks by remember(detail.id, effectiveTracks) { mutableStateOf(effectiveTracks) }
+    var localTracks by remember(detail.id) { mutableStateOf(effectiveTracks) }
+
+    var isEditMode by remember { mutableStateOf(false) }
+    var selectedTrackIds by remember { mutableStateOf(emptySet<Long>()) }
+    var showBatchAddToPlaylistSheet by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(effectiveTracks) {
-        localTracks = effectiveTracks
+        if (!isEditMode) {
+            localTracks = effectiveTracks
+        }
+    }
+
+    DisposableEffect(isEditMode) {
+        PlayerEntryPoints.setBottomChromeHidden(isEditMode)
+        onDispose {
+            PlayerEntryPoints.setBottomChromeHidden(false)
+        }
     }
 
     val currentDetail = remember(detail, localTracks) {
@@ -157,6 +215,80 @@ fun PlaylistDetailScreen(
 
     var showMoreSheet by remember { mutableStateOf(false) }
     var selectedTrackForAction by remember { mutableStateOf<Track?>(null) }
+
+    val commitReorderIfNeeded: () -> Unit = {
+        if (localTracks.map { it.id } != effectiveTracks.map { it.id }) {
+            onTracksReordered?.invoke(localTracks)
+        }
+    }
+
+    val handlePlayNextSelected: () -> Unit = {
+        if (selectedTrackIds.isEmpty()) {
+            Toast.makeText(context, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+        } else {
+            val selected = localTracks.filter { it.id in selectedTrackIds }
+            PlayerEntryPoints.playerController().insertNextBatch(selected)
+            Toast.makeText(context, "已添加 ${selected.size} 首歌曲到下一首播放", Toast.LENGTH_SHORT).show()
+            commitReorderIfNeeded()
+            isEditMode = false
+            selectedTrackIds = emptySet()
+        }
+    }
+
+    val handleAddToPlaylistSelected: () -> Unit = {
+        if (selectedTrackIds.isEmpty()) {
+            Toast.makeText(context, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+        } else {
+            showBatchAddToPlaylistSheet = true
+        }
+    }
+
+    val handleDownloadSelected: () -> Unit = {
+        if (selectedTrackIds.isEmpty()) {
+            Toast.makeText(context, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "已将 ${selectedTrackIds.size} 首歌曲加入下载队列", Toast.LENGTH_SHORT).show()
+            commitReorderIfNeeded()
+            isEditMode = false
+            selectedTrackIds = emptySet()
+        }
+    }
+
+    val handleDeleteSelected: () -> Unit = {
+        if (selectedTrackIds.isEmpty()) {
+            Toast.makeText(context, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+        } else {
+            showDeleteConfirmDialog = true
+        }
+    }
+
+    val handleToggleSelect: (Long) -> Unit = { trackId ->
+        selectedTrackIds = if (trackId in selectedTrackIds) {
+            selectedTrackIds - trackId
+        } else {
+            selectedTrackIds + trackId
+        }
+    }
+
+    val handleSelectAll: () -> Unit = {
+        val allSelected = localTracks.isNotEmpty() && selectedTrackIds.size == localTracks.size
+        selectedTrackIds = if (allSelected) emptySet() else localTracks.map { it.id }.toSet()
+    }
+
+    val handleEnterEditMode: (Track) -> Unit = { track ->
+        isEditMode = true
+        selectedTrackIds = setOf(track.id)
+    }
+
+    val handleExitEditMode: () -> Unit = {
+        commitReorderIfNeeded()
+        isEditMode = false
+        selectedTrackIds = emptySet()
+    }
+
+    val handleTracksReordered: (List<Track>) -> Unit = { reordered ->
+        localTracks = reordered
+    }
 
     val handleStyleChange: (PlaylistDetailStyle) -> Unit = { newStyle ->
         currentStyle = newStyle
@@ -209,7 +341,11 @@ fun PlaylistDetailScreen(
         val fullWidthPx = with(density) { maxWidth.toPx() }
         val isPredictiveGestureActive = predictiveTranslationX.value > 0.5f
 
-        if (isCardMode && isPredictiveBackEnabled) {
+        if (isEditMode) {
+            BackHandler(enabled = true) {
+                handleExitEditMode()
+            }
+        } else if (isCardMode && isPredictiveBackEnabled) {
             PredictiveBackHandler(enabled = true) { progressFlow ->
                 try {
                     progressFlow.collect { backEvent ->
@@ -272,58 +408,176 @@ fun PlaylistDetailScreen(
         ) {
             if (embedded || split) {
                 val songs: @Composable () -> Unit = {
-                    LazyColumn(
-                        Modifier.fillMaxSize(),
-                        state = listState,
-                        contentPadding = PaddingValues(top = 12.dp, bottom = bottom + 16.dp)
-                    ) {
-                        item(key = "detail_title") {
-                            if (split && window.isTabletop) {
-                                PlaylistHeroAppleMusicSection(currentDetail, onPlayAll, isDark = paneDark, showArtwork = false)
-                            }
-                            if (embedded) {
-                                MusicPaneHeader(currentDetail.displayTitle,
-                                    "${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲", onClose,
-                                    onMore = { showMoreSheet = true })
-                            } else {
-                                Text("${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲",
-                                    color = if (expandedDark) Color.White.copy(alpha = 0.65f) else PlaylistTextSecondary,
-                                    fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
-                            }
-                        }
-                        if (embedded) {
-                            item(key = "playlist_hero") {
-                                Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                                    RenderPlaylistHero(
-                                        style = currentStyle,
-                                        detail = currentDetail,
-                                        dominantDarkColor = solidBackgroundColor,
-                                        onPlayAll = onPlayAll,
-                                        isDark = isDark
+                    val splitBottomInsetPx = with(density) { (64.dp + bottom).toPx() }
+                    val dragReorderState = rememberPlaylistDragReorderState(
+                        lazyListState = listState,
+                        tracks = currentDetail.tracks,
+                        topViewportInsetPx = 0f,
+                        bottomViewportInsetPx = splitBottomInsetPx,
+                        onTracksReordered = handleTracksReordered
+                    )
+
+                    Box(Modifier.fillMaxSize()) {
+                        Column(Modifier.fillMaxSize()) {
+                            AnimatedVisibility(
+                                visible = isEditMode,
+                                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(160))
+                            ) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .padding(horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        val allSelected = currentDetail.tracks.isNotEmpty() && selectedTrackIds.size == currentDetail.tracks.size
+                                        Row(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable(onClick = handleSelectAll)
+                                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            SelectionCheckbox(isSelected = allSelected, isDark = paneDark)
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = "全选",
+                                                fontSize = 15.sp,
+                                                color = if (paneDark) Color.White else PlaylistTextPrimary
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "完成",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = PlaylistAccentColor,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable(onClick = handleExitEditMode)
+                                                .padding(vertical = 6.dp, horizontal = 8.dp)
+                                        )
+                                    }
+                                    HorizontalDivider(
+                                        color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
+                                        thickness = 0.5.dp
                                     )
                                 }
                             }
-                        }
-                        if (isLoading && currentDetail.tracks.isEmpty()) {
-                            item {
-                                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(color = if (paneDark) Color.White else PlaylistAccentColor)
+
+                            LazyColumn(
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .playlistReorderGesture(state = dragReorderState, enabled = isEditMode),
+                                state = listState,
+                                contentPadding = PaddingValues(top = 12.dp, bottom = 64.dp + bottom + 16.dp)
+                            ) {
+                                item(key = "detail_title") {
+                                    if (split && window.isTabletop) {
+                                        PlaylistHeroAppleMusicSection(currentDetail, onPlayAll, isDark = paneDark, showArtwork = false)
+                                    }
+                                    if (embedded) {
+                                        MusicPaneHeader(currentDetail.displayTitle,
+                                            "${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲", onClose,
+                                            onMore = { showMoreSheet = true })
+                                    } else {
+                                        Text("${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲",
+                                            color = if (expandedDark) Color.White.copy(alpha = 0.65f) else PlaylistTextSecondary,
+                                            fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+                                    }
+                                }
+                                if (embedded) {
+                                    item(key = "playlist_hero") {
+                                        Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                                            RenderPlaylistHero(
+                                                style = currentStyle,
+                                                detail = currentDetail,
+                                                dominantDarkColor = solidBackgroundColor,
+                                                onPlayAll = onPlayAll,
+                                                isDark = isDark
+                                            )
+                                        }
+                                    }
+                                }
+                                if (isLoading && currentDetail.tracks.isEmpty()) {
+                                    item {
+                                        Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(color = if (paneDark) Color.White else PlaylistAccentColor)
+                                        }
+                                    }
+                                }
+                                itemsIndexed(currentDetail.tracks, key = { _, track -> track.id }) { index, track ->
+                                    val isSelected = track.id in selectedTrackIds
+                                    val isActivelyDragging = dragReorderState.isDragging(track.id)
+                                    val isElevated = dragReorderState.isElevated(track.id)
+                                    val highlightAlpha by animateFloatAsState(
+                                        targetValue = if (isActivelyDragging) 0.10f else 0f,
+                                        animationSpec = tween(160),
+                                        label = "splitDragBg"
+                                    )
+
+                                    Column(
+                                        modifier = Modifier
+                                            .zIndex(if (isElevated) 10f else 0f)
+                                            .graphicsLayer {
+                                                translationY = dragReorderState.translationYFor(track.id)
+                                            }
+                                            .animateItem(
+                                                placementSpec = if (isActivelyDragging) null else spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow
+                                                )
+                                            )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(horizontal = 12.dp)
+                                                .background(
+                                                    color = if (paneDark) Color.White.copy(alpha = highlightAlpha) else Color.Black.copy(alpha = highlightAlpha * 0.5f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                        ) {
+                                            PlaylistDetailTrackRow(
+                                                index = index + 1,
+                                                track = track,
+                                                isDark = paneDark,
+                                                isEditMode = isEditMode,
+                                                isSelected = isSelected,
+                                                onClick = { onPlayTrack(track) },
+                                                onLongClick = { handleEnterEditMode(track) },
+                                                onToggleSelect = { handleToggleSelect(track.id) },
+                                                onMoreClick = { selectedTrackForAction = track }
+                                            )
+                                        }
+                                        if (!isElevated) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(start = 88.dp, end = 20.dp),
+                                                color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                        itemsIndexed(currentDetail.tracks, key = { _, track -> track.id }) { index, track ->
-                            Box(Modifier.padding(horizontal = 12.dp)) {
-                                PlaylistDetailTrackRow(
-                                    index = index + 1,
-                                    track = track,
-                                    isDark = paneDark,
-                                    onClick = { onPlayTrack(track) },
-                                    onMoreClick = { selectedTrackForAction = track }
-                                )
-                            }
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 88.dp, end = 20.dp),
-                                color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor
+
+                        AnimatedVisibility(
+                            visible = isEditMode,
+                            enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(200)),
+                            exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(160)),
+                            modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
+                        ) {
+                            PlaylistEditBottomBar(
+                                selectedCount = selectedTrackIds.size,
+                                isDark = paneDark,
+                                backgroundColor = if (paneDark) solidBackgroundColor else Color.White,
+                                onPlayNext = handlePlayNextSelected,
+                                onAddToPlaylist = handleAddToPlaylistSelected,
+                                onDownload = handleDownloadSelected,
+                                onDelete = handleDeleteSelected
                             )
                         }
                     }
@@ -378,6 +632,17 @@ fun PlaylistDetailScreen(
                     onShufflePlay = handleShuffle,
                     onOpenMoreMenu = { showMoreSheet = true },
                     onTrackMoreClick = { selectedTrackForAction = it },
+                    isEditMode = isEditMode,
+                    selectedTrackIds = selectedTrackIds,
+                    onToggleSelect = handleToggleSelect,
+                    onSelectAll = handleSelectAll,
+                    onExitEditMode = handleExitEditMode,
+                    onEnterEditMode = handleEnterEditMode,
+                    onTracksReordered = handleTracksReordered,
+                    onPlayNextSelected = handlePlayNextSelected,
+                    onAddToPlaylistSelected = handleAddToPlaylistSelected,
+                    onDownloadSelected = handleDownloadSelected,
+                    onDeleteSelected = handleDeleteSelected,
                     isLoading = isLoading,
                     lazyListState = listState
                 )
@@ -398,6 +663,78 @@ fun PlaylistDetailScreen(
                 )
             }
 
+            // 批量收藏到歌单底栏弹窗
+            if (showBatchAddToPlaylistSheet) {
+                val selectedTracks = remember(localTracks, selectedTrackIds) {
+                    localTracks.filter { it.id in selectedTrackIds }
+                }
+                AddToPlaylistBatchSheet(
+                    tracks = selectedTracks,
+                    currentPlaylistId = currentDetail.id,
+                    onDismiss = { showBatchAddToPlaylistSheet = false },
+                    onTracksAdded = { targetPlaylistId, addedTracks ->
+                        onTracksAddedToPlaylist?.invoke(targetPlaylistId, addedTracks)
+                        showBatchAddToPlaylistSheet = false
+                        isEditMode = false
+                        selectedTrackIds = emptySet()
+                    }
+                )
+            }
+
+            // 删除确认对话框
+            if (showDeleteConfirmDialog) {
+                val deleteMessage = if (currentDetail.id == LOCAL_PLAYLIST_ID) {
+                    "确定要从本地音乐列表中移除选中的 ${selectedTrackIds.size} 首歌曲吗？"
+                } else if (isLikedPlaylist) {
+                    "确定要从我喜欢的音乐中移除选中的 ${selectedTrackIds.size} 首歌曲吗？"
+                } else {
+                    "确定要从歌单「${currentDetail.name}」中删除选中的 ${selectedTrackIds.size} 首歌曲吗？"
+                }
+
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmDialog = false },
+                    title = {
+                        Text(
+                            text = "删除歌曲",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = deleteMessage,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val count = selectedTrackIds.size
+                                onDeleteTracks?.invoke(selectedTrackIds)
+                                localTracks = localTracks.filterNot { it.id in selectedTrackIds }
+                                selectedTrackIds = emptySet()
+                                isEditMode = false
+                                showDeleteConfirmDialog = false
+                                Toast.makeText(context, "已删除 $count 首歌曲", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text(
+                                text = "删除",
+                                color = PlaylistAccentColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                            Text(
+                                text = "取消",
+                                color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF666666)
+                            )
+                        }
+                    }
+                )
+            }
+
             // 更多操作与歌单壁纸二级菜单底栏（从底部冒出贴底展示）
             if (showMoreSheet) {
                 PlaylistMoreActionSheet(
@@ -405,7 +742,13 @@ fun PlaylistDetailScreen(
                     useColorBackground = useColorBackground,
                     onToggleColorBackground = handleToggleColorBackground,
                     onSelectStyle = handleStyleChange,
-                    onDismiss = { showMoreSheet = false }
+                    onDismiss = { showMoreSheet = false },
+                    onEnterEditMode = {
+                        isEditMode = true
+                        if (selectedTrackIds.isEmpty() && localTracks.isNotEmpty()) {
+                            selectedTrackIds = setOf(localTracks.first().id)
+                        }
+                    }
                 )
             }
         }
@@ -451,6 +794,306 @@ private fun ExpandedPlaylistToolbar(isDark: Boolean, onClose: () -> Unit, onMore
     }
 }
 
+private class PlaylistDragReorderState(
+    val lazyListState: LazyListState,
+    val topViewportInsetPx: Float,
+    val bottomViewportInsetPx: Float,
+    val touchSlopPx: Float,
+    private val tracksProvider: () -> List<Track>,
+    private val onTracksReordered: (List<Track>) -> Unit,
+    private val coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
+    var draggedTrackId by mutableStateOf<Long?>(null)
+    var settlingTrackId by mutableStateOf<Long?>(null)
+    var desiredItemTopY by mutableFloatStateOf(0f)
+    var rawDesiredItemTopY by mutableFloatStateOf(0f)
+    var hasMoved by mutableStateOf(false)
+    var totalDragDy by mutableFloatStateOf(0f)
+    var dragDirection by mutableIntStateOf(0)
+    val settleOffsetY = Animatable(0f)
+
+    fun isDragging(trackId: Long): Boolean = draggedTrackId == trackId
+
+    fun isElevated(trackId: Long): Boolean = draggedTrackId == trackId || settlingTrackId == trackId
+
+    fun translationYFor(trackId: Long): Float {
+        return when {
+            draggedTrackId == trackId -> {
+                if (!hasMoved) return 0f
+                val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == trackId }
+                if (info != null) desiredItemTopY - info.offset else 0f
+            }
+            settlingTrackId == trackId -> settleOffsetY.value
+            else -> 0f
+        }
+    }
+
+    fun startDrag(trackId: Long): Boolean {
+        val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == trackId } ?: return false
+        settlingTrackId = null
+        draggedTrackId = trackId
+        rawDesiredItemTopY = info.offset.toFloat()
+        desiredItemTopY = info.offset.toFloat()
+        hasMoved = false
+        totalDragDy = 0f
+        dragDirection = 0
+        return true
+    }
+
+    fun clampDesiredTopY(trackId: Long, candidateTopY: Float): Float {
+        val currentTracks = tracksProvider()
+        val currentIdx = currentTracks.indexOfFirst { it.id == trackId }
+        val layoutInfo = lazyListState.layoutInfo
+        val visibleItems = layoutInfo.visibleItemsInfo
+        val draggedInfo = visibleItems.firstOrNull { it.key == trackId } ?: return candidateTopY
+        if (currentIdx < 0 || currentTracks.isEmpty()) return draggedInfo.offset.toFloat()
+
+        val viewportTopLimit = layoutInfo.viewportStartOffset.toFloat() + topViewportInsetPx
+        val viewportBottomLimit = (layoutInfo.viewportEndOffset - bottomViewportInsetPx - draggedInfo.size).toFloat()
+
+        val firstTrackInfo = visibleItems.firstOrNull { it.key == currentTracks.first().id }
+        val lastTrackInfo = visibleItems.firstOrNull { it.key == currentTracks.last().id }
+
+        val minTop = when {
+            currentIdx == 0 -> draggedInfo.offset.toFloat()
+            firstTrackInfo != null -> maxOf(viewportTopLimit, firstTrackInfo.offset.toFloat())
+            else -> viewportTopLimit
+        }
+
+        val maxTop = when {
+            currentIdx == currentTracks.lastIndex -> draggedInfo.offset.toFloat()
+            lastTrackInfo != null -> minOf(viewportBottomLimit, (lastTrackInfo.offset + lastTrackInfo.size - draggedInfo.size).toFloat())
+            else -> viewportBottomLimit
+        }
+
+        return candidateTopY.coerceIn(minTop, maxOf(minTop, maxTop))
+    }
+
+    fun onDragMove(trackId: Long, deltaY: Float) {
+        if (draggedTrackId != trackId) return
+        totalDragDy += deltaY
+        rawDesiredItemTopY += deltaY
+        if (abs(deltaY) > 0.5f) {
+            dragDirection = if (deltaY > 0f) 1 else -1
+        }
+        if (!hasMoved) {
+            if (abs(totalDragDy) < touchSlopPx) return
+            hasMoved = true
+            dragDirection = if (totalDragDy > 0f) 1 else -1
+        }
+        desiredItemTopY = clampDesiredTopY(trackId, rawDesiredItemTopY)
+        rawDesiredItemTopY = desiredItemTopY
+        trySwap(trackId)
+    }
+
+    fun trySwap(trackId: Long) {
+        if (draggedTrackId != trackId || !hasMoved) return
+        val currentTracks = tracksProvider()
+        val currentIdx = currentTracks.indexOfFirst { it.id == trackId }
+        if (currentIdx < 0) return
+
+        val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
+        val draggedInfo = visibleItems.firstOrNull { it.key == trackId } ?: return
+        val draggedCenter = desiredItemTopY + draggedInfo.size / 2f
+
+        if (currentIdx < currentTracks.lastIndex) {
+            val nextTrack = currentTracks[currentIdx + 1]
+            val nextInfo = visibleItems.firstOrNull { it.key == nextTrack.id }
+            if (nextInfo != null && draggedInfo.index < nextInfo.index && draggedCenter > nextInfo.offset + nextInfo.size * 0.5f) {
+                val mutable = currentTracks.toMutableList()
+                mutable[currentIdx] = nextTrack
+                mutable[currentIdx + 1] = currentTracks[currentIdx]
+                onTracksReordered(mutable)
+                return
+            }
+        }
+
+        if (currentIdx > 0) {
+            val prevTrack = currentTracks[currentIdx - 1]
+            val prevInfo = visibleItems.firstOrNull { it.key == prevTrack.id }
+            if (prevInfo != null && prevInfo.index < draggedInfo.index && draggedCenter < prevInfo.offset + prevInfo.size * 0.5f) {
+                val mutable = currentTracks.toMutableList()
+                mutable[currentIdx] = prevTrack
+                mutable[currentIdx - 1] = currentTracks[currentIdx]
+                onTracksReordered(mutable)
+                return
+            }
+        }
+    }
+
+    fun endDrag(trackId: Long) {
+        if (draggedTrackId != trackId) return
+        val currentTranslation = translationYFor(trackId)
+        draggedTrackId = null
+        hasMoved = false
+        totalDragDy = 0f
+        dragDirection = 0
+        if (abs(currentTranslation) > 0.5f) {
+            settlingTrackId = trackId
+            coroutineScope.launch {
+                try {
+                    settleOffsetY.snapTo(currentTranslation)
+                    settleOffsetY.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                } finally {
+                    if (settlingTrackId == trackId) {
+                        settlingTrackId = null
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberPlaylistDragReorderState(
+    lazyListState: LazyListState,
+    tracks: List<Track>,
+    topViewportInsetPx: Float,
+    bottomViewportInsetPx: Float,
+    onTracksReordered: (List<Track>) -> Unit
+): PlaylistDragReorderState {
+    val coroutineScope = rememberCoroutineScope()
+    val tracksState = rememberUpdatedState(tracks)
+    val onReorderState = rememberUpdatedState(onTracksReordered)
+    val density = LocalDensity.current
+    val edgeZonePx = with(density) { 56.dp.toPx() }
+    val touchSlopPx = with(density) { 4.dp.toPx() }
+    val maxScrollSpeedPxPerSec = with(density) { 800.dp.toPx() }
+
+    val state = remember(lazyListState, coroutineScope, topViewportInsetPx, bottomViewportInsetPx, touchSlopPx) {
+        PlaylistDragReorderState(
+            lazyListState = lazyListState,
+            topViewportInsetPx = topViewportInsetPx,
+            bottomViewportInsetPx = bottomViewportInsetPx,
+            touchSlopPx = touchSlopPx,
+            tracksProvider = { tracksState.value },
+            onTracksReordered = { reordered -> onReorderState.value(reordered) },
+            coroutineScope = coroutineScope
+        )
+    }
+
+    LaunchedEffect(state.draggedTrackId, state.hasMoved) {
+        val activeId = state.draggedTrackId ?: return@LaunchedEffect
+        if (!state.hasMoved) return@LaunchedEffect
+        var lastFrameTimeNanos = 0L
+        while (state.draggedTrackId == activeId && state.hasMoved) {
+            withFrameNanos { frameTimeNanos ->
+                val dtSec = if (lastFrameTimeNanos == 0L) {
+                    0.016f
+                } else {
+                    ((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                }
+                lastFrameTimeNanos = frameTimeNanos
+
+                val currentTracks = tracksState.value
+                val currentIdx = currentTracks.indexOfFirst { it.id == activeId }
+                val layoutInfo = lazyListState.layoutInfo
+                val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
+                if (draggedInfo != null && currentIdx >= 0 && currentTracks.isNotEmpty()) {
+                    val beforePadding = -layoutInfo.viewportStartOffset.toFloat()
+                    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).toFloat()
+                    val topBound = topViewportInsetPx
+                    val bottomBound = (viewportHeight - bottomViewportInsetPx).coerceAtLeast(topBound + 1f)
+                    val effectiveEdge = minOf(edgeZonePx, (bottomBound - topBound) * 0.25f).coerceAtLeast(1f)
+
+                    val itemScreenTop = beforePadding + state.desiredItemTopY
+                    val itemScreenBottom = itemScreenTop + draggedInfo.size
+
+                    var scrollDelta = 0f
+                    if (state.dragDirection < 0 && currentIdx > 0 && itemScreenTop < topBound + effectiveEdge) {
+                        val firstTrackInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == currentTracks.first().id }
+                        val maxUpScroll = if (firstTrackInfo != null) {
+                            (topBound - (beforePadding + firstTrackInfo.offset)).coerceAtLeast(0f)
+                        } else {
+                            Float.POSITIVE_INFINITY
+                        }
+                        if (maxUpScroll > 0.5f && lazyListState.canScrollBackward) {
+                            val factor = (((topBound + effectiveEdge) - itemScreenTop) / effectiveEdge).coerceIn(0f, 1.5f)
+                            scrollDelta = (-maxScrollSpeedPxPerSec * factor * dtSec).coerceAtLeast(-maxUpScroll)
+                        }
+                    } else if (state.dragDirection > 0 && currentIdx < currentTracks.lastIndex && itemScreenBottom > bottomBound - effectiveEdge) {
+                        val lastTrackInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == currentTracks.last().id }
+                        val maxDownScroll = if (lastTrackInfo != null) {
+                            ((beforePadding + lastTrackInfo.offset + lastTrackInfo.size) - bottomBound).coerceAtLeast(0f)
+                        } else {
+                            Float.POSITIVE_INFINITY
+                        }
+                        if (maxDownScroll > 0.5f && lazyListState.canScrollForward) {
+                            val factor = ((itemScreenBottom - (bottomBound - effectiveEdge)) / effectiveEdge).coerceIn(0f, 1.5f)
+                            scrollDelta = (maxScrollSpeedPxPerSec * factor * dtSec).coerceAtMost(maxDownScroll)
+                        }
+                    }
+
+                    if (scrollDelta != 0f) {
+                        lazyListState.dispatchRawDelta(scrollDelta)
+                    }
+                    state.desiredItemTopY = state.clampDesiredTopY(activeId, state.rawDesiredItemTopY)
+                    state.rawDesiredItemTopY = state.desiredItemTopY
+                    state.trySwap(activeId)
+                }
+            }
+        }
+    }
+
+    return state
+}
+
+@Composable
+private fun Modifier.playlistReorderGesture(
+    state: PlaylistDragReorderState,
+    enabled: Boolean
+): Modifier {
+    if (!enabled) return this
+    val handleZoneWidthPx = with(LocalDensity.current) { 64.dp.toPx() }
+    return this.pointerInput(state, enabled) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (down.position.x < size.width - handleZoneWidthPx) return@awaitEachGesture
+            if (down.position.y < state.topViewportInsetPx || down.position.y > size.height - state.bottomViewportInsetPx) {
+                return@awaitEachGesture
+            }
+
+            val layoutInfo = state.lazyListState.layoutInfo
+            val pointerOffsetInItemSpace = down.position.y + layoutInfo.viewportStartOffset
+            val hitItem = layoutInfo.visibleItemsInfo.firstOrNull {
+                it.key is Long && pointerOffsetInItemSpace >= it.offset && pointerOffsetInItemSpace <= it.offset + it.size
+            } ?: return@awaitEachGesture
+
+            val trackId = hitItem.key as Long
+            down.consume()
+            if (!state.startDrag(trackId)) return@awaitEachGesture
+
+            var lastPointerY = down.position.y
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val pointerChange = event.changes.firstOrNull { it.id == down.id }
+                        ?: event.changes.firstOrNull()
+                        ?: break
+                    if (!pointerChange.pressed) {
+                        pointerChange.consume()
+                        break
+                    }
+                    pointerChange.consume()
+                    val deltaY = pointerChange.position.y - lastPointerY
+                    lastPointerY = pointerChange.position.y
+                    if (deltaY != 0f) {
+                        state.onDragMove(trackId, deltaY)
+                    }
+                }
+            } finally {
+                state.endDrag(trackId)
+            }
+        }
+    }
+}
+
 @Composable
 private fun CompactPlaylistDetailScreen(
     detail: PlaylistDetail,
@@ -464,12 +1107,26 @@ private fun CompactPlaylistDetailScreen(
     onShufflePlay: () -> Unit,
     onOpenMoreMenu: () -> Unit,
     onTrackMoreClick: (Track) -> Unit,
+    isEditMode: Boolean,
+    selectedTrackIds: Set<Long>,
+    onToggleSelect: (Long) -> Unit,
+    onSelectAll: () -> Unit,
+    onExitEditMode: () -> Unit,
+    onEnterEditMode: (Track) -> Unit,
+    onTracksReordered: (List<Track>) -> Unit,
+    onPlayNextSelected: () -> Unit,
+    onAddToPlaylistSelected: () -> Unit,
+    onDownloadSelected: () -> Unit,
+    onDeleteSelected: () -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     lazyListState: androidx.compose.foundation.lazy.LazyListState
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val collapseThreshold = if (currentStyle == PlaylistDetailStyle.APPLE_MUSIC) 260.dp else 160.dp
+    val context = LocalContext.current
+    val density = LocalDensity.current
 
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
@@ -477,6 +1134,18 @@ private fun CompactPlaylistDetailScreen(
     )
 
     val isPosterWall = currentStyle == PlaylistDetailStyle.POSTER_WALL || currentStyle == PlaylistDetailStyle.DYNAMIC_POSTER_WALL
+    val topViewportInsetPx = with(density) { (statusBarHeight + 54.dp + 44.dp).toPx() }
+    val bottomViewportInsetPx = with(density) { (60.dp + navBottom).toPx() }
+
+    val dragReorderState = rememberPlaylistDragReorderState(
+        lazyListState = lazyListState,
+        tracks = detail.tracks,
+        topViewportInsetPx = topViewportInsetPx,
+        bottomViewportInsetPx = bottomViewportInsetPx,
+        onTracksReordered = onTracksReordered
+    )
+
+    val constantBottomPadding = maxOf(LocalContentBottomPadding.current, 60.dp + navBottom) + 16.dp
 
     // 整页统一纯色沉浸背景，没有任何黑色断层和过渡色阶，彻底消除透光
     Box(
@@ -488,15 +1157,16 @@ private fun CompactPlaylistDetailScreen(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
+                .playlistReorderGesture(state = dragReorderState, enabled = isEditMode)
                 .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = if (isPosterWall) 0.dp else statusBarHeight + 12.dp,
-                bottom = LocalContentBottomPadding.current + 16.dp,
+                bottom = constantBottomPadding,
                 start = if (isPosterWall) 0.dp else 16.dp,
                 end = if (isPosterWall) 0.dp else 16.dp
             )
         ) {
-            // 1. 根据当前选择的风格渲染 Hero 头部（大封面墙 / 静态海报墙）
+            // 1. Hero 头部（原地保持，长按与退出不自动跳动列表）
             item(key = "playlist_hero") {
                 RenderPlaylistHero(
                     style = currentStyle,
@@ -509,7 +1179,7 @@ private fun CompactPlaylistDetailScreen(
                 Spacer(modifier = Modifier.height(20.dp))
             }
 
-            // 3. 曲目列表
+            // 2. 曲目列表（统一列表，不切换两套 LazyColumn，进入/退出原地过渡）
             if (detail.tracks.isEmpty() && isLoading) {
                 item(key = "loading_tracks") {
                     Box(
@@ -530,125 +1200,303 @@ private fun CompactPlaylistDetailScreen(
                     items = detail.tracks,
                     key = { _, track -> track.id }
                 ) { index, track ->
-                    Box(
-                        modifier = if (isPosterWall) Modifier.padding(horizontal = 16.dp) else Modifier
+                    val isSelected = track.id in selectedTrackIds
+                    val isActivelyDragging = dragReorderState.isDragging(track.id)
+                    val isElevated = dragReorderState.isElevated(track.id)
+                    val highlightAlpha by animateFloatAsState(
+                        targetValue = if (isActivelyDragging) 0.10f else 0f,
+                        animationSpec = tween(160),
+                        label = "compactDragBg"
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .zIndex(if (isElevated) 10f else 0f)
+                            .graphicsLayer {
+                                translationY = dragReorderState.translationYFor(track.id)
+                            }
+                            .animateItem(
+                                placementSpec = if (isActivelyDragging) null else spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
                     ) {
-                        PlaylistDetailTrackRow(
-                            index = index + 1,
-                            track = track,
-                            isDark = isDark,
-                            onClick = { onPlayTrack(track) },
-                            onMoreClick = { onTrackMoreClick(track) }
+                        Box(
+                            modifier = Modifier
+                                .then(if (isPosterWall) Modifier.padding(horizontal = 16.dp) else Modifier)
+                                .background(
+                                    color = if (isDark) Color.White.copy(alpha = highlightAlpha) else Color.Black.copy(alpha = highlightAlpha * 0.5f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            PlaylistDetailTrackRow(
+                                index = index + 1,
+                                track = track,
+                                isDark = isDark,
+                                isEditMode = isEditMode,
+                                isSelected = isSelected,
+                                onClick = { onPlayTrack(track) },
+                                onLongClick = { onEnterEditMode(track) },
+                                onToggleSelect = { onToggleSelect(track.id) },
+                                onMoreClick = { onTrackMoreClick(track) }
+                            )
+                        }
+                        if (index < detail.tracks.lastIndex && !isElevated) {
+                            HorizontalDivider(
+                                color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
+                                modifier = Modifier.padding(
+                                    start = if (isPosterWall) 92.dp else 76.dp,
+                                    end = if (isPosterWall) 16.dp else 0.dp
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 正常模式下顶部折叠背景层、居中标题与左右圆钮（随编辑模式平滑淡出）
+        val collapseFraction = collapseFractionState.value
+        AnimatedVisibility(
+            visible = !isEditMode,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(180)),
+            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // 1. 折叠背景层（随下滑平滑淡入顶栏底色）
+                if (collapseFraction > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(statusBarHeight + 54.dp)
+                            .align(Alignment.TopCenter)
+                            .graphicsLayer { alpha = collapseFraction }
+                            .background(
+                                if (isDark) dominantDarkColor else Color.White.copy(alpha = 0.94f)
+                            )
+                    )
+                }
+
+                // 2. 居中标题（随下滑平滑淡入，严格在左右按钮内侧居中）
+                if (collapseFraction > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(statusBarHeight + 54.dp)
+                            .align(Alignment.TopCenter)
+                            .padding(top = statusBarHeight, start = 62.dp, end = 62.dp)
+                            .graphicsLayer { alpha = collapseFraction },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = detail.displayTitle,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else PlaylistTextPrimary
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    if (index < detail.tracks.lastIndex) {
-                        HorizontalDivider(
-                            color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
-                            modifier = Modifier.padding(
-                                start = if (isPosterWall) 92.dp else 76.dp,
-                                end = if (isPosterWall) 16.dp else 0.dp
+                }
+
+                // 3. 左右两个常驻操作按钮
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = statusBarHeight + 8.dp, start = 16.dp, end = 16.dp)
+                        .align(Alignment.TopCenter)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.70f)
                             )
+                            .border(
+                                0.5.dp,
+                                if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
+                                CircleShape
+                            )
+                            .clickable(onClick = onClose),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = if (isDark) Color.White else Color(0xFF111111),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.70f)
+                            )
+                            .border(
+                                0.5.dp,
+                                if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
+                                CircleShape
+                            )
+                            .semantics { contentDescription = "更多操作" }
+                            .clickable(onClick = onOpenMoreMenu),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AppleMusicMoreIcon(
+                            tint = if (isDark) Color.White else Color(0xFF111111),
+                            size = 20.dp
                         )
                     }
                 }
             }
         }
 
-        val collapseFraction = collapseFractionState.value
-
-        // 1. 折叠背景层（随下滑平滑淡入顶栏底色）
-        if (collapseFraction > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(statusBarHeight + 54.dp)
-                    .align(Alignment.TopCenter)
-                    .graphicsLayer { alpha = collapseFraction }
-                    .background(
-                        if (isDark) dominantDarkColor else Color.White.copy(alpha = 0.94f)
-                    )
-            )
-        }
-
-        // 2. 居中标题（随下滑平滑淡入，严格在左右按钮内侧居中）
-        if (collapseFraction > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(statusBarHeight + 54.dp)
-                    .align(Alignment.TopCenter)
-                    .padding(top = statusBarHeight, start = 62.dp, end = 62.dp)
-                    .graphicsLayer { alpha = collapseFraction },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = detail.displayTitle,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color.White else PlaylistTextPrimary
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        // 3. 左右两个常驻操作按钮（按未下滑的位置、大小与边框严格统一，下滑过程中纹丝不动）
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = statusBarHeight + 8.dp, start = 16.dp, end = 16.dp)
-                .align(Alignment.TopCenter)
+        // 编辑模式顶部固定栏（平滑滑入滑出）
+        AnimatedVisibility(
+            visible = isEditMode,
+            enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { -it / 2 } + fadeIn(tween(220)),
+            exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { -it / 2 } + fadeOut(tween(180)),
+            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).zIndex(5f)
         ) {
-            // 左上角返回圆钮（位置与尺寸固定为 38.dp，图标固定为 20.dp）
-            Box(
+            Column(
                 modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.70f)
-                    )
-                    .border(
-                        0.5.dp,
-                        if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
-                        CircleShape
-                    )
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .background(if (isDark) dominantDarkColor else Color.White)
+                    .statusBarsPadding()
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = if (isDark) Color.White else Color(0xFF111111),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onExitEditMode,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = if (isDark) Color.White else PlaylistTextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-            // 右上角三个点更多圆钮（位置与尺寸固定为 38.dp，图标固定为 20.dp）
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.70f)
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Text(
+                        text = detail.displayTitle,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else PlaylistTextPrimary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    .border(
-                        0.5.dp,
-                        if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
-                        CircleShape
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    IconButton(
+                        onClick = { Toast.makeText(context, "搜索歌曲功能即将推出", Toast.LENGTH_SHORT).show() },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_nav_search),
+                            contentDescription = "搜索",
+                            tint = if (isDark) Color.White else PlaylistTextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onOpenMoreMenu,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        AppleMusicMoreIcon(
+                            tint = if (isDark) Color.White else PlaylistTextPrimary,
+                            size = 20.dp
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    val allSelected = detail.tracks.isNotEmpty() && selectedTrackIds.size == detail.tracks.size
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onSelectAll)
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SelectionCheckbox(
+                            isSelected = allSelected,
+                            isDark = isDark
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "全选",
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = 15.sp,
+                                color = if (isDark) Color.White else PlaylistTextPrimary
+                            )
+                        )
+                    }
+
+                    Text(
+                        text = "完成",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PlaylistAccentColor
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onExitEditMode)
+                            .padding(vertical = 6.dp, horizontal = 8.dp)
                     )
-                    .semantics { contentDescription = "更多操作" }
-                    .clickable(onClick = onOpenMoreMenu),
-                contentAlignment = Alignment.Center
-            ) {
-                AppleMusicMoreIcon(
-                    tint = if (isDark) Color.White else Color(0xFF111111),
-                    size = 20.dp
+                }
+
+                HorizontalDivider(
+                    color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
+                    thickness = 0.5.dp
                 )
             }
+        }
+
+        // 编辑模式底部多选操作栏（平滑从底部滑入）
+        AnimatedVisibility(
+            visible = isEditMode,
+            enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(200)),
+            exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(160)),
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
+        ) {
+            PlaylistEditBottomBar(
+                selectedCount = selectedTrackIds.size,
+                isDark = isDark,
+                backgroundColor = if (isDark) dominantDarkColor else Color.White,
+                onPlayNext = onPlayNextSelected,
+                onAddToPlaylist = onAddToPlaylistSelected,
+                onDownload = onDownloadSelected,
+                onDelete = onDeleteSelected
+            )
         }
     }
 }
@@ -705,34 +1553,73 @@ private fun RenderPlaylistHero(
 }
 
 /**
- * 歌单曲目单行（支持深浅双色，保留原有结构）
+ * 歌单曲目单行（支持深浅双色，支持正常与多选排序编辑模式）
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlaylistDetailTrackRow(
     index: Int,
     track: Track,
     isDark: Boolean = false,
+    isEditMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
-    onMoreClick: () -> Unit
+    onLongClick: (() -> Unit)? = null,
+    onToggleSelect: (() -> Unit)? = null,
+    onMoreClick: () -> Unit,
+    dragHandleModifier: Modifier = Modifier
 ) {
+    val leadingWidth by animateDpAsState(
+        targetValue = if (isEditMode) 32.dp else 28.dp,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "trackRowLeadingWidth"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .then(
+                if (isEditMode) {
+                    Modifier.clickable(onClick = { onToggleSelect?.invoke() })
+                } else {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    )
+                }
+            )
             .padding(vertical = 10.dp, horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. 序号
-        Text(
-            text = index.toString(),
-            style = MaterialTheme.typography.bodyMedium.copy(
-                color = if (isDark) Color.White.copy(alpha = 0.45f) else PlaylistTextSecondary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp
-            ),
-            modifier = Modifier.width(28.dp)
-        )
+        // 1. 左侧区域：正常模式下展示序号，编辑模式下平滑切换为勾选圆圈
+        Box(
+            modifier = Modifier.width(leadingWidth),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (isEditMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = { onToggleSelect?.invoke() }),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    SelectionCheckbox(
+                        isSelected = isSelected,
+                        isDark = isDark
+                    )
+                }
+            } else {
+                Text(
+                    text = index.toString(),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = if (isDark) Color.White.copy(alpha = 0.45f) else PlaylistTextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                )
+            }
+        }
 
         // 2. 封面缩略方块
         Box(
@@ -795,17 +1682,206 @@ private fun PlaylistDetailTrackRow(
             )
         }
 
-        // 4. 右侧竖置三个点（更多操作）
-        IconButton(
-            onClick = onMoreClick,
-            modifier = Modifier.size(36.dp)
-        ) {
+        // 4. 右侧区域：正常模式下展示竖置三点，编辑模式下展示三道横线拖拽排序把手
+        if (isEditMode) {
+            ReorderDragHandle(
+                isDark = isDark,
+                modifier = dragHandleModifier
+            )
+        } else {
+            IconButton(
+                onClick = onMoreClick,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "更多操作",
+                    tint = if (isDark) Color.White.copy(alpha = 0.60f) else PlaylistTextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 多选模式勾选框：圆形设计，选中时红底白对勾，未选中时细边框空心圆
+ */
+@Composable
+private fun SelectionCheckbox(
+    isSelected: Boolean,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(22.dp)
+            .clip(CircleShape)
+            .then(
+                if (isSelected) {
+                    Modifier.background(PlaylistAccentColor)
+                } else {
+                    Modifier.border(
+                        1.5.dp,
+                        if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFFC7C7CC),
+                        CircleShape
+                    )
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isSelected) {
             Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "更多操作",
-                tint = if (isDark) Color.White.copy(alpha = 0.60f) else PlaylistTextSecondary,
-                modifier = Modifier.size(20.dp)
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp)
             )
         }
+    }
+}
+
+/**
+ * 拖拽排序把手：三道圆角横线，严格按截图还原
+ */
+@Composable
+private fun ReorderDragHandle(
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.size(40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 16.dp, height = 2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9E9EA4))
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 多选底部悬浮操作栏（下一首播放、收藏到歌单、下载、删除）
+ */
+@Composable
+private fun PlaylistEditBottomBar(
+    selectedCount: Int,
+    isDark: Boolean,
+    backgroundColor: Color,
+    onPlayNext: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val hasSelection = selectedCount > 0
+    val activeAlpha = if (hasSelection) 1f else 0.38f
+    val iconTint = (if (isDark) Color.White else Color(0xFF222222)).copy(alpha = activeAlpha)
+    val textTint = (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF444444)).copy(alpha = activeAlpha)
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = backgroundColor,
+        shadowElevation = 10.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            HorizontalDivider(
+                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFEAEAEE),
+                thickness = 0.5.dp
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 1. 下一首播放
+                EditBottomActionItem(
+                    icon = R.drawable.ic_action_play_next,
+                    label = "下一首播放",
+                    iconTint = iconTint,
+                    textTint = textTint,
+                    onClick = onPlayNext,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 2. 收藏到歌单
+                EditBottomActionItem(
+                    icon = R.drawable.ic_action_add_to_playlist,
+                    label = "收藏到歌单",
+                    iconTint = iconTint,
+                    textTint = textTint,
+                    onClick = onAddToPlaylist,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 3. 下载
+                EditBottomActionItem(
+                    icon = R.drawable.ic_action_download,
+                    label = "下载",
+                    iconTint = iconTint,
+                    textTint = textTint,
+                    onClick = onDownload,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 4. 删除
+                EditBottomActionItem(
+                    icon = R.drawable.ic_delete_history,
+                    label = "删除",
+                    iconTint = iconTint,
+                    textTint = textTint,
+                    onClick = onDelete,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditBottomActionItem(
+    icon: Int,
+    label: String,
+    iconTint: Color,
+    textTint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            painter = painterResource(id = icon),
+            contentDescription = label,
+            tint = iconTint,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = textTint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

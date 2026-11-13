@@ -60,12 +60,27 @@ interface MineRepository {
     suspend fun addTrackToPlaylist(playlistId: Long, trackId: Long): Result<Unit>
 
     /**
+     * 批量添加歌曲到目标歌单
+     */
+    suspend fun addTracksToPlaylist(playlistId: Long, trackIds: List<Long>): Result<Unit>
+
+    /**
      * 从目标歌单移除歌曲
      */
     suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long): Result<Unit>
 
     /**
+     * 批量从目标歌单移除歌曲
+     */
+    suspend fun removeTracksFromPlaylist(playlistId: Long, trackIds: List<Long>): Result<Unit>
+
+    /**
      * 新建歌单
      */
     suspend fun createPlaylist(name: String, privacy: Int = 0): Result<UserPlaylist>
+
+    /**
+     * 更新歌单内歌曲顺序（同步至网易云服务端）
+     */
+    suspend fun updatePlaylistTrackOrder(playlistId: Long, trackIds: List<Long>): Result<Unit>
 }

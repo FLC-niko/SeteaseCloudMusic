@@ -548,6 +548,54 @@ class MusicPlayerController @Inject constructor(
         persistCurrentState()
     }
 
+    /**
+     * 批量将多首歌曲插入到当前播放队列中紧接着当前播放曲目的位置（下一首播放）
+     */
+    fun insertNextBatch(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val state = _playbackState.value
+        val queue = state.queueTracks.toMutableList()
+        if (queue.isEmpty()) {
+            replaceQueueAndPlay(tracks, startIndex = 0)
+            return
+        }
+
+        val currentIndex = state.currentQueueIndex
+        val currentPlayingTrackId = if (currentIndex in queue.indices) queue[currentIndex].id else -1L
+
+        // 过滤掉当前正在播放的曲目，避免打断当前播放
+        val toInsert = tracks.filter { it.id != currentPlayingTrackId }
+        if (toInsert.isEmpty()) return
+
+        val toInsertIds = toInsert.map { it.id }.toSet()
+        val newQueue = mutableListOf<Track>()
+        var newCurrentIndex = currentIndex
+
+        for (i in queue.indices) {
+            val item = queue[i]
+            if (item.id in toInsertIds) {
+                if (i < currentIndex) {
+                    newCurrentIndex--
+                }
+            } else {
+                newQueue.add(item)
+            }
+        }
+
+        val insertIndex = if (newCurrentIndex in newQueue.indices) newCurrentIndex + 1 else newQueue.size
+        newQueue.addAll(insertIndex, toInsert)
+
+        _playbackState.update {
+            it.copy(
+                queueTracks = newQueue,
+                currentQueueIndex = newCurrentIndex
+            )
+        }
+
+        prefetchNeighbors(newCurrentIndex)
+        persistCurrentState()
+    }
+
     fun playNext() {
         playNextInternal()
     }

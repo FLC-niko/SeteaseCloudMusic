@@ -542,3 +542,254 @@ private fun NewPlaylistPickerItem(
         }
     }
 }
+
+/**
+ * 批量收藏到歌单底栏弹窗：
+ * 支持多选歌曲后一次性批量收藏到指定歌单或我喜欢的音乐
+ */
+@Composable
+fun AddToPlaylistBatchSheet(
+    tracks: List<Track>,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    currentPlaylistId: Long? = null,
+    viewModel: AddToPlaylistViewModel = hiltViewModel(),
+    onTracksAdded: ((playlistId: Long, tracks: List<Track>) -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsState()
+
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newPlaylistTitle by remember { mutableStateOf("") }
+    var isCreating by remember { mutableStateOf(false) }
+
+    AdaptiveModalSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // 1. 顶部栏
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "收藏到歌单（已选 ${tracks.size} 首）",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        color = Color(0xFF1E1E24),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "关闭",
+                        tint = Color(0xFF8E8E93),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                color = Color(0xFFF0F0F2),
+                thickness = 0.5.dp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            // 2. 歌单列表
+            val combinedPlaylists = remember(uiState.likedPlaylist, uiState.createdPlaylists) {
+                val list = mutableListOf<UserPlaylist>()
+                val liked = uiState.likedPlaylist ?: UserPlaylist(
+                    id = -1L,
+                    name = "我喜欢的音乐",
+                    coverUrl = null,
+                    trackCount = 0,
+                    playCount = 0L,
+                    isLikedHero = true
+                )
+                list.add(liked.copy(isLikedHero = true))
+                list.addAll(uiState.createdPlaylists.filter { !it.isLikedHero && it.id != liked.id })
+                list
+            }
+
+            val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                contentPadding = PaddingValues(
+                    top = 4.dp,
+                    bottom = navBottom + 16.dp,
+                    start = 16.dp,
+                    end = 16.dp
+                )
+            ) {
+                item(key = "create_new_playlist") {
+                    NewPlaylistPickerItem(
+                        onClick = {
+                            newPlaylistTitle = ""
+                            showCreateDialog = true
+                        }
+                    )
+                    HorizontalDivider(
+                        color = Color(0xFFF4F4F6),
+                        thickness = 0.5.dp,
+                        modifier = Modifier.padding(start = 68.dp, end = 4.dp)
+                    )
+                }
+
+                itemsIndexed(
+                    items = combinedPlaylists,
+                    key = { _, pl -> pl.id }
+                ) { index, playlist ->
+                    val isLikedHero = index == 0 || playlist.isLikedHero || playlist.name.contains("喜欢")
+                    PlaylistPickerItem(
+                        playlist = playlist,
+                        isAlreadyAdded = false,
+                        onClick = {
+                            if (uiState.isOperating) return@PlaylistPickerItem
+
+                            if (isLikedHero) {
+                                scope.launch {
+                                    val result = viewModel.likeTracks(tracks)
+                                    result.fold(
+                                        onSuccess = {
+                                            Toast.makeText(context, "已收藏 ${tracks.size} 首歌曲到「${playlist.name}」", Toast.LENGTH_SHORT).show()
+                                            onTracksAdded?.invoke(playlist.id, tracks)
+                                            onDismiss()
+                                        },
+                                        onFailure = { err ->
+                                            Toast.makeText(context, err.message ?: "收藏失败，请重试", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            } else {
+                                scope.launch {
+                                    val result = viewModel.addTracksToPlaylist(playlist.id, tracks.map { it.id })
+                                    result.fold(
+                                        onSuccess = {
+                                            Toast.makeText(context, "已收藏 ${tracks.size} 首歌曲到歌单「${playlist.name}」", Toast.LENGTH_SHORT).show()
+                                            onTracksAdded?.invoke(playlist.id, tracks)
+                                            onDismiss()
+                                        },
+                                        onFailure = { err ->
+                                            Toast.makeText(context, err.message ?: "收藏失败，请重试", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    )
+
+                    if (isLikedHero) {
+                        HorizontalDivider(
+                            color = Color(0xFFEEEEF0),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
+                        )
+                    } else if (index < combinedPlaylists.lastIndex) {
+                        HorizontalDivider(
+                            color = Color(0xFFF4F4F6),
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(start = 68.dp, end = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showCreateDialog) {
+            AdaptiveAlertDialog(
+                onDismissRequest = {
+                    if (!isCreating) {
+                        showCreateDialog = false
+                        newPlaylistTitle = ""
+                    }
+                },
+                title = {
+                    Text(
+                        text = "新建歌单",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "输入歌单标题后将自动创建并收录所选歌曲",
+                            style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF8E8E93))
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = newPlaylistTitle,
+                            onValueChange = { newPlaylistTitle = it },
+                            placeholder = { Text("请输入歌单标题") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val title = newPlaylistTitle.trim()
+                            if (title.isBlank() || isCreating) return@TextButton
+                            isCreating = true
+                            scope.launch {
+                                try {
+                                    val result = viewModel.createPlaylistAndAddTracks(title, tracks.map { it.id })
+                                    result.fold(
+                                        onSuccess = { created ->
+                                            Toast.makeText(context, "已创建歌单「${created.name}」并收藏 ${tracks.size} 首歌曲", Toast.LENGTH_SHORT).show()
+                                            onTracksAdded?.invoke(created.id, tracks)
+                                            showCreateDialog = false
+                                            newPlaylistTitle = ""
+                                            onDismiss()
+                                        },
+                                        onFailure = { err ->
+                                            Toast.makeText(context, err.message ?: "新建歌单失败", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                } finally {
+                                    isCreating = false
+                                }
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = "创建并收藏",
+                            color = Color(0xFFFA233B),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showCreateDialog = false
+                            newPlaylistTitle = ""
+                        }
+                    ) {
+                        Text(
+                            text = "取消",
+                            color = Color(0xFF8E8E93)
+                        )
+                    }
+                }
+            )
+        }
+    }
+}

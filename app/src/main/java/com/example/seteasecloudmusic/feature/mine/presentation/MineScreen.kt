@@ -143,7 +143,10 @@ fun MineScreen(
     lazyListState: LazyListState = rememberLazyListState(),
     isForeground: Boolean = true,
     onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
-    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
+    onTracksAddedToPlaylist: ((Long, List<Track>) -> Unit)? = null,
+    onTracksReordered: ((Long, List<Track>) -> Unit)? = null,
+    onDeleteTracks: ((Long, Set<Long>) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -456,11 +459,18 @@ fun MineScreen(
     }
 
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+    val lastOpenedPlaylistId = remember { mutableStateOf<Long?>(null) }
     val playlistOpenCounter = remember { androidx.compose.runtime.mutableIntStateOf(0) }
     LaunchedEffect(uiState.activePlaylistDetail) {
-        if (uiState.activePlaylistDetail != null) {
-            lastPlaylistDetail.value = uiState.activePlaylistDetail
-            playlistOpenCounter.intValue++
+        val current = uiState.activePlaylistDetail
+        if (current != null) {
+            if (lastOpenedPlaylistId.value != current.id) {
+                playlistOpenCounter.intValue++
+                lastOpenedPlaylistId.value = current.id
+            }
+            lastPlaylistDetail.value = current
+        } else {
+            lastOpenedPlaylistId.value = null
         }
     }
     LaunchedEffect(isForeground) {
@@ -499,7 +509,10 @@ fun MineScreen(
                     onPlayAll = { onPlayAll(detail.tracks) },
                     onShufflePlay = { onPlayAll(detail.tracks.shuffled()) },
                     onTrackLikedChanged = onTrackLikedChanged,
-                    onTrackAddedToPlaylist = onTrackAddedToPlaylist
+                    onTrackAddedToPlaylist = onTrackAddedToPlaylist,
+                    onTracksAddedToPlaylist = onTracksAddedToPlaylist,
+                    onTracksReordered = { reordered -> onTracksReordered?.invoke(detail.id, reordered) },
+                    onDeleteTracks = { ids -> onDeleteTracks?.invoke(detail.id, ids) }
                 )
             }
         }
@@ -519,7 +532,10 @@ fun MineScreen(
                 isLoading = uiState.isLoadingDetail,
                 listState = detailListState,
                 onTrackLikedChanged = onTrackLikedChanged,
-                onTrackAddedToPlaylist = onTrackAddedToPlaylist
+                onTrackAddedToPlaylist = onTrackAddedToPlaylist,
+                onTracksAddedToPlaylist = onTracksAddedToPlaylist,
+                onTracksReordered = { reordered -> onTracksReordered?.invoke(detail.id, reordered) },
+                onDeleteTracks = { ids -> onDeleteTracks?.invoke(detail.id, ids) }
             )
         }
     }

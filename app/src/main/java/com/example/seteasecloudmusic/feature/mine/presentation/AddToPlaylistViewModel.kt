@@ -194,4 +194,53 @@ class AddToPlaylistViewModel @Inject constructor(
             _uiState.update { it.copy(isOperating = false) }
         }
     }
+
+    suspend fun addTracksToPlaylist(playlistId: Long, trackIds: List<Long>): Result<Unit> {
+        _uiState.update { it.copy(isOperating = true) }
+        try {
+            val result = mineRepository.addTracksToPlaylist(playlistId, trackIds)
+            if (result.isSuccess) {
+                _uiState.update { it.copy(existingPlaylistIds = it.existingPlaylistIds + playlistId) }
+            }
+            return result
+        } finally {
+            _uiState.update { it.copy(isOperating = false) }
+        }
+    }
+
+    suspend fun likeTracks(tracks: List<Track>): Result<Unit> {
+        _uiState.update { it.copy(isOperating = true) }
+        try {
+            tracks.forEach { track ->
+                FavoriteTracksManager.setLiked(track.id, true)
+                mineRepository.likeTrack(track.id, true)
+            }
+            _uiState.value.likedPlaylist?.id?.let { likedId ->
+                _uiState.update { it.copy(existingPlaylistIds = it.existingPlaylistIds + likedId) }
+            }
+            return Result.success(Unit)
+        } finally {
+            _uiState.update { it.copy(isOperating = false) }
+        }
+    }
+
+    suspend fun createPlaylistAndAddTracks(name: String, trackIds: List<Long>): Result<UserPlaylist> {
+        _uiState.update { it.copy(isOperating = true) }
+        try {
+            val createResult = mineRepository.createPlaylist(name)
+            return createResult.mapCatching { newPlaylist ->
+                mineRepository.addTracksToPlaylist(newPlaylist.id, trackIds).getOrThrow()
+                val currentList = _uiState.value.createdPlaylists
+                _uiState.update {
+                    it.copy(
+                        createdPlaylists = listOf(newPlaylist.copy(trackCount = trackIds.size)) + currentList,
+                        existingPlaylistIds = it.existingPlaylistIds + newPlaylist.id
+                    )
+                }
+                newPlaylist
+            }
+        } finally {
+            _uiState.update { it.copy(isOperating = false) }
+        }
+    }
 }

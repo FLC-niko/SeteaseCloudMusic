@@ -21,4 +21,8 @@ interface LocalMusicRepository {
     fun setCustomDirectoryPath(path: String)
 
     suspend fun findMatchingLocalTrack(onlineTrack: Track): Track?
+
+    fun removeTracks(trackIds: Set<Long>)
+
+    fun updateTrackOrder(tracks: List<Track>)
 }

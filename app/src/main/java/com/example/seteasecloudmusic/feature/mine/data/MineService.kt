@@ -1,6 +1,9 @@
 package com.example.seteasecloudmusic.feature.mine.data
 
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Query
 
 /**
@@ -74,4 +77,17 @@ interface MineService {
         @Query("privacy") privacy: Int = 0,
         @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): CreatePlaylistResponse
+
+    /**
+     * 调整歌单内歌曲顺序（同步至网易云服务端）
+     * @param pid 歌单 id
+     * @param ids 调整顺序后的歌曲 id 列表 JSON 数组字符串，如 "[5268328,1219871]"
+     */
+    @FormUrlEncoded
+    @POST("song/order/update")
+    suspend fun updatePlaylistTrackOrder(
+        @Field("pid") pid: Long,
+        @Field("ids") ids: String,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
+    ): SongOrderUpdateResponse
 }

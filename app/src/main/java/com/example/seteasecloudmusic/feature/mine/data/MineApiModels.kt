@@ -72,7 +72,14 @@ data class PlaylistDetailItemResponse(
     @SerializedName("creator")
     val creator: UserPlaylistCreatorResponse? = null,
     @SerializedName("tracks")
-    val tracks: List<PlaylistTrackItemResponse>? = emptyList()
+    val tracks: List<PlaylistTrackItemResponse>? = emptyList(),
+    @SerializedName("trackIds")
+    val trackIds: List<PlaylistTrackIdItemResponse>? = emptyList()
+)
+
+data class PlaylistTrackIdItemResponse(
+    @SerializedName("id")
+    val id: Long? = 0L
 )
 
 data class PlaylistTrackItemResponse(
@@ -183,4 +190,14 @@ data class CreatePlaylistResponse(
     val code: Int? = 0,
     @SerializedName("playlist")
     val playlist: UserPlaylistItemResponse? = null
+)
+
+/**
+ * /song/order/update 接口响应：更新歌单内歌曲顺序
+ */
+data class SongOrderUpdateResponse(
+    @SerializedName("code")
+    val code: Int? = 0,
+    @SerializedName("message")
+    val message: String? = null
 )
