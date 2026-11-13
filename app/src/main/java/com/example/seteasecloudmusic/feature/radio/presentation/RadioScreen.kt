@@ -77,9 +77,8 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
-import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
-import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
@@ -180,10 +179,11 @@ internal fun RadioScreenContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
-        collapseThresholdDp = 76.dp
+        collapseThresholdDp = AppleMusicTopBarDefaults.CollapseThreshold
     )
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
     val radioBackdrop = rememberLayerBackdrop {
+        drawRect(RadioBackground)
         drawContent()
     }
 
@@ -195,31 +195,28 @@ internal fun RadioScreenContent(
         modifier = Modifier
             .fillMaxSize()
             .background(RadioBackground)
-            .layerBackdrop(radioBackdrop)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(radioBackdrop)
+        ) {
         AdaptiveSectionColumn(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
-                .clipBelowStatusBar()
                 .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
                 bottom = bottomContentPadding
             )
         ) {
-            // 大标题
+            // 大标题占位（实体标题与头像在顶部随滑动连续收缩）
             item(key = "radio_large_title", fullSpan = true) {
-                AppleMusicLargeTitle(
-                    title = "电台",
-                    collapseFraction = collapseFractionState.value,
-                    trailingContent = {
-                        UserAvatarButton(
-                            avatarUrl = avatarUrl,
-                            displayName = displayName,
-                            onClick = { onAvatarClick?.invoke() }
-                        )
-                    }
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(AppleMusicTopBarDefaults.HeaderSpacerHeight)
                 )
             }
 
@@ -391,19 +388,20 @@ internal fun RadioScreenContent(
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }
+        }
 
-        // 折叠顶栏
-        AppleMusicCollapsedTopBar(
+        // 连续一体式折叠顶栏
+        AppleMusicMorphingTopBar(
             title = "电台",
-            collapseFraction = collapseFractionState.value,
+            collapseFractionProvider = { collapseFractionState.value },
             statusBarHeight = statusBarHeight,
-            backdrop = null,
+            backdrop = radioBackdrop,
             modifier = Modifier.align(Alignment.TopCenter),
             trailingContent = {
                 UserAvatarButton(
                     avatarUrl = avatarUrl,
                     displayName = displayName,
-                    size = 34.dp,
+                    size = 46.dp,
                     onClick = { onAvatarClick?.invoke() }
                 )
             }

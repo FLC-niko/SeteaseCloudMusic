@@ -20,7 +20,8 @@ import androidx.compose.ui.zIndex
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
-import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.PageSize
@@ -99,8 +100,8 @@ import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
-import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
-import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
@@ -185,7 +186,7 @@ internal fun HomeScreenContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
-        collapseThresholdDp = 76.dp
+        collapseThresholdDp = AppleMusicTopBarDefaults.CollapseThreshold
     )
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
     val playlistOpenCounter = remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -211,13 +212,17 @@ internal fun HomeScreenContent(
         val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
 
         val feedContent: @Composable () -> Unit = {
+            val homeBackdrop = rememberLayerBackdrop {
+                drawRect(HomeBackground)
+                drawContent()
+            }
             Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().layerBackdrop(homeBackdrop)) {
                 AdaptiveContent {
                 AdaptiveSectionColumn(
                     state = lazyListState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clipBelowStatusBar()
                         .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
@@ -225,16 +230,10 @@ internal fun HomeScreenContent(
             )
         ) {
             item(key = "large_page_title", fullSpan = true) {
-                AppleMusicLargeTitle(
-                    title = "首页",
-                    collapseFraction = collapseFractionState.value,
-                    trailingContent = {
-                        UserAvatarButton(
-                            avatarUrl = avatarUrl,
-                            displayName = displayName,
-                            onClick = { onAvatarClick?.invoke() }
-                        )
-                    }
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(AppleMusicTopBarDefaults.HeaderSpacerHeight)
                 )
             }
 
@@ -348,10 +347,12 @@ internal fun HomeScreenContent(
         }
 
         }
-        // 覆盖在顶部的 Apple Music 风格渐变模糊导航栏（轻量级磨砂玻璃，滑动零开销）
+        }
+        // 覆盖在顶部的 Apple Music 风格渐进式高斯模糊导航栏
         HomeCollapsedTopBar(
             collapseFractionProvider = { collapseFractionState.value },
             statusBarHeight = statusBarHeight,
+            backdrop = homeBackdrop,
             avatarUrl = avatarUrl,
             displayName = displayName,
             onAvatarClick = onAvatarClick,
@@ -416,22 +417,23 @@ internal fun HomeScreenContent(
 private fun HomeCollapsedTopBar(
     collapseFractionProvider: () -> Float,
     statusBarHeight: Dp,
+    backdrop: Backdrop,
     avatarUrl: String?,
     displayName: String?,
     onAvatarClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    AppleMusicCollapsedTopBar(
+    AppleMusicMorphingTopBar(
         title = "首页",
-        collapseFraction = collapseFractionProvider(),
+        collapseFractionProvider = collapseFractionProvider,
         statusBarHeight = statusBarHeight,
-        backdrop = null,
+        backdrop = backdrop,
         modifier = modifier,
         trailingContent = {
             UserAvatarButton(
                 avatarUrl = avatarUrl,
                 displayName = displayName,
-                size = 34.dp,
+                size = 46.dp,
                 onClick = { onAvatarClick?.invoke() }
             )
         }

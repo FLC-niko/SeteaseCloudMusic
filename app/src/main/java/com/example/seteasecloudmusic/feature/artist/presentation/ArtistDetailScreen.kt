@@ -37,6 +37,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -47,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,12 +59,15 @@ import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
+import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistAlbum
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
 import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScrollState
 import com.example.seteasecloudmusic.feature.main.navigation.toNavigationViewport
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private val ArtistPageBg = Color(0xFFF8F8F9)
 private val ArtistPrimaryText = Color(0xFF111111)
@@ -134,11 +140,16 @@ fun ArtistDetailScreen(
         }
     }
     val collapse = rememberAppleMusicCollapseFraction(listState, 200.dp)
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val artistBackdrop = rememberLayerBackdrop {
+        drawRect(ArtistPageBg)
+        drawContent()
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(ArtistPageBg)) {
         val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
         val works: @Composable () -> Unit = {
             LazyColumn(Modifier.fillMaxSize(), state = listState,
-                contentPadding = PaddingValues(top = if (split) 20.dp else 0.dp, bottom = bottom),
+                contentPadding = PaddingValues(top = if (split) statusBarHeight + 20.dp else 0.dp, bottom = bottom),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (!split) item(key = "artist_hero") { ArtistHeroSection(uiState.artistName, uiState.artistCoverUrl, onPlayFirstSong) }
                 else item(key = "artist_title") { MusicPaneHeader(uiState.artistName, "精选作品与音乐旅程") }
@@ -168,18 +179,50 @@ fun ArtistDetailScreen(
             }
         }
         if (split) {
-            AdaptiveTwoPane(Modifier.fillMaxSize().statusBarsPadding(), primaryFraction = 0.38f,
-                primary = {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-                        MusicPaneHeader("艺人", "走近你喜欢的声音", onClose)
-                        Box(Modifier.clip(RoundedCornerShape(28.dp))) { ArtistHeroSection(uiState.artistName, uiState.artistCoverUrl, onPlayFirstSong) }
-                        if (uiState.description != null) DescriptionSection(uiState)
-                    }
-                }, secondary = works)
+            val primaryScrollState = rememberScrollState()
+            val density = LocalDensity.current
+            val splitBlurThresholdPx = remember(density) { with(density) { 28.dp.toPx() }.coerceAtLeast(1f) }
+            val splitBlurAlpha by remember(listState, primaryScrollState, splitBlurThresholdPx) {
+                derivedStateOf {
+                    val primaryProgress = (primaryScrollState.value.toFloat() / splitBlurThresholdPx).coerceIn(0f, 1f)
+                    val secondaryProgress = if (listState.firstVisibleItemIndex > 0) 1f
+                    else (listState.firstVisibleItemScrollOffset.toFloat() / splitBlurThresholdPx).coerceIn(0f, 1f)
+                    maxOf(primaryProgress, secondaryProgress)
+                }
+            }
+            Box(Modifier.fillMaxSize().layerBackdrop(artistBackdrop)) {
+                AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.38f,
+                    primary = {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(primaryScrollState)
+                                .padding(start = 20.dp, end = 20.dp, top = statusBarHeight + 20.dp, bottom = 20.dp)
+                        ) {
+                            MusicPaneHeader("艺人", "走近你喜欢的声音", onClose)
+                            Box(Modifier.clip(RoundedCornerShape(28.dp))) { ArtistHeroSection(uiState.artistName, uiState.artistCoverUrl, onPlayFirstSong) }
+                            if (uiState.description != null) DescriptionSection(uiState)
+                        }
+                    }, secondary = works)
+            }
+            if (splitBlurAlpha > 0.005f) {
+                ProgressiveTopBlur(
+                    backdrop = artistBackdrop,
+                    totalHeight = statusBarHeight + 28.dp,
+                    statusBarHeight = statusBarHeight,
+                    alphaProvider = { splitBlurAlpha },
+                    deepBlurRadius = 20.dp,
+                    mediumBlurRadius = 10.dp,
+                    shallowBlurRadius = 4.dp,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
+            }
         } else {
-            works()
+            Box(Modifier.fillMaxSize().layerBackdrop(artistBackdrop)) {
+                works()
+            }
             AppleMusicCollapsedTopBar(uiState.artistName, collapse.value,
-                WindowInsets.statusBars.asPaddingValues().calculateTopPadding(), backdrop = null,
+                statusBarHeight, backdrop = artistBackdrop,
                 showBackButton = true, onBackClick = onClose, modifier = Modifier.align(Alignment.TopCenter))
         }
     }

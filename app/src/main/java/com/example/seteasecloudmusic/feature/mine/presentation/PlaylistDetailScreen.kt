@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
 import android.content.Context
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
@@ -48,6 +49,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -77,6 +79,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,7 +95,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -106,10 +111,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -125,7 +132,7 @@ import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalContentBottomPadding
 import com.example.seteasecloudmusic.core.ui.adaptive.MusicPaneHeader
 import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
-import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
+import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
 import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScrollState
@@ -133,6 +140,8 @@ import com.example.seteasecloudmusic.feature.main.navigation.toNavigationViewpor
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicMoreIcon
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -422,6 +431,19 @@ fun PlaylistDetailScreen(
             color = solidBackgroundColor
         ) {
             if (embedded || split) {
+                val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val songsTopInset = if (split) statusBarHeight else 0.dp
+                val songsTopBackdrop = rememberLayerBackdrop {
+                    drawRect(solidBackgroundColor)
+                    drawContent()
+                }
+                val songsTopBlurAlpha by remember(listState, density) {
+                    val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
+                    derivedStateOf {
+                        if (listState.firstVisibleItemIndex > 0) 1f
+                        else (listState.firstVisibleItemScrollOffset / fadeDistancePx).coerceIn(0f, 1f)
+                    }
+                }
                 val songs: @Composable () -> Unit = {
                     val splitBottomInsetPx = with(density) { (64.dp + bottom).toPx() }
                     val dragReorderState = rememberPlaylistDragReorderState(
@@ -439,7 +461,11 @@ fun PlaylistDetailScreen(
                                 enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
                                 exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(160))
                             ) {
-                                Column {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = songsTopInset)
+                                ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -483,14 +509,22 @@ fun PlaylistDetailScreen(
                                 }
                             }
 
-                            LazyColumn(
-                                Modifier
+                            Box(
+                                modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
-                                    .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder),
-                                state = listState,
-                                contentPadding = PaddingValues(top = 12.dp, bottom = 64.dp + bottom + 16.dp)
                             ) {
+                                LazyColumn(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .layerBackdrop(songsTopBackdrop)
+                                        .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder),
+                                    state = listState,
+                                    contentPadding = PaddingValues(
+                                        top = if (isEditMode) 12.dp else songsTopInset + 12.dp,
+                                        bottom = 64.dp + bottom + 16.dp
+                                    )
+                                ) {
                                 item(key = "detail_title") {
                                     if (split && window.isTabletop) {
                                         PlaylistHeroAppleMusicSection(currentDetail, onPlayAll, isDark = paneDark, showArtwork = false)
@@ -578,6 +612,19 @@ fun PlaylistDetailScreen(
                                     }
                                 }
                             }
+                            if (split && !isEditMode) {
+                                ProgressiveTopBlur(
+                                    backdrop = songsTopBackdrop,
+                                    totalHeight = songsTopInset + 32.dp,
+                                    statusBarHeight = songsTopInset,
+                                    modifier = Modifier.align(Alignment.TopCenter),
+                                    alphaProvider = { songsTopBlurAlpha },
+                                    deepBlurRadius = 20.dp,
+                                    mediumBlurRadius = 10.dp,
+                                    shallowBlurRadius = 4.dp
+                                )
+                            }
+                            }
                         }
 
                         AnimatedVisibility(
@@ -599,15 +646,19 @@ fun PlaylistDetailScreen(
                         }
                     }
                 }
-                Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (embedded) Modifier.statusBarsPadding() else Modifier)
+                ) {
                     if (split) {
                         AdaptiveTwoPane(
                             Modifier.fillMaxSize().testTag("expanded_playlist_panes"),
                             primaryFraction = 0.44f,
                             primary = {
-                                Column(Modifier.fillMaxSize()) {
-                                    ExpandedPlaylistToolbar(expandedDark, onClose) { showMoreSheet = true }
-                                    if (window.isTabletop) {
+                                if (window.isTabletop) {
+                                    Column(Modifier.fillMaxSize().padding(top = statusBarHeight)) {
+                                        ExpandedPlaylistToolbar(expandedDark, onClose) { showMoreSheet = true }
                                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                             val mediaHeight = maxHeight
                                             val cap = when (currentStyle) {
@@ -620,12 +671,57 @@ fun PlaylistDetailScreen(
                                                     isDark = expandedDark, expanded = true, mediaOnly = true, artworkHeight = mediaHeight)
                                             }
                                         }
-                                    } else Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-                                        .padding(start = 20.dp, end = 20.dp, bottom = bottom + 16.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
-                                            RenderPlaylistHero(currentStyle, detail, solidBackgroundColor,
-                                                onPlayAll, isDark = expandedDark, expanded = true)
+                                    }
+                                } else {
+                                    val primaryScrollState = rememberScrollState()
+                                    val primaryTopBackdrop = rememberLayerBackdrop {
+                                        drawRect(solidBackgroundColor)
+                                        drawContent()
+                                    }
+                                    val primaryBlurAlpha by remember(primaryScrollState, density) {
+                                        val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
+                                        derivedStateOf {
+                                            (primaryScrollState.value / fadeDistancePx).coerceIn(0f, 1f)
+                                        }
+                                    }
+                                    Box(Modifier.fillMaxSize()) {
+                                        Column(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .layerBackdrop(primaryTopBackdrop)
+                                                .verticalScroll(primaryScrollState)
+                                                .padding(
+                                                    start = 20.dp,
+                                                    end = 20.dp,
+                                                    top = statusBarHeight + 68.dp,
+                                                    bottom = bottom + 16.dp
+                                                ),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                                                RenderPlaylistHero(
+                                                    currentStyle, detail, solidBackgroundColor,
+                                                    onPlayAll, isDark = expandedDark, expanded = true
+                                                )
+                                            }
+                                        }
+                                        ProgressiveTopBlur(
+                                            backdrop = primaryTopBackdrop,
+                                            totalHeight = statusBarHeight + 82.dp,
+                                            statusBarHeight = statusBarHeight,
+                                            modifier = Modifier.align(Alignment.TopCenter),
+                                            alphaProvider = { primaryBlurAlpha },
+                                            deepBlurRadius = 22.dp,
+                                            mediumBlurRadius = 11.dp,
+                                            shallowBlurRadius = 4.dp
+                                        )
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = statusBarHeight)
+                                                .align(Alignment.TopCenter)
+                                        ) {
+                                            ExpandedPlaylistToolbar(expandedDark, onClose) { showMoreSheet = true }
                                         }
                                     }
                                 }
@@ -1143,16 +1239,33 @@ private fun CompactPlaylistDetailScreen(
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val collapseThreshold = if (currentStyle == PlaylistDetailStyle.APPLE_MUSIC) 260.dp else 160.dp
     val context = LocalContext.current
     val density = LocalDensity.current
 
-    val collapseFractionState = rememberAppleMusicCollapseFraction(
-        lazyListState = lazyListState,
-        collapseThresholdDp = collapseThreshold
-    )
-
     val isPosterWall = currentStyle == PlaylistDetailStyle.POSTER_WALL || currentStyle == PlaylistDetailStyle.DYNAMIC_POSTER_WALL
+    var heroTitleOffsetFromTopPx by remember(detail.id, currentStyle) { mutableFloatStateOf(0f) }
+    var heroTitleLineCount by remember(detail.id, currentStyle) { mutableIntStateOf(1) }
+    val contentTopPaddingPx = remember(density, isPosterWall, statusBarHeight) {
+        with(density) { (if (isPosterWall) 0.dp else statusBarHeight + 12.dp).toPx() }
+    }
+    val dockCenterY = remember(density, statusBarHeight) {
+        with(density) { (statusBarHeight + 27.dp).toPx() }
+    }
+    val morphBandPx = remember(density) {
+        with(density) { 54.dp.toPx() }
+    }
+    val heroTitleCenterY by remember(lazyListState, contentTopPaddingPx) {
+        derivedStateOf {
+            val offsetInHero = heroTitleOffsetFromTopPx
+            if (offsetInHero <= 0f) {
+                Float.POSITIVE_INFINITY
+            } else if (lazyListState.firstVisibleItemIndex == 0) {
+                contentTopPaddingPx - lazyListState.firstVisibleItemScrollOffset + offsetInHero
+            } else {
+                Float.NEGATIVE_INFINITY
+            }
+        }
+    }
     val topViewportInsetPx = with(density) { (statusBarHeight + 54.dp + 44.dp).toPx() }
     val bottomViewportInsetPx = with(density) { (60.dp + navBottom).toPx() }
 
@@ -1165,26 +1278,43 @@ private fun CompactPlaylistDetailScreen(
     )
 
     val constantBottomPadding = maxOf(LocalContentBottomPadding.current, 60.dp + navBottom) + 16.dp
+    val pageBaseColor = if (isDark) dominantDarkColor else Color.White
+    val playlistTopBackdrop = rememberLayerBackdrop {
+        drawRect(pageBaseColor)
+        drawContent()
+    }
+    val topBlurAlpha by remember(lazyListState, density) {
+        val fadeDistancePx = with(density) { 44.dp.toPx().coerceAtLeast(1f) }
+        derivedStateOf {
+            if (lazyListState.firstVisibleItemIndex > 0) 1f
+            else (lazyListState.firstVisibleItemScrollOffset / fadeDistancePx).coerceIn(0f, 1f)
+        }
+    }
 
     // 整页统一纯色沉浸背景，没有任何黑色断层和过渡色阶，彻底消除透光
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(if (isDark) dominantDarkColor else Color.White)
+            .background(pageBaseColor)
     ) {
-        LazyColumn(
-            state = lazyListState,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder)
-                .verticalElasticOverscroll(),
-            contentPadding = PaddingValues(
-                top = if (isPosterWall) 0.dp else statusBarHeight + 12.dp,
-                bottom = constantBottomPadding,
-                start = if (isPosterWall) 0.dp else 16.dp,
-                end = if (isPosterWall) 0.dp else 16.dp
-            )
+                .layerBackdrop(playlistTopBackdrop)
         ) {
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder)
+                    .verticalElasticOverscroll(),
+                contentPadding = PaddingValues(
+                    top = if (isPosterWall) 0.dp else statusBarHeight + 12.dp,
+                    bottom = constantBottomPadding,
+                    start = if (isPosterWall) 0.dp else 16.dp,
+                    end = if (isPosterWall) 0.dp else 16.dp
+                )
+            ) {
             // 1. Hero 头部（原地保持，长按与退出不自动跳动列表）
             item(key = "playlist_hero") {
                 RenderPlaylistHero(
@@ -1193,7 +1323,25 @@ private fun CompactPlaylistDetailScreen(
                     dominantDarkColor = dominantDarkColor,
                     onPlayAll = onPlayAll,
                     topInset = if (isPosterWall) statusBarHeight else 0.dp,
-                    isDark = isDark
+                    isDark = isDark,
+                    titleAlphaProvider = {
+                        val currentY = heroTitleCenterY
+                        val startY = dockCenterY + morphBandPx
+                        if (currentY > startY) {
+                            1f
+                        } else if (heroTitleLineCount <= 1) {
+                            0f
+                        } else {
+                            val p = ((startY - currentY) / morphBandPx).coerceIn(0f, 1f)
+                            (1f - p / 0.25f).coerceIn(0f, 1f)
+                        }
+                    },
+                    onHeroTitleMetricsChanged = { centerOffsetPx ->
+                        heroTitleOffsetFromTopPx = centerOffsetPx
+                    },
+                    onTitleLineCount = { count ->
+                        heroTitleLineCount = count
+                    }
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -1275,9 +1423,9 @@ private fun CompactPlaylistDetailScreen(
                 }
             }
         }
+        }
 
-        // 正常模式下顶部折叠背景层、居中标题与左右圆钮（随编辑模式平滑淡出）
-        val collapseFraction = collapseFractionState.value
+        // 正常模式下顶部渐进高斯模糊、连续一体式标题与左右圆钮（随编辑模式平滑淡出）
         AnimatedVisibility(
             visible = !isEditMode,
             enter = fadeIn(tween(220)),
@@ -1285,42 +1433,82 @@ private fun CompactPlaylistDetailScreen(
             modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                // 1. 折叠背景层（随下滑平滑淡入顶栏底色）
-                if (collapseFraction > 0.01f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(statusBarHeight + 54.dp)
-                            .align(Alignment.TopCenter)
-                            .graphicsLayer { alpha = collapseFraction }
-                            .background(
-                                if (isDark) dominantDarkColor else Color.White.copy(alpha = 0.94f)
-                            )
+                // 1. 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无白色状态栏遮罩）
+                if (isPosterWall) {
+                    ProgressiveTopBlur(
+                        backdrop = playlistTopBackdrop,
+                        totalHeight = statusBarHeight + 24.dp,
+                        statusBarHeight = statusBarHeight,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        alphaProvider = { 1f - topBlurAlpha },
+                        deepBlurRadius = 16.dp,
+                        mediumBlurRadius = 8.dp,
+                        shallowBlurRadius = 3.dp
                     )
                 }
+                ProgressiveTopBlur(
+                    backdrop = playlistTopBackdrop,
+                    totalHeight = statusBarHeight + 82.dp,
+                    statusBarHeight = statusBarHeight,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    alphaProvider = { topBlurAlpha }
+                )
 
-                // 2. 居中标题（随下滑平滑淡入，严格在左右按钮内侧居中）
-                if (collapseFraction > 0.01f) {
-                    Box(
+                // 2. 连续一体式歌单标题：封面下方歌单名进入顶部区域后随手指上滑缩小并固定到顶栏中央
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .align(Alignment.TopCenter)
+                        .offset {
+                            val currentY = heroTitleCenterY
+                            val startY = dockCenterY + morphBandPx
+                            val targetY = if (currentY <= startY) {
+                                currentY.coerceAtLeast(dockCenterY)
+                            } else {
+                                startY
+                            }
+                            IntOffset(0, (targetY - 22.dp.toPx()).roundToInt())
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    val scaleFactor = 16f / 22f
+                    val dockedMaxTextWidth = ((maxWidth - 124.dp) / scaleFactor).coerceAtLeast(120.dp)
+                    val layoutMaxWidth = minOf(maxWidth - 48.dp, dockedMaxTextWidth)
+                    Text(
+                        text = detail.displayTitle,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else PlaylistTextPrimary
+                        ),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(statusBarHeight + 54.dp)
-                            .align(Alignment.TopCenter)
-                            .padding(top = statusBarHeight, start = 62.dp, end = 62.dp)
-                            .graphicsLayer { alpha = collapseFraction },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = detail.displayTitle,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else PlaylistTextPrimary
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                            .widthIn(max = layoutMaxWidth)
+                            .graphicsLayer {
+                                val currentY = heroTitleCenterY
+                                val startY = dockCenterY + morphBandPx
+                                val inMorph = currentY <= startY
+                                val progress = if (inMorph) {
+                                    ((startY - currentY) / morphBandPx).coerceIn(0f, 1f)
+                                } else {
+                                    0f
+                                }
+                                val scale = lerp(1f, scaleFactor, progress)
+                                scaleX = scale
+                                scaleY = scale
+                                transformOrigin = TransformOrigin.Center
+                                alpha = if (!inMorph) {
+                                    0f
+                                } else if (heroTitleLineCount <= 1) {
+                                    1f
+                                } else {
+                                    (progress / 0.25f).coerceIn(0f, 1f)
+                                }
+                            }
+                    )
                 }
 
                 // 3. 左右两个常驻操作按钮
@@ -1387,12 +1575,28 @@ private fun CompactPlaylistDetailScreen(
             exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { -it / 2 } + fadeOut(tween(180)),
             modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).zIndex(5f)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (isDark) dominantDarkColor else Color.White)
-                    .statusBarsPadding()
-            ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ProgressiveTopBlur(
+                    backdrop = playlistTopBackdrop,
+                    totalHeight = statusBarHeight + 122.dp,
+                    statusBarHeight = statusBarHeight,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    deepBlurRadius = 28.dp,
+                    mediumBlurRadius = 15.dp,
+                    shallowBlurRadius = 5.dp
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                                Modifier.background(pageBaseColor.copy(alpha = 0.92f))
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .statusBarsPadding()
+                ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1499,6 +1703,7 @@ private fun CompactPlaylistDetailScreen(
                     thickness = 0.5.dp
                 )
             }
+            }
         }
 
         // 编辑模式底部多选操作栏（平滑从底部滑入）
@@ -1535,9 +1740,45 @@ private fun RenderPlaylistHero(
     isDark: Boolean = true,
     expanded: Boolean = false,
     mediaOnly: Boolean = false,
-    artworkHeight: androidx.compose.ui.unit.Dp? = null
+    artworkHeight: androidx.compose.ui.unit.Dp? = null,
+    titleAlphaProvider: () -> Float = { 1f },
+    onHeroTitleMetricsChanged: ((centerOffsetFromTopPx: Float) -> Unit)? = null,
+    onTitleLineCount: ((Int) -> Unit)? = null
 ) {
-    Box(Modifier.fillMaxWidth().testTag("playlist_hero").semantics { stateDescription = style.title }) {
+    val coordsHolder = remember { arrayOfNulls<LayoutCoordinates>(2) }
+    val reportTitleMetrics = {
+        val root = coordsHolder[0]
+        val title = coordsHolder[1]
+        if (root != null && title != null && root.isAttached && title.isAttached) {
+            val topY = root.localPositionOf(title, Offset.Zero).y
+            onHeroTitleMetricsChanged?.invoke(topY + title.size.height / 2f)
+        }
+    }
+    val onTitlePositioned: ((LayoutCoordinates) -> Unit)? = if (onHeroTitleMetricsChanged != null) {
+        { coords ->
+            coordsHolder[1] = coords
+            reportTitleMetrics()
+        }
+    } else {
+        null
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .let { base ->
+                if (onHeroTitleMetricsChanged != null) {
+                    base.onGloballyPositioned { coords ->
+                        coordsHolder[0] = coords
+                        reportTitleMetrics()
+                    }
+                } else {
+                    base
+                }
+            }
+            .testTag("playlist_hero")
+            .semantics { stateDescription = style.title }
+    ) {
         when (style) {
             PlaylistDetailStyle.APPLE_MUSIC -> {
                 PlaylistHeroAppleMusicSection(
@@ -1545,7 +1786,10 @@ private fun RenderPlaylistHero(
                     isDark = isDark,
                     onPlayAll = onPlayAll,
                     coverWidthFraction = if (expanded) 0.88f else 0.68f,
-                    showControls = !mediaOnly
+                    showControls = !mediaOnly,
+                    titleAlphaProvider = titleAlphaProvider,
+                    onTitlePositioned = onTitlePositioned,
+                    onTitleLineCount = onTitleLineCount
                 )
             }
             PlaylistDetailStyle.POSTER_WALL -> {
@@ -1555,7 +1799,10 @@ private fun RenderPlaylistHero(
                     isDark = isDark,
                     onPlayAll = onPlayAll,
                     topInset = topInset,
-                    showControls = !mediaOnly
+                    showControls = !mediaOnly,
+                    titleAlphaProvider = titleAlphaProvider,
+                    onTitlePositioned = onTitlePositioned,
+                    onTitleLineCount = onTitleLineCount
                 )
             }
             PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> {
@@ -1566,7 +1813,10 @@ private fun RenderPlaylistHero(
                     onPlayAll = onPlayAll,
                     topInset = topInset,
                     showControls = !mediaOnly,
-                    artworkHeight = artworkHeight
+                    artworkHeight = artworkHeight,
+                    titleAlphaProvider = titleAlphaProvider,
+                    onTitlePositioned = onTitlePositioned,
+                    onTitleLineCount = onTitleLineCount
                 )
             }
         }

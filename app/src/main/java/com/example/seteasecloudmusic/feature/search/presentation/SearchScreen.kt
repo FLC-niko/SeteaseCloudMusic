@@ -88,6 +88,7 @@ import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
+import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
 import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
@@ -95,6 +96,7 @@ import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscrol
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -214,102 +216,119 @@ fun SearchScreenContent(
         focusManager.clearFocus()
         action()
     }
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val resultsTopPadding = topContentPadding + 58.dp
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(PageBackground)
-            .padding(top = topContentPadding)
     ) {
-        when {
-            // 1. 用户尚未输入：展示空白状态（顶部搜索历史 + 底部热搜列表）
-            uiState.query.isEmpty() -> {
-                InitialSearchPage(
-                    history = uiState.searchHistory,
-                    hotSearches = uiState.hotSearches,
-                    isHotSearchLoading = uiState.isHotSearchLoading,
-                    bottomContentPadding = bottomContentPadding,
-                    onHistoryClick = { handleSelect { onHistoryClick(it) } },
-                    onClearHistory = onClearHistory,
-                    onRemoveHistory = onRemoveHistory,
-                    onHotSearchClick = { handleSelect { onHotSearchClick(it) } },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(searchBackdrop)
+        ) {
+            when {
+                // 1. 用户尚未输入：展示空白状态（顶部搜索历史 + 底部热搜列表）
+                uiState.query.isEmpty() -> {
+                    InitialSearchPage(
+                        history = uiState.searchHistory,
+                        hotSearches = uiState.hotSearches,
+                        isHotSearchLoading = uiState.isHotSearchLoading,
+                        topContentPadding = topContentPadding,
+                        bottomContentPadding = bottomContentPadding,
+                        onHistoryClick = { handleSelect { onHistoryClick(it) } },
+                        onClearHistory = onClearHistory,
+                        onRemoveHistory = onRemoveHistory,
+                        onHotSearchClick = { handleSelect { onHotSearchClick(it) } },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
-            // 2. 用户开始输入但尚未提交正式搜索：即时展示联想搜索建议
-            !uiState.isSearchSubmitted -> {
-                SearchSuggestionsSection(
-                    query = uiState.query,
-                    suggestions = uiState.suggestions,
-                    isLoading = uiState.isSuggestionLoading,
-                    bottomContentPadding = bottomContentPadding,
-                    onSearchSubmit = { handleSelect { onSearchSubmit() } },
-                    onSuggestionClick = { handleSelect { onSuggestionClick(it) } },
-                    onTrackClick = onTrackClick,
-                    onArtistClick = onArtistClick,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+                // 2. 用户开始输入但尚未提交正式搜索：即时展示联想搜索建议
+                !uiState.isSearchSubmitted -> {
+                    SearchSuggestionsSection(
+                        query = uiState.query,
+                        suggestions = uiState.suggestions,
+                        isLoading = uiState.isSuggestionLoading,
+                        topContentPadding = topContentPadding,
+                        bottomContentPadding = bottomContentPadding,
+                        onSearchSubmit = { handleSelect { onSearchSubmit() } },
+                        onSuggestionClick = { handleSelect { onSuggestionClick(it) } },
+                        onTrackClick = onTrackClick,
+                        onArtistClick = onArtistClick,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
-            // 3. 用户提交搜索后：展示正式分类标签与搜索结果
-            else -> {
-                SearchTabsRow(
-                    backdrop = searchBackdrop,
-                    selectedTab = selectedTab,
-                    onSelect = { selectedTab = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                )
+                // 3. 用户提交搜索后：展示搜索结果（顶部分类标签浮于模糊区之上）
+                else -> {
+                    when {
+                        uiState.isLoading -> {
+                            ResultLoadingSection(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = resultsTopPadding, bottom = bottomContentPadding)
+                            )
+                        }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                        shouldShowResultError(uiState) -> {
+                            ResultErrorSection(
+                                errorMessage = uiState.errorMessage ?: "搜索失败",
+                                onRetryClick = onRetryClick,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = resultsTopPadding, bottom = bottomContentPadding)
+                            )
+                        }
 
-                when {
-                    uiState.isLoading -> {
-                        ResultLoadingSection(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .padding(bottom = bottomContentPadding)
-                        )
-                    }
+                        items.isEmpty() -> {
+                            EmptyResultsSection(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = resultsTopPadding, bottom = bottomContentPadding)
+                            )
+                        }
 
-                    shouldShowResultError(uiState) -> {
-                        ResultErrorSection(
-                            errorMessage = uiState.errorMessage ?: "搜索失败",
-                            onRetryClick = onRetryClick,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .padding(bottom = bottomContentPadding)
-                        )
-                    }
-
-                    items.isEmpty() -> {
-                        EmptyResultsSection(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .padding(bottom = bottomContentPadding)
-                        )
-                    }
-
-                    else -> {
-                        SearchResultsList(
-                            items = items,
-                            artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
-                            bottomContentPadding = bottomContentPadding,
-                            onRowClick = onSuggestionClick,
-                            onArtistClick = onArtistClick,
-                            onTrackClick = onTrackClick,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                        )
+                        else -> {
+                            SearchResultsList(
+                                items = items,
+                                artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
+                                topContentPadding = resultsTopPadding,
+                                bottomContentPadding = bottomContentPadding,
+                                onRowClick = onSuggestionClick,
+                                onArtistClick = onArtistClick,
+                                onTrackClick = onTrackClick,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }
+        }
+
+        // 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无状态栏白色遮罩）
+        ProgressiveTopBlur(
+            backdrop = searchBackdrop,
+            totalHeight = if (uiState.isSearchSubmitted) topContentPadding + 64.dp else topContentPadding + 18.dp,
+            statusBarHeight = statusBarHeight,
+            modifier = Modifier.align(Alignment.TopCenter),
+            deepBlurRadius = 26.dp,
+            mediumBlurRadius = 13.dp,
+            shallowBlurRadius = 4.5.dp
+        )
+
+        if (uiState.isSearchSubmitted) {
+            SearchTabsRow(
+                backdrop = searchBackdrop,
+                selectedTab = selectedTab,
+                onSelect = { selectedTab = it },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(top = topContentPadding + 4.dp, start = 16.dp, end = 16.dp)
+            )
         }
     }
 }
@@ -425,6 +444,7 @@ private fun SearchTabsRow(
 private fun SearchResultsList(
     items: List<SearchRowItem>,
     artworkGrid: Boolean,
+    topContentPadding: Dp,
     bottomContentPadding: Dp,
     onRowClick: (String) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
@@ -484,7 +504,7 @@ private fun SearchResultsList(
             LazyColumn(
                 Modifier.fillMaxSize().verticalElasticOverscroll(),
                 state = listState,
-                contentPadding = PaddingValues(bottom = bottomContentPadding)
+                contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding)
             ) {
                 items(results, key = { it.key }) { item ->
                     renderRow(item)
@@ -499,7 +519,7 @@ private fun SearchResultsList(
                 primary = {
                     LazyColumn(
                         Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomContentPadding),
+                        contentPadding = PaddingValues(start = 16.dp, top = topContentPadding + 16.dp, end = 16.dp, bottom = bottomContentPadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(leading, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
@@ -511,7 +531,7 @@ private fun SearchResultsList(
                 GridCells.Adaptive(168.dp),
                 Modifier.fillMaxSize(),
                 state = gridState,
-                contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = bottomContentPadding),
+                contentPadding = PaddingValues(start = 20.dp, top = topContentPadding + 20.dp, end = 20.dp, bottom = bottomContentPadding),
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
@@ -882,6 +902,7 @@ private fun InitialSearchPage(
     history: List<String>,
     hotSearches: List<HotSearchItem>,
     isHotSearchLoading: Boolean,
+    topContentPadding: Dp,
     bottomContentPadding: Dp,
     onHistoryClick: (String) -> Unit,
     onClearHistory: () -> Unit,
@@ -893,7 +914,7 @@ private fun InitialSearchPage(
         modifier = modifier
             .fillMaxSize()
             .verticalElasticOverscroll(),
-        contentPadding = PaddingValues(bottom = bottomContentPadding)
+        contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding)
     ) {
         // 顶部搜索历史
         if (history.isNotEmpty()) {
@@ -1143,6 +1164,7 @@ private fun SearchSuggestionsSection(
     query: String,
     suggestions: SearchSuggestions,
     isLoading: Boolean,
+    topContentPadding: Dp,
     bottomContentPadding: Dp,
     onSearchSubmit: () -> Unit,
     onSuggestionClick: (String) -> Unit,
@@ -1154,7 +1176,7 @@ private fun SearchSuggestionsSection(
         modifier = modifier
             .fillMaxSize()
             .verticalElasticOverscroll(),
-        contentPadding = PaddingValues(bottom = bottomContentPadding)
+        contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding)
     ) {
         // 第一项：直接搜索输入的当前关键词
         item(key = "suggest_current_query") {

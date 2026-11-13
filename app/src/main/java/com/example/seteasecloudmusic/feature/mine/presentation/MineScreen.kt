@@ -101,9 +101,8 @@ import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
-import com.example.seteasecloudmusic.core.ui.components.AppleMusicCollapsedTopBar
-import com.example.seteasecloudmusic.core.ui.components.AppleMusicLargeTitle
-import com.example.seteasecloudmusic.core.ui.components.clipBelowStatusBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
+import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSurface
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
@@ -190,7 +189,7 @@ fun MineScreen(
 
     val collapseFractionState = rememberAppleMusicCollapseFraction(
         lazyListState = lazyListState,
-        collapseThresholdDp = 76.dp
+        collapseThresholdDp = AppleMusicTopBarDefaults.CollapseThreshold
     )
 
     // 不要在 AppNavigation 的全局 layerBackdrop 中再次采样同一个 Backdrop。
@@ -198,6 +197,10 @@ fun MineScreen(
     // 这样既保留液态玻璃效果，也避免渲染反馈导致点击页面后主线程/渲染线程卡死。
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
     val mineBackdrop = rememberLayerBackdrop {
+        drawRect(MinePageBase)
+        drawContent()
+    }
+    val topBarBackdrop = rememberLayerBackdrop {
         drawRect(MinePageBase)
         drawContent()
     }
@@ -210,7 +213,15 @@ fun MineScreen(
     val window = LocalAdaptiveWindow.current
     val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
     val libraryContent: @Composable () -> Unit = {
+    val session = uiState.authSession
+    val isLoggedIn = session?.isLoggedIn == true && session.userId != null
+
     Box(Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(topBarBackdrop)
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -219,38 +230,22 @@ fun MineScreen(
             MineAmbientBackground()
         }
 
-        val session = uiState.authSession
-        val isLoggedIn = session?.isLoggedIn == true && session.userId != null
-
         if (!isLoggedIn) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = statusBarHeight + 8.dp, bottom = bottomContentPadding)
+                    .padding(
+                        start = 20.dp,
+                        end = 20.dp,
+                        top = statusBarHeight + 8.dp + AppleMusicTopBarDefaults.HeaderSpacerHeight,
+                        bottom = bottomContentPadding
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                AppleMusicLargeTitle(
-                    title = "我的",
-                    collapseFraction = 0f,
-                    trailingContent = {
-                        UserAvatarButton(
-                            avatarUrl = null,
-                            displayName = null,
-                            onClick = onLoginClick
-                        )
-                    }
+                MineLoggedOutView(
+                    backdrop = mineBackdrop,
+                    onLoginClick = onLoginClick
                 )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    MineLoggedOutView(
-                        backdrop = mineBackdrop,
-                        onLoginClick = onLoginClick
-                    )
-                }
             }
         } else {
             val isTabsPinned by remember {
@@ -266,7 +261,6 @@ fun MineScreen(
                 state = lazyListState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .clipBelowStatusBar()
                     .verticalElasticOverscroll(),
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 8.dp,
@@ -274,16 +268,10 @@ fun MineScreen(
                 )
             ) {
                 item(key = "large_page_title") {
-                    AppleMusicLargeTitle(
-                        title = "我的",
-                        collapseFraction = collapseFractionState.value,
-                        trailingContent = {
-                            UserAvatarButton(
-                                avatarUrl = session.avatarUrl,
-                                displayName = session.nickname,
-                                onClick = onLoginClick
-                            )
-                        }
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(AppleMusicTopBarDefaults.HeaderSpacerHeight)
                     )
                 }
 
@@ -432,19 +420,20 @@ fun MineScreen(
                 }
             }
         }
+        }
+        }
 
         MineCollapsedTopBar(
-            collapseFractionState = collapseFractionState,
+            collapseFractionProvider = { if (isLoggedIn) collapseFractionState.value else 0f },
             statusBarHeight = statusBarHeight,
-            backdrop = mineBackdrop,
-            avatarUrl = session.avatarUrl,
-            displayName = session.nickname,
+            backdrop = topBarBackdrop,
+            avatarUrl = if (isLoggedIn) session.avatarUrl else null,
+            displayName = if (isLoggedIn) session.nickname else null,
             onAvatarClick = onLoginClick,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .zIndex(4f)
         )
-    }
 
     if (showDirectoryDialog) {
         ChangeLocalDirectoryDialog(
@@ -577,7 +566,7 @@ fun MineScreen(
  */
 @Composable
 private fun MineCollapsedTopBar(
-    collapseFractionState: State<Float>,
+    collapseFractionProvider: () -> Float,
     statusBarHeight: Dp,
     backdrop: Backdrop,
     avatarUrl: String?,
@@ -585,16 +574,16 @@ private fun MineCollapsedTopBar(
     onAvatarClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AppleMusicCollapsedTopBar(
+    AppleMusicMorphingTopBar(
         title = "我的",
-        collapseFraction = collapseFractionState.value,
+        collapseFractionProvider = collapseFractionProvider,
         statusBarHeight = statusBarHeight,
         backdrop = backdrop,
         trailingContent = {
             UserAvatarButton(
                 avatarUrl = avatarUrl,
                 displayName = displayName,
-                size = 34.dp,
+                size = 46.dp,
                 onClick = onAvatarClick
             )
         },

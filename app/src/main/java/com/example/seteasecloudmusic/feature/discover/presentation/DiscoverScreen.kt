@@ -10,16 +10,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -35,13 +39,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -50,9 +57,12 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlaylist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverToplist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverTrackPreview
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private val DiscoverBackground = Color(0xFFF4F4F6)
 private val DiscoverPrimary = Color(0xFF111111)
@@ -71,15 +81,32 @@ fun DiscoverScreen(
     onRetryNewsongs: () -> Unit,
     onRetryToplists: () -> Unit
 ) {
-    Column(
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val discoverBackdrop = rememberLayerBackdrop {
+        drawRect(DiscoverBackground)
+        drawContent()
+    }
+    val topBlurAlpha by remember(listState, density) {
+        val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else (listState.firstVisibleItemScrollOffset / fadeDistancePx).coerceIn(0f, 1f)
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(DiscoverBackground)
-            .padding(top = topContentPadding, bottom = bottomContentPadding)
     ) {
         AdaptiveSectionColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(discoverBackdrop),
+            state = listState,
+            contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding + 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
@@ -131,6 +158,14 @@ fun DiscoverScreen(
                 }
             }
         }
+
+        ProgressiveTopBlur(
+            backdrop = discoverBackdrop,
+            totalHeight = (topContentPadding + 16.dp).coerceAtLeast(statusBarHeight + 56.dp),
+            statusBarHeight = statusBarHeight,
+            modifier = Modifier.align(Alignment.TopCenter),
+            alphaProvider = { topBlurAlpha }
+        )
     }
 }
 

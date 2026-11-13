@@ -37,7 +37,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -66,7 +69,10 @@ fun PlaylistHeroAppleMusicSection(
     isDark: Boolean = true,
     coverWidthFraction: Float = 0.68f,
     showArtwork: Boolean = true,
-    showControls: Boolean = true
+    showControls: Boolean = true,
+    titleAlphaProvider: () -> Float = { 1f },
+    onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
+    onTitleLineCount: ((Int) -> Unit)? = null
 ) {
     val totalCount = detail.trackCount.coerceAtLeast(detail.tracks.size)
 
@@ -135,7 +141,17 @@ fun PlaylistHeroAppleMusicSection(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 24.dp)
+            onTextLayout = if (onTitleLineCount != null) {
+                { result -> onTitleLineCount(result.lineCount) }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer { alpha = titleAlphaProvider() }
+                .let { base ->
+                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
+                }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -184,7 +200,10 @@ fun PlaylistHeroPosterWallSection(
     modifier: Modifier = Modifier,
     topInset: androidx.compose.ui.unit.Dp = 0.dp,
     isDark: Boolean = true,
-    showControls: Boolean = true
+    showControls: Boolean = true,
+    titleAlphaProvider: () -> Float = { 1f },
+    onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
+    onTitleLineCount: ((Int) -> Unit)? = null
 ) {
     val wallCovers = remember(detail) {
         val tracksCovers = detail.tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
@@ -246,7 +265,17 @@ fun PlaylistHeroPosterWallSection(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 24.dp)
+            onTextLayout = if (onTitleLineCount != null) {
+                { result -> onTitleLineCount(result.lineCount) }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer { alpha = titleAlphaProvider() }
+                .let { base ->
+                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
+                }
         )
 
         // 3. 播放键（主题红底白字）
@@ -295,7 +324,10 @@ fun PlaylistHeroDynamicPosterWallSection(
     topInset: androidx.compose.ui.unit.Dp = 0.dp,
     isDark: Boolean = true,
     showControls: Boolean = true,
-    artworkHeight: androidx.compose.ui.unit.Dp? = null
+    artworkHeight: androidx.compose.ui.unit.Dp? = null,
+    titleAlphaProvider: () -> Float = { 1f },
+    onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
+    onTitleLineCount: ((Int) -> Unit)? = null
 ) {
     val wallCovers = remember(detail) {
         val tracksCovers = detail.tracks.mapNotNull { it.coverUrl?.takeIf(String::isNotBlank) }
@@ -358,7 +390,17 @@ fun PlaylistHeroDynamicPosterWallSection(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 24.dp)
+            onTextLayout = if (onTitleLineCount != null) {
+                { result -> onTitleLineCount(result.lineCount) }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer { alpha = titleAlphaProvider() }
+                .let { base ->
+                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
+                }
         )
 
         // 3. 播放键（主题红底白字）
