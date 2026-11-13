@@ -454,20 +454,18 @@ fun AppleMusicCollapsedTopBar(
                 modifier = Modifier.align(Alignment.CenterStart),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 左侧返回按钮（二级页面）
+                // 左侧液态玻璃返回按钮（二级页面）
                 if (showBackButton && onBackClick != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.06f))
-                            .border(0.5.dp, Color.Black.copy(alpha = 0.12f), CircleShape)
-                            .clickable(onClick = onBackClick),
-                        contentAlignment = Alignment.Center
+                    LiquidGlassCircleButton(
+                        onClick = onBackClick,
+                        backdrop = backdrop,
+                        size = 36.dp,
+                        isDarkSurface = false,
+                        contentDescription = "返回"
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = null,
                             tint = Color(0xFF111111),
                             modifier = Modifier.size(19.dp)
                         )

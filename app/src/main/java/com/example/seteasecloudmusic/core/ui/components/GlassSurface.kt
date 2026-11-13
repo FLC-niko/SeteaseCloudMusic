@@ -1,14 +1,32 @@
 package com.example.seteasecloudmusic.core.ui.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
@@ -130,6 +148,91 @@ fun GlassSurface(
             .then(
                 if (borderWidth > 0.dp) Modifier.glassBorder(cornerRadius, borderWidth) else Modifier
             ),
+        content = content
+    )
+}
+
+/**
+ * 圆形液态玻璃图标按钮（折射 + 模糊 + 鲜艳度 + 高光描边 + 按压微缩回弹）。
+ *
+ * 适用于顶部返回、更多菜单等小尺寸圆形悬浮按钮；当 [backdrop] 为空时平滑退化为半透明磨砂圆钮。
+ */
+@Composable
+fun LiquidGlassCircleButton(
+    onClick: () -> Unit,
+    backdrop: Backdrop?,
+    modifier: Modifier = Modifier,
+    size: Dp = 38.dp,
+    isDarkSurface: Boolean = false,
+    enabled: Boolean = true,
+    contentDescription: String? = null,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = 700f
+        ),
+        label = "liquidGlassCirclePressScale"
+    )
+    val indication = LocalIndication.current
+    val radius = size / 2
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .then(
+                if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                } else {
+                    Modifier
+                }
+            )
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .then(
+                if (backdrop != null) {
+                    Modifier
+                        .liquidGlass(
+                            backdrop = backdrop,
+                            cornerRadius = radius,
+                            surfaceAlpha = if (isDarkSurface) 0.14f else 0.42f,
+                            blurRadius = 1.5.dp,
+                            refractionHeight = 8.dp,
+                            refractionAmount = 16.dp
+                        )
+                        .border(
+                            width = 0.75.dp,
+                            color = Color.White.copy(alpha = if (isDarkSurface) 0.34f else 0.78f),
+                            shape = CircleShape
+                        )
+                } else {
+                    Modifier
+                        .background(
+                            color = Color.White.copy(alpha = if (isDarkSurface) 0.16f else 0.70f),
+                            shape = CircleShape
+                        )
+                        .border(
+                            width = 0.5.dp,
+                            color = Color.White.copy(alpha = if (isDarkSurface) 0.22f else 0.85f),
+                            shape = CircleShape
+                        )
+                }
+            )
+            .clip(CircleShape)
+            .indication(interactionSource = interactionSource, indication = indication)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center,
         content = content
     )
 }

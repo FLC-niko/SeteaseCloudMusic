@@ -132,6 +132,7 @@ import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalContentBottomPadding
 import com.example.seteasecloudmusic.core.ui.adaptive.MusicPaneHeader
 import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
@@ -658,7 +659,7 @@ fun PlaylistDetailScreen(
                             primary = {
                                 if (window.isTabletop) {
                                     Column(Modifier.fillMaxSize().padding(top = statusBarHeight)) {
-                                        ExpandedPlaylistToolbar(expandedDark, onClose) { showMoreSheet = true }
+                                        ExpandedPlaylistToolbar(expandedDark, onClose = onClose) { showMoreSheet = true }
                                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                             val mediaHeight = maxHeight
                                             val cap = when (currentStyle) {
@@ -721,7 +722,7 @@ fun PlaylistDetailScreen(
                                                 .padding(top = statusBarHeight)
                                                 .align(Alignment.TopCenter)
                                         ) {
-                                            ExpandedPlaylistToolbar(expandedDark, onClose) { showMoreSheet = true }
+                                            ExpandedPlaylistToolbar(expandedDark, primaryTopBackdrop, onClose) { showMoreSheet = true }
                                         }
                                     }
                                 }
@@ -886,17 +887,28 @@ internal fun rememberPlaylistColorBackgroundEnabled(): Boolean {
 }
 
 @Composable
-private fun ExpandedPlaylistToolbar(isDark: Boolean, onClose: () -> Unit, onMore: () -> Unit) {
+private fun ExpandedPlaylistToolbar(
+    isDark: Boolean,
+    backdrop: Backdrop? = null,
+    onClose: () -> Unit,
+    onMore: () -> Unit
+) {
     val sideControls = LocalAdaptiveWindow.current.useNavigationRail && !LocalAdaptiveWindow.current.sideControlsAtStart
     val tint = if (isDark) Color.White else PlaylistTextPrimary
     val button: @Composable (Boolean, () -> Unit) -> Unit = { back, action ->
-        IconButton(action, Modifier.size(44.dp)) {
-            Box(Modifier.size(38.dp).clip(CircleShape)
-                .background(Color.White.copy(alpha = if (isDark) 0.16f else 0.70f))
-                .border(0.5.dp, Color.White.copy(alpha = if (isDark) 0.18f else 0.85f), CircleShape),
-                contentAlignment = Alignment.Center) {
-                if (back) Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", Modifier.size(20.dp), tint = tint)
-                else Box(Modifier.semantics { contentDescription = "更多操作" }) { AppleMusicMoreIcon(tint = tint, size = 20.dp) }
+        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+            LiquidGlassCircleButton(
+                onClick = action,
+                backdrop = backdrop,
+                size = 38.dp,
+                isDarkSurface = isDark,
+                contentDescription = if (back) "返回" else "更多操作"
+            ) {
+                if (back) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(20.dp), tint = tint)
+                } else {
+                    AppleMusicMoreIcon(tint = tint, size = 20.dp)
+                }
             }
         }
     }
@@ -1511,56 +1523,40 @@ private fun CompactPlaylistDetailScreen(
                     )
                 }
 
-                // 3. 左右两个常驻操作按钮
+                // 3. 左右两个常驻液态玻璃操作按钮
+                val buttonTint = if (isDark) Color.White else Color(0xFF111111)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = statusBarHeight + 8.dp, start = 16.dp, end = 16.dp)
                         .align(Alignment.TopCenter)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.70f)
-                            )
-                            .border(
-                                0.5.dp,
-                                if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
-                                CircleShape
-                            )
-                            .clickable(onClick = onClose),
-                        contentAlignment = Alignment.Center
+                    LiquidGlassCircleButton(
+                        onClick = onClose,
+                        backdrop = playlistTopBackdrop,
+                        size = 38.dp,
+                        isDarkSurface = isDark,
+                        contentDescription = "返回",
+                        modifier = Modifier.align(Alignment.CenterStart)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = if (isDark) Color.White else Color(0xFF111111),
+                            contentDescription = null,
+                            tint = buttonTint,
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.70f)
-                            )
-                            .border(
-                                0.5.dp,
-                                if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.85f),
-                                CircleShape
-                            )
-                            .semantics { contentDescription = "更多操作" }
-                            .clickable(onClick = onOpenMoreMenu),
-                        contentAlignment = Alignment.Center
+                    LiquidGlassCircleButton(
+                        onClick = onOpenMoreMenu,
+                        backdrop = playlistTopBackdrop,
+                        size = 38.dp,
+                        isDarkSurface = isDark,
+                        contentDescription = "更多操作",
+                        modifier = Modifier.align(Alignment.CenterEnd)
                     ) {
                         AppleMusicMoreIcon(
-                            tint = if (isDark) Color.White else Color(0xFF111111),
+                            tint = buttonTint,
                             size = 20.dp
                         )
                     }
@@ -1604,14 +1600,18 @@ private fun CompactPlaylistDetailScreen(
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
+                    val editTint = if (isDark) Color.White else PlaylistTextPrimary
+                    LiquidGlassCircleButton(
                         onClick = onExitEditMode,
-                        modifier = Modifier.size(38.dp)
+                        backdrop = playlistTopBackdrop,
+                        size = 38.dp,
+                        isDarkSurface = isDark,
+                        contentDescription = "返回"
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = if (isDark) Color.White else PlaylistTextPrimary,
+                            contentDescription = null,
+                            tint = editTint,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1623,7 +1623,7 @@ private fun CompactPlaylistDetailScreen(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color.White else PlaylistTextPrimary
+                            color = editTint
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1631,24 +1631,32 @@ private fun CompactPlaylistDetailScreen(
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    IconButton(
+                    LiquidGlassCircleButton(
                         onClick = { Toast.makeText(context, "搜索歌曲功能即将推出", Toast.LENGTH_SHORT).show() },
-                        modifier = Modifier.size(38.dp)
+                        backdrop = playlistTopBackdrop,
+                        size = 38.dp,
+                        isDarkSurface = isDark,
+                        contentDescription = "搜索"
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_nav_search),
-                            contentDescription = "搜索",
-                            tint = if (isDark) Color.White else PlaylistTextPrimary,
+                            contentDescription = null,
+                            tint = editTint,
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    IconButton(
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    LiquidGlassCircleButton(
                         onClick = onOpenMoreMenu,
-                        modifier = Modifier.size(38.dp)
+                        backdrop = playlistTopBackdrop,
+                        size = 38.dp,
+                        isDarkSurface = isDark,
+                        contentDescription = "更多操作"
                     ) {
                         AppleMusicMoreIcon(
-                            tint = if (isDark) Color.White else PlaylistTextPrimary,
+                            tint = editTint,
                             size = 20.dp
                         )
                     }
