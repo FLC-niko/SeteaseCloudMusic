@@ -498,6 +498,10 @@ fun MineScreen(
     ) {
         val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
         displayDetail?.let { detail ->
+            val canReorderTracks = detail.id != LOCAL_PLAYLIST_ID && (
+                detail.id == uiState.likedPlaylist?.id ||
+                    uiState.createdPlaylists.any { it.id == detail.id }
+            )
             androidx.compose.runtime.key(playlistOpenCounter.intValue) {
                 PlaylistDetailScreen(
                     detail = detail,
@@ -511,8 +515,16 @@ fun MineScreen(
                     onTrackLikedChanged = onTrackLikedChanged,
                     onTrackAddedToPlaylist = onTrackAddedToPlaylist,
                     onTracksAddedToPlaylist = onTracksAddedToPlaylist,
-                    onTracksReordered = { reordered -> onTracksReordered?.invoke(detail.id, reordered) },
-                    onDeleteTracks = { ids -> onDeleteTracks?.invoke(detail.id, ids) }
+                    onTracksReordered = if (canReorderTracks && onTracksReordered != null) {
+                        { reordered -> onTracksReordered(detail.id, reordered) }
+                    } else {
+                        null
+                    },
+                    onDeleteTracks = if (canReorderTracks && onDeleteTracks != null) {
+                        { ids -> onDeleteTracks(detail.id, ids) }
+                    } else {
+                        null
+                    }
                 )
             }
         }
@@ -522,6 +534,10 @@ fun MineScreen(
     RetainedMusicFeed(!split) { libraryContent() }
     if (split) {
         uiState.activePlaylistDetail?.let { detail ->
+            val canReorderTracks = detail.id != LOCAL_PLAYLIST_ID && (
+                detail.id == uiState.likedPlaylist?.id ||
+                    uiState.createdPlaylists.any { it.id == detail.id }
+            )
             PlaylistDetailScreen(
                 detail = detail,
                 backdrop = mineBackdrop,
@@ -534,8 +550,16 @@ fun MineScreen(
                 onTrackLikedChanged = onTrackLikedChanged,
                 onTrackAddedToPlaylist = onTrackAddedToPlaylist,
                 onTracksAddedToPlaylist = onTracksAddedToPlaylist,
-                onTracksReordered = { reordered -> onTracksReordered?.invoke(detail.id, reordered) },
-                onDeleteTracks = { ids -> onDeleteTracks?.invoke(detail.id, ids) }
+                onTracksReordered = if (canReorderTracks && onTracksReordered != null) {
+                    { reordered -> onTracksReordered(detail.id, reordered) }
+                } else {
+                    null
+                },
+                onDeleteTracks = if (canReorderTracks && onDeleteTracks != null) {
+                    { ids -> onDeleteTracks(detail.id, ids) }
+                } else {
+                    null
+                }
             )
         }
     }

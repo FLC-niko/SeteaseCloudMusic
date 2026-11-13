@@ -184,6 +184,8 @@ fun PlaylistDetailScreen(
     var localTracks by remember(detail.id) { mutableStateOf(effectiveTracks) }
 
     var isEditMode by remember { mutableStateOf(false) }
+    val canReorder = onTracksReordered != null && detail.id != LOCAL_PLAYLIST_ID
+    val canDelete = canReorder && onDeleteTracks != null
     var selectedTrackIds by remember { mutableStateOf(emptySet<Long>()) }
     var showBatchAddToPlaylistSheet by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -255,7 +257,9 @@ fun PlaylistDetailScreen(
     }
 
     val handleDeleteSelected: () -> Unit = {
-        if (selectedTrackIds.isEmpty()) {
+        if (!canDelete) {
+            Toast.makeText(context, "当前歌单不支持删除歌曲", Toast.LENGTH_SHORT).show()
+        } else if (selectedTrackIds.isEmpty()) {
             Toast.makeText(context, "请先选择歌曲", Toast.LENGTH_SHORT).show()
         } else {
             showDeleteConfirmDialog = true
@@ -472,7 +476,7 @@ fun PlaylistDetailScreen(
                                 Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
-                                    .playlistReorderGesture(state = dragReorderState, enabled = isEditMode),
+                                    .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder),
                                 state = listState,
                                 contentPadding = PaddingValues(top = 12.dp, bottom = 64.dp + bottom + 16.dp)
                             ) {
@@ -547,6 +551,7 @@ fun PlaylistDetailScreen(
                                                 isDark = paneDark,
                                                 isEditMode = isEditMode,
                                                 isSelected = isSelected,
+                                                canReorder = canReorder,
                                                 onClick = { onPlayTrack(track) },
                                                 onLongClick = { handleEnterEditMode(track) },
                                                 onToggleSelect = { handleToggleSelect(track.id) },
@@ -577,7 +582,8 @@ fun PlaylistDetailScreen(
                                 onPlayNext = handlePlayNextSelected,
                                 onAddToPlaylist = handleAddToPlaylistSelected,
                                 onDownload = handleDownloadSelected,
-                                onDelete = handleDeleteSelected
+                                onDelete = handleDeleteSelected,
+                                canDelete = canDelete
                             )
                         }
                     }
@@ -633,6 +639,7 @@ fun PlaylistDetailScreen(
                     onOpenMoreMenu = { showMoreSheet = true },
                     onTrackMoreClick = { selectedTrackForAction = it },
                     isEditMode = isEditMode,
+                    canReorder = canReorder,
                     selectedTrackIds = selectedTrackIds,
                     onToggleSelect = handleToggleSelect,
                     onSelectAll = handleSelectAll,
@@ -1108,6 +1115,7 @@ private fun CompactPlaylistDetailScreen(
     onOpenMoreMenu: () -> Unit,
     onTrackMoreClick: (Track) -> Unit,
     isEditMode: Boolean,
+    canReorder: Boolean = false,
     selectedTrackIds: Set<Long>,
     onToggleSelect: (Long) -> Unit,
     onSelectAll: () -> Unit,
@@ -1157,7 +1165,7 @@ private fun CompactPlaylistDetailScreen(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
-                .playlistReorderGesture(state = dragReorderState, enabled = isEditMode)
+                .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder)
                 .verticalElasticOverscroll(),
             contentPadding = PaddingValues(
                 top = if (isPosterWall) 0.dp else statusBarHeight + 12.dp,
@@ -1236,6 +1244,7 @@ private fun CompactPlaylistDetailScreen(
                                 isDark = isDark,
                                 isEditMode = isEditMode,
                                 isSelected = isSelected,
+                                canReorder = canReorder,
                                 onClick = { onPlayTrack(track) },
                                 onLongClick = { onEnterEditMode(track) },
                                 onToggleSelect = { onToggleSelect(track.id) },
@@ -1495,7 +1504,8 @@ private fun CompactPlaylistDetailScreen(
                 onPlayNext = onPlayNextSelected,
                 onAddToPlaylist = onAddToPlaylistSelected,
                 onDownload = onDownloadSelected,
-                onDelete = onDeleteSelected
+                onDelete = onDeleteSelected,
+                canDelete = canReorder
             )
         }
     }
@@ -1563,6 +1573,7 @@ private fun PlaylistDetailTrackRow(
     isDark: Boolean = false,
     isEditMode: Boolean = false,
     isSelected: Boolean = false,
+    canReorder: Boolean = true,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     onToggleSelect: (() -> Unit)? = null,
@@ -1682,12 +1693,14 @@ private fun PlaylistDetailTrackRow(
             )
         }
 
-        // 4. 右侧区域：正常模式下展示竖置三点，编辑模式下展示三道横线拖拽排序把手
+        // 4. 右侧区域：正常模式下展示竖置三点，支持排序的歌单在编辑模式下展示三道横线拖拽排序把手
         if (isEditMode) {
-            ReorderDragHandle(
-                isDark = isDark,
-                modifier = dragHandleModifier
-            )
+            if (canReorder) {
+                ReorderDragHandle(
+                    isDark = isDark,
+                    modifier = dragHandleModifier
+                )
+            }
         } else {
             IconButton(
                 onClick = onMoreClick,
@@ -1781,12 +1794,16 @@ private fun PlaylistEditBottomBar(
     onAddToPlaylist: () -> Unit,
     onDownload: () -> Unit,
     onDelete: () -> Unit,
+    canDelete: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val hasSelection = selectedCount > 0
     val activeAlpha = if (hasSelection) 1f else 0.38f
     val iconTint = (if (isDark) Color.White else Color(0xFF222222)).copy(alpha = activeAlpha)
     val textTint = (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF444444)).copy(alpha = activeAlpha)
+    val deleteAlpha = if (!canDelete) 0.28f else if (hasSelection) 1f else 0.38f
+    val deleteIconTint = (if (isDark) Color.White else Color(0xFF222222)).copy(alpha = deleteAlpha)
+    val deleteTextTint = (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF444444)).copy(alpha = deleteAlpha)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1842,8 +1859,8 @@ private fun PlaylistEditBottomBar(
                 EditBottomActionItem(
                     icon = R.drawable.ic_delete_history,
                     label = "删除",
-                    iconTint = iconTint,
-                    textTint = textTint,
+                    iconTint = deleteIconTint,
+                    textTint = deleteTextTint,
                     onClick = onDelete,
                     modifier = Modifier.weight(1f)
                 )

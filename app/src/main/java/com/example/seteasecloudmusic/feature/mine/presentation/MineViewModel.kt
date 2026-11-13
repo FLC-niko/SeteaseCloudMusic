@@ -563,10 +563,17 @@ class MineViewModel @Inject constructor(
     }
 
     /**
-     * 更新歌单内部曲目排序（包括我喜欢的音乐、自建歌单与本地音乐）
+     * 更新歌单内部曲目排序（仅支持我喜欢的音乐与我创建的歌单）
      */
     fun updateTrackOrder(playlistId: Long, reorderedTracks: List<Track>) {
-        val active = _uiState.value.activePlaylistDetail
+        val state = _uiState.value
+        val canReorder = playlistId != LOCAL_PLAYLIST_ID && (
+            playlistId == state.likedPlaylist?.id ||
+                state.createdPlaylists.any { it.id == playlistId }
+        )
+        if (!canReorder) return
+
+        val active = state.activePlaylistDetail
         val updatedActive = if (active?.id == playlistId) {
             active.copy(tracks = reorderedTracks)
         } else active
@@ -600,11 +607,17 @@ class MineViewModel @Inject constructor(
     }
 
     /**
-     * 批量从歌单中移除歌曲（我喜欢的音乐则取消喜欢，自建歌单则网络删除，本地音乐则从本地移除）
+     * 批量从歌单中移除歌曲（仅支持我喜欢的音乐与我创建的歌单）
      */
     fun removeTracksFromPlaylist(playlistId: Long, trackIds: Set<Long>) {
         if (trackIds.isEmpty()) return
-        val active = _uiState.value.activePlaylistDetail ?: return
+        val state = _uiState.value
+        val canDelete = playlistId != LOCAL_PLAYLIST_ID && (
+            playlistId == state.likedPlaylist?.id ||
+                state.createdPlaylists.any { it.id == playlistId }
+        )
+        if (!canDelete) return
+        val active = state.activePlaylistDetail ?: return
         val remainingTracks = active.tracks.filterNot { it.id in trackIds }
         val updatedDetail = active.copy(
             tracks = remainingTracks,
