@@ -128,6 +128,8 @@ import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
+import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScrollState
+import com.example.seteasecloudmusic.feature.main.navigation.toNavigationViewport
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicMoreIcon
 import com.kyant.backdrop.Backdrop
@@ -200,6 +202,15 @@ fun PlaylistDetailScreen(
         PlayerEntryPoints.setBottomChromeHidden(isEditMode)
         onDispose {
             PlayerEntryPoints.setBottomChromeHidden(false)
+        }
+    }
+
+    val navigationScroll = LocalNavigationScrollState.current
+    DisposableEffect(navigationScroll, listState) {
+        val viewport = listState.toNavigationViewport()
+        navigationScroll?.attachDetailViewport(viewport)
+        onDispose {
+            navigationScroll?.detachDetailViewport(viewport)
         }
     }
 

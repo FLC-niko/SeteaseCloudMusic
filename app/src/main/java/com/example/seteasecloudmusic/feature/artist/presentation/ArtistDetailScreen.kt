@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -59,6 +60,8 @@ import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollap
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistAlbum
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
+import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScrollState
+import com.example.seteasecloudmusic.feature.main.navigation.toNavigationViewport
 
 private val ArtistPageBg = Color(0xFFF8F8F9)
 private val ArtistPrimaryText = Color(0xFF111111)
@@ -71,6 +74,7 @@ fun ArtistDetailRoute(
     artistName: String,
     artistCoverUrl: String?,
     onClose: () -> Unit,
+    backHandlerEnabled: Boolean = true,
     viewModel: ArtistDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -83,9 +87,21 @@ fun ArtistDetailRoute(
         )
     }
 
+    val effectiveUiState = if (uiState.artistId == artistId) {
+        uiState
+    } else {
+        ArtistDetailUiState(
+            artistId = artistId,
+            artistName = artistName,
+            artistCoverUrl = artistCoverUrl,
+            isLoading = true
+        )
+    }
+
     ArtistDetailScreen(
-        uiState = uiState,
+        uiState = effectiveUiState,
         onClose = onClose,
+        backHandlerEnabled = backHandlerEnabled,
         onPlayFirstSong = viewModel::onPlayFirstSongClick,
         onSongClick = viewModel::onSongClick,
         onMoreSongsClick = viewModel::onLoadAllSongsClick,
@@ -102,12 +118,21 @@ fun ArtistDetailScreen(
     onSongClick: (Track) -> Unit,
     onMoreSongsClick: () -> Unit,
     onMoreAlbumsClick: () -> Unit,
-    onMoreSimilarArtistsClick: () -> Unit
+    onMoreSimilarArtistsClick: () -> Unit,
+    backHandlerEnabled: Boolean = true
 ) {
-    BackHandler(onBack = onClose)
+    BackHandler(enabled = backHandlerEnabled, onBack = onClose)
     val window = LocalAdaptiveWindow.current
     val bottom = LocalContentBottomPadding.current
     val listState = rememberLazyListState()
+    val navigationScroll = LocalNavigationScrollState.current
+    DisposableEffect(navigationScroll, listState) {
+        val viewport = listState.toNavigationViewport()
+        navigationScroll?.attachDetailViewport(viewport)
+        onDispose {
+            navigationScroll?.detachDetailViewport(viewport)
+        }
+    }
     val collapse = rememberAppleMusicCollapseFraction(listState, 200.dp)
     BoxWithConstraints(Modifier.fillMaxSize().background(ArtistPageBg)) {
         val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop

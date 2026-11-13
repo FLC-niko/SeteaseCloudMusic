@@ -1,11 +1,11 @@
 package com.example.seteasecloudmusic.feature.main
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -19,6 +19,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.example.seteasecloudmusic.feature.main.navigation.horizontalChromeFrame
 import com.example.seteasecloudmusic.feature.main.navigation.horizontalMiniPlayerFrame
 import com.example.seteasecloudmusic.feature.main.navigation.BottomNavigationViewport
+import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScrollState
 import com.example.seteasecloudmusic.feature.main.navigation.NavigationScrollState
 import com.example.seteasecloudmusic.feature.main.navigation.MiniPlayerChromeMotion
 import com.example.seteasecloudmusic.feature.main.navigation.rememberNavigationScrollState
@@ -519,7 +520,8 @@ fun AppNavigation(
     CompositionLocalProvider(
         LocalGlassBackdrop provides backdrop,
         LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp),
-        LocalPlayerArtwork provides sharedArtworkPair
+        LocalPlayerArtwork provides sharedArtworkPair,
+        LocalNavigationScrollState provides navigationScroll
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // --- 底层内容区域 ---
@@ -548,12 +550,23 @@ fun AppNavigation(
                 mineViewModel = mineViewModel,
                 searchViewModel = searchViewModel,
                 onAccountClick = { showAccountSheet = true },
-                onArtistClick = { artistId, artistName, artistCoverUrl ->
+                onSearchAvatarClick = {
+                    showAccountSheet = true
+                    onAvatarClick?.invoke()
+                },
+                selectedArtist = selectedArtist,
+                onArtistClick = { pageIndex, artistId, artistName, artistCoverUrl ->
                     selectedArtist = SelectedArtist(
                         id = artistId,
                         name = artistName,
-                        coverUrl = artistCoverUrl
+                        coverUrl = artistCoverUrl,
+                        pageIndex = pageIndex
                     )
+                },
+                onCloseArtist = { closingPageIndex ->
+                    if (closingPageIndex == null || selectedArtist?.pageIndex == closingPageIndex) {
+                        selectedArtist = null
+                    }
                 },
                 homeListState = homeListState,
                 radioListState = radioListState,
@@ -561,20 +574,7 @@ fun AppNavigation(
             )
             }
         }
-
-        Box(Modifier.fillMaxWidth().padding(start = railStartPadding, end = railEndPadding)) {
-        AppTopArea(
-            selectedIndex = selectedIndexState,
-            avatarUrl = authUiState.authSession?.avatarUrl,
-            displayName = authUiState.authSession?.nickname,
-            onAvatarClick = {
-                showAccountSheet = true
-                onAvatarClick?.invoke()
-            }
-        )
-
-        }
-        if (useRail && isSearchExpanded) {
+        if (useRail && isSearchExpanded && selectedArtist?.pageIndex != SEARCH_PAGE_INDEX) {
             Box(Modifier.fillMaxWidth().padding(start = railStartPadding + 20.dp, end = railEndPadding + 20.dp)
                 .statusBarsPadding().padding(top = 68.dp), contentAlignment = Alignment.TopCenter) {
                 LiquidGlassPanel(Modifier.widthIn(max = 680.dp).fillMaxWidth().height(54.dp), cornerRadius = 27.dp) {
@@ -675,11 +675,14 @@ fun AppNavigation(
                             onDragOffsetChange = { dragOffsetXState.value = it },
                             onSettle = {
                                 if (selectedIndexState.intValue == it) {
-                                    // 重复点击当前已选中的 Tab 时收起歌单
+                                    // 重复点击当前已选中的 Tab 时收起歌单与艺人页
                                     when (it) {
                                         0 -> homeViewModel.closePlaylistDetail()
                                         1 -> radioViewModel.closePlaylistDetail()
                                         2 -> mineViewModel.closePlaylistDetail()
+                                    }
+                                    if (selectedArtist?.pageIndex == it) {
+                                        selectedArtist = null
                                     }
                                 }
                                 selectedIndexState.intValue = it
@@ -948,8 +951,7 @@ fun AppNavigation(
 
         val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
-        val searchFadeOut = if (useRail) 1f else (1f - searchProgress * 2.5f).coerceIn(0f, 1f)
-        val isMiniPlayerVisible = searchFadeOut > 0.001f && bottomChromeHideProgress < 0.999f
+        val isMiniPlayerVisible = bottomChromeHideProgress < 0.999f
 
         if (isMiniPlayerVisible && !useRail) {
             val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
@@ -963,7 +965,7 @@ fun AppNavigation(
                 playbackStateFlow = playerViewModel.playbackState,
                 contentProgress = miniPlayerChromeMotion.contentProgress,
                 playerTransitionProgress = nowPlayingProgress.asState(),
-                enabled = (useRail || (!isSearchExpanded && searchProgress < 0.01f)) && !showNowPlaying && !isBottomChromeHidden,
+                enabled = !showNowPlaying && !isBottomChromeHidden,
                 onPlayPauseClick = { playerViewModel.onPlayPause() },
                 onPlaylistClick = { showPlaylistQueueSheet = true },
                 onNextClick = { playerViewModel.onNext() },
@@ -1000,8 +1002,8 @@ fun AppNavigation(
                         val shellFade = if (showNowPlaying) {
                             (1f - playerBackgroundAlpha(nowPlayingProgress.value) * 1.15f).coerceIn(0f, 1f)
                         } else 1f
-                        alpha = searchFadeOut * shellFade * (1f - bottomChromeHideProgress)
-                        translationY = (if (useRail) 0f else searchProgress * 60.dp.toPx()) + bottomChromeHideProgress * 180.dp.toPx()
+                        alpha = shellFade * (1f - bottomChromeHideProgress)
+                        translationY = bottomChromeHideProgress * 180.dp.toPx()
                         scaleX = hintScale
                         scaleY = hintScale
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -1021,6 +1023,9 @@ fun AppNavigation(
                             0 -> homeViewModel.closePlaylistDetail()
                             1 -> radioViewModel.closePlaylistDetail()
                             2 -> mineViewModel.closePlaylistDetail()
+                        }
+                        if (selectedArtist?.pageIndex == index) {
+                            selectedArtist = null
                         }
                     }
                     selectedIndexState.intValue = index
@@ -1150,17 +1155,6 @@ fun AppNavigation(
             )
         }
 
-        selectedArtist?.let { artist ->
-            Box(Modifier.fillMaxSize().padding(start = railStartPadding, end = railEndPadding)) {
-            ArtistDetailRoute(
-                artistId = artist.id,
-                artistName = artist.name,
-                artistCoverUrl = artist.coverUrl,
-                onClose = { selectedArtist = null }
-            )
-            }
-        }
-
         BackHandler(enabled = showNowPlaying) { closePlayer() }
 
         // 依据 iOS 26 解析图复刻的液态玻璃断网重试小弹窗（物理采样底层真实的动态 Backdrop）
@@ -1219,7 +1213,10 @@ private fun AppPageContent(
     mineViewModel: MineViewModel,
     searchViewModel: SearchViewModel,
     onAccountClick: () -> Unit,
-    onArtistClick: (Long, String, String?) -> Unit,
+    onSearchAvatarClick: () -> Unit,
+    selectedArtist: SelectedArtist?,
+    onArtistClick: (Int, Long, String, String?) -> Unit,
+    onCloseArtist: (Int?) -> Unit,
     homeListState: LazyListState,
     radioListState: LazyListState,
     mineListState: LazyListState
@@ -1268,12 +1265,13 @@ private fun AppPageContent(
             } finally {
                 displayedIndex = to
                 transitionState = null
-                // 切完成之后立即退出切出页的歌单页（切页滑动期间保持歌单不动随页面滑出）
+                // 切完成之后立即退出切出页的歌单页和艺人页（切页滑动期间保持二级页面随宿主页面一起滑出）
                 when (from) {
                     0 -> homeViewModel.closePlaylistDetail()
                     1 -> radioViewModel.closePlaylistDetail()
                     2 -> mineViewModel.closePlaylistDetail()
                 }
+                onCloseArtist(from)
             }
         }
     }
@@ -1332,6 +1330,7 @@ private fun AppPageContent(
                             }
                         }
                 ) {
+                    val isPageForeground = displayedIndex == pageIndex && transitionState == null
                     when (pageIndex) {
                         0 -> HomeRoute(
                             topContentPadding = topContentPadding,
@@ -1341,7 +1340,7 @@ private fun AppPageContent(
                             onAvatarClick = onAccountClick,
                             viewModel = homeViewModel,
                             lazyListState = homeListState,
-                            isForeground = displayedIndex == 0 && transitionState == null
+                            isForeground = isPageForeground
                         )
 
                         1 -> RadioRoute(
@@ -1350,10 +1349,12 @@ private fun AppPageContent(
                             avatarUrl = avatarUrl,
                             displayName = displayName,
                             onAvatarClick = onAccountClick,
-                            onArtistClick = onArtistClick,
+                            onArtistClick = { artistId, artistName, artistCoverUrl ->
+                                onArtistClick(1, artistId, artistName, artistCoverUrl)
+                            },
                             viewModel = radioViewModel,
                             lazyListState = radioListState,
-                            isForeground = displayedIndex == 1 && transitionState == null
+                            isForeground = isPageForeground
                         )
 
                         2 -> MineRoute(
@@ -1362,17 +1363,73 @@ private fun AppPageContent(
                             onLoginClick = onAccountClick,
                             viewModel = mineViewModel,
                             lazyListState = mineListState,
-                            isForeground = displayedIndex == 2 && transitionState == null
+                            isForeground = isPageForeground
                         )
 
-                        3 -> SearchRoute(
-                            viewModel = searchViewModel,
-                            topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 60.dp else 0.dp),
-                            bottomContentPadding = bottomContentPadding,
-                            onArtistClick = onArtistClick
-                        )
+                        3 -> Box(modifier = Modifier.fillMaxSize()) {
+                            SearchRoute(
+                                viewModel = searchViewModel,
+                                topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 60.dp else 0.dp),
+                                bottomContentPadding = bottomContentPadding,
+                                onArtistClick = { artistId, artistName, artistCoverUrl ->
+                                    onArtistClick(3, artistId, artistName, artistCoverUrl)
+                                }
+                            )
+                            SearchPageTopHeader(
+                                avatarUrl = avatarUrl,
+                                displayName = displayName,
+                                onAvatarClick = onSearchAvatarClick
+                            )
+                        }
 
                         else -> AppPageBackground()
+                    }
+
+                    val pageArtist = selectedArtist?.takeIf { it.pageIndex == pageIndex }
+                    val lastArtist = remember { mutableStateOf<SelectedArtist?>(null) }
+                    val artistOpenCounter = remember { mutableIntStateOf(0) }
+                    LaunchedEffect(pageArtist) {
+                        if (pageArtist != null) {
+                            lastArtist.value = pageArtist
+                            artistOpenCounter.intValue++
+                        }
+                    }
+                    LaunchedEffect(isPageForeground) {
+                        if (!isPageForeground && pageArtist == null) {
+                            lastArtist.value = null
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = pageArtist != null,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { fullWidth -> fullWidth },
+                            animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+                        ),
+                        exit = if (isPageForeground) {
+                            slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> fullWidth },
+                                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                            )
+                        } else {
+                            ExitTransition.None
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(20f)
+                    ) {
+                        val displayArtist = pageArtist ?: lastArtist.value
+                        displayArtist?.let { artist ->
+                            key(artistOpenCounter.intValue) {
+                                ArtistDetailRoute(
+                                    artistId = artist.id,
+                                    artistName = artist.name,
+                                    artistCoverUrl = artist.coverUrl,
+                                    onClose = { onCloseArtist(pageIndex) },
+                                    backHandlerEnabled = isPageForeground && pageArtist != null
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1387,45 +1444,23 @@ private fun AppPageContent(
 private const val OFFSCREEN_PAGE_OFFSET_PX = 100_000
 
 /**
- * 页面级大标题顶栏（仅服务「电台」「搜索」）。
- *
- * 首页与「我的」由各自页面内自带的 Apple Music 大标题承载，这里直接返回不渲染任何内容 ——
- * 这与原来 `if (!hasCustomTopBar)` 的行为一致，但把判断搬到本组件内部，
- * 使 [selectedIndex] 的变化不会向上重组整个导航外壳。
+ * 搜索页大标题顶栏，位于搜索页内部随页面一起横向滑动，并处于二级页面（如艺人详情）下层。
  */
 @Composable
-private fun AppTopArea(
-    selectedIndex: State<Int>,
+private fun SearchPageTopHeader(
     avatarUrl: String?,
     displayName: String?,
     onAvatarClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val index = selectedIndex.value
-    val hasCustomTopBar = index == 0 || index == 1 || index == 2
-    if (hasCustomTopBar) return
-
-    val pageTitle = when (index) {
-        1 -> "电台"
-        3 -> "搜索"
-        else -> "首页"
-    }
-
-    Box(modifier = modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = pageTitle,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 30)) togetherWith
-                    fadeOut(animationSpec = tween(durationMillis = 140))
-            },
-            label = "pageTitleTransition",
+    Box(modifier = modifier.fillMaxWidth()) {
+        LargePageTitle(
+            title = "搜索",
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 20.dp, top = 14.dp)
-        ) { animatedTitle ->
-            LargePageTitle(title = animatedTitle)
-        }
+        )
 
         UserAvatarButton(
             avatarUrl = avatarUrl,

@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 class BottomNavigationViewport internal constructor(val list: LazyListState)
 fun LazyListState.toNavigationViewport() = BottomNavigationViewport(this)
 
+val LocalNavigationScrollState = staticCompositionLocalOf<NavigationScrollState?> { null }
+
 class NavigationScrollState {
     val compactProgress = Animatable(0f)
     val scrollHintProgress = Animatable(0f)
@@ -19,12 +21,28 @@ class NavigationScrollState {
         internal set
     internal var enabled = true
     internal var viewport: BottomNavigationViewport? = null
+    internal var detailViewport: BottomNavigationViewport? = null
     private var travel = 0f
+
     fun expand() { compactTarget = false; travel = 0f }
+
+    fun attachDetailViewport(detail: BottomNavigationViewport) {
+        detailViewport = detail
+        travel = 0f
+    }
+
+    fun detachDetailViewport(detail: BottomNavigationViewport) {
+        if (detailViewport === detail) {
+            detailViewport = null
+            travel = 0f
+        }
+    }
+
     val nestedScrollConnection = object : NestedScrollConnection {
         override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-            if (!enabled || source != NestedScrollSource.UserInput) return Offset.Zero
-            if (viewport?.list?.canScrollBackward != true) { expand(); return Offset.Zero }
+            if (!enabled || source != NestedScrollSource.UserInput || consumed.y == 0f) return Offset.Zero
+            val activeList = (detailViewport ?: viewport)?.list
+            if (consumed.y > 0f && activeList?.canScrollBackward != true) { expand(); return Offset.Zero }
             if (consumed.y * travel < 0) travel = 0f
             travel += consumed.y
             if (travel < -48f) compactTarget = true
