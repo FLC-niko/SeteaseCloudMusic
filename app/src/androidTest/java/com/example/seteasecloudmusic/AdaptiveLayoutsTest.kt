@@ -201,7 +201,7 @@ class AdaptiveLayoutsTest {
             }
             if (name == "native_music") {
                 compose.onNodeWithTag(if (windowInfo?.useExpandedPlayer == true) "player_two_column" else "player_stacked").assertExists()
-                compose.onNodeWithContentDescription("音频输出").assertExists().assertIsEnabled()
+                compose.onNodeWithContentDescription("切换播放模式").assertExists().assertIsEnabled()
                 val info = requireNotNull(windowInfo)
                 if (info.useExpandedPlayer) {
                     listOf("player_media", "player_controls", "player_track_caption", "player_close").forEach(::assertAwayFromFold)

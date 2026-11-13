@@ -84,7 +84,7 @@ import kotlin.math.roundToInt
  * 1. 无滑块圆角胶囊进度条（7dp -> 12dp 按压弹性膨胀、左已播时间、中 Dolby Atmos 位置可点击切换音质、右剩余时间 `-3:48`）
  * 2. 核心三键（双圆角三角 520ms 跑马切歌动效、圆角双竖条暂停 ↔ 圆角三角播放收缩弹性变形）
  * 3. 系统级实时同步胶囊音量条（左无波纹小喇叭 + 按压变粗胶囊滑轨 + 右三波纹大喇叭）
- * 4. 底部三功能键（激活态圆形镂空歌词按钮、3 环 AirPlay 音频输出切换、待播列表）
+ * 4. 底部三功能键（激活态圆形镂空歌词按钮、循环 ↔ 随机播放模式切换、待播列表）
  */
 @Composable
 fun AppleMusicPlaybackControls(
@@ -888,7 +888,26 @@ fun AppleMusicBottomToolbar(
             )
         }
 
-        AppleMusicAudioOutputButton()
+        // 2. 播放模式切换按钮（循环 ↔ 随机，与左右图标保持视觉尺寸与线宽一致）
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .semantics { contentDescription = "切换播放模式" }
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = hasTrack,
+                    onClick = onTogglePlaybackMode
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            AppleMusicPlaybackModeIcon(
+                mode = playbackMode,
+                size = 24.dp,
+                tint = if (hasTrack) Color.White.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.28f)
+            )
+        }
 
         // 3. 待播队列按钮
         Box(
@@ -904,7 +923,7 @@ fun AppleMusicBottomToolbar(
             contentAlignment = Alignment.Center
         ) {
             AppleMusicQueueIcon(
-                size = 22.dp,
+                size = 19.dp,
                 tint = Color.White.copy(alpha = 0.55f)
             )
         }

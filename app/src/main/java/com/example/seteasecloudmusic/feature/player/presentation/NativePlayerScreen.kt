@@ -47,8 +47,6 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -88,6 +86,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalDensity
@@ -101,6 +100,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlaybackMode
@@ -1134,7 +1134,7 @@ private fun AppleMusicMoreActionsSheet(
 ) {
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C22)
+        containerColor = Color.White
     ) {
         Column(
             modifier = Modifier
@@ -1157,13 +1157,13 @@ private fun AppleMusicMoreActionsSheet(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color.White.copy(alpha = 0.1f))
+                            .background(Color(0xFFF2F2F7))
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = track.title,
-                            color = Color.White,
+                            color = Color(0xFF1E1E24),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -1171,7 +1171,7 @@ private fun AppleMusicMoreActionsSheet(
                         )
                         Text(
                             text = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知艺术家" },
-                            color = Color.White.copy(alpha = 0.6f),
+                            color = Color(0xFF8E8E93),
                             fontSize = 13.5.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1187,19 +1187,19 @@ private fun AppleMusicMoreActionsSheet(
                         AppleMusicHeartIcon(
                             isLiked = isStarred,
                             size = 22.dp,
-                            tint = if (isStarred) Color(0xFFFA233B) else Color.White.copy(alpha = 0.85f)
+                            tint = if (isStarred) Color(0xFFFA233B) else Color(0xFF515151)
                         )
                     }
                 }
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
-                    color = Color.White.copy(alpha = 0.08f)
+                    color = Color(0xFFF0F0F2)
                 )
             }
 
             Text(
                 text = "播放模式",
-                color = Color.White.copy(alpha = 0.52f),
+                color = Color(0xFF8E8E93),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
@@ -1210,33 +1210,33 @@ private fun AppleMusicMoreActionsSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val modes = listOf(
-                    Triple(PlaybackMode.SEQUENTIAL, "顺序循环", Icons.Filled.Repeat),
-                    Triple(PlaybackMode.SHUFFLE, "随机播放", Icons.Filled.Shuffle)
+                    Triple(PlaybackMode.SEQUENTIAL, "顺序循环", R.drawable.ic_repeat),
+                    Triple(PlaybackMode.SHUFFLE, "随机播放", R.drawable.ic_shuffle)
                 )
-                modes.forEach { (mode, label, icon) ->
+                modes.forEach { (mode, label, iconRes) ->
                     val selected = playbackMode == mode
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (selected) Color(0xFFFA233B).copy(alpha = 0.22f)
-                                else Color.White.copy(alpha = 0.07f)
+                                if (selected) Color(0xFFFA233B).copy(alpha = 0.12f)
+                                else Color(0xFFF5F5F7)
                             )
                             .clickable { onSelectPlaybackMode(mode) }
                             .padding(vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            imageVector = icon,
+                            painter = painterResource(id = iconRes),
                             contentDescription = label,
-                            tint = if (selected) Color(0xFFFA233B) else Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(20.dp)
+                            tint = if (selected) Color(0xFFFA233B) else Color(0xFF515151),
+                            modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = label,
-                            color = if (selected) Color(0xFFFA233B) else Color.White.copy(alpha = 0.85f),
+                            color = if (selected) Color(0xFFFA233B) else Color(0xFF1E1E24),
                             fontSize = 12.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                         )
@@ -1251,7 +1251,7 @@ private fun AppleMusicMoreActionsSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.07f))
+                        .background(Color(0xFFF5F5F7))
                         .clickable(onClick = onOpenQuality)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1259,20 +1259,20 @@ private fun AppleMusicMoreActionsSheet(
                     Icon(
                         imageVector = Icons.Filled.GraphicEq,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.85f),
+                        tint = Color(0xFF515151),
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = "切换音频质量",
-                        color = Color.White,
+                        color = Color(0xFF1E1E24),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f)
                     )
                     Text(
                         text = currentQuality.badgeText,
-                        color = Color.White.copy(alpha = 0.55f),
+                        color = Color(0xFF8E8E93),
                         fontSize = 13.sp
                     )
                 }
@@ -1283,7 +1283,7 @@ private fun AppleMusicMoreActionsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.07f))
+                    .background(Color(0xFFF5F5F7))
                     .clickable(onClick = onOpenQueue)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1291,13 +1291,13 @@ private fun AppleMusicMoreActionsSheet(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                     contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f),
+                    tint = Color(0xFF515151),
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "查看待播清单",
-                    color = Color.White,
+                    color = Color(0xFF1E1E24),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 )

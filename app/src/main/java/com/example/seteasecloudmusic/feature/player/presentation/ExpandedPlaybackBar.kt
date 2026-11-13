@@ -104,7 +104,7 @@ internal fun ExpandedPlaybackBar(
                         AppleMusicLyricsToggleIcon(true, buttonSize = 40.dp, iconSize = 22.dp)
                     }
                     if (wide || showQueue) BarAction("待播清单", true, onQueue) {
-                        AppleMusicQueueIcon(size = 22.dp, tint = Color.White)
+                        AppleMusicQueueIcon(size = 19.dp, tint = Color.White)
                     }
                     BarAction("更多播放操作", true, onMore) { AppleMusicMoreIcon(size = 23.dp, tint = Color.White) }
                 }

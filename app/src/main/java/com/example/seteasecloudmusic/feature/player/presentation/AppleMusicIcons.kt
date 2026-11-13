@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,17 +18,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -38,14 +34,13 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.PathParser
+import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.player.PlaybackMode
-import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
  * 纯填充圆角多边形绘制（仅使用单次 STYLE.FILL + CornerPathEffect，绝不叠加 Stroke 描边，杜绝半透明边缘叠加发亮）
@@ -107,39 +102,6 @@ private val HeartHollowPath by lazy {
     PathParser.createPathFromPathData(
         "M703.488 42.496c-69.12 0-136.192 22.528-191.488 63.488-55.296-40.96-122.368-63.488-191.488-63.488C143.872 42.496 0 185.856 0 363.008 0 757.76 483.84 970.752 504.832 979.968c3.072 1.536 6.656 2.048 9.728 2.048 4.096 0 8.704-1.024 12.288-3.584 20.48-11.776 497.152-291.84 497.152-615.424 0-177.152-143.872-320.512-320.512-320.512z m-190.464 886.784c-72.192-34.304-463.36-235.52-463.36-566.272 0-149.504 121.856-271.36 271.36-271.36 64 0 126.464 23.04 175.616 64.512 9.216 7.68 23.04 7.68 32.256 0 49.152-41.472 111.104-64.512 175.616-64.512 149.504 0 271.36 121.856 271.36 271.36-1.536 269.824-392.192 522.752-462.848 566.272z"
     ).asComposePath()
-}
-
-private val ShufflePath by lazy {
-    PathParser.createPathFromPathData(
-        "M768.863 325.733c-48.775 0-170.409 121.182-259.229 207.077-134.661 130.244-261.862 256.802-363.67 256.802h-62.62C57.75 789.612 37 768.828 37 743.223c0-25.604 20.749-46.387 46.342-46.387h62.622c64.335 0 194.592-129.518 299.256-230.745 127.382-123.198 237.392-233.135 323.643-233.135h59.769l-63.418-61.55c-18.113-18.088-18.142-45.665-0.062-63.788 18.08-18.128 47.422-18.164 65.535-0.07l142.708 142.495A46.306 46.306 0 0 1 987 282.83c0 12.308-4.893 24.06-13.604 32.759l-142.71 142.4c-9.043 9.032-20.89 13.328-32.735 13.328-11.875 0-23.749-4.977-32.799-14.05-18.08-18.121-18.05-48.358 0.062-66.445l63.417-65.09h-59.768z m61.824 238.627c-18.113-18.095-47.456-18.066-65.535 0.062-18.08 18.121-18.05 49.237 0.062 67.323l63.417 65.09h-59.768c-38.06 0-101.643-56.357-164.685-115.353-18.69-17.493-48.021-17.394-65.495 1.306-17.486 18.7-16.507 49.382 2.183 66.87 96.042 89.898 160.826 139.952 227.997 139.952h59.769l-63.418 61.549c-18.113 18.087-18.142 46.552-0.062 64.674 9.051 9.072 20.924 13.167 32.799 13.167 11.845 0 23.692-4.74 32.736-13.773l142.708-142.619c8.71-8.7 13.604-20.56 13.604-32.87a46.44 46.44 0 0 0-13.604-32.842L830.687 564.36zM83.342 325.733h62.622c48.84 0 121.646 62.22 179.612 114.893 8.88 8.065 20.026 12.923 31.147 12.923 12.604 0 25.172-4.677 34.315-14.75 17.208-18.954 15.8-49.839-3.146-67.055-90.646-82.365-166.477-138.787-241.928-138.787H83.342C57.749 232.957 37 253.743 37 279.346s20.75 46.387 46.342 46.387z"
-    ).asComposePath()
-}
-
-/**
- * 循环播放矢量路径（轨道与箭头顶点完全连续无缝融合，92f 粗线宽，绝无空心点）
- */
-private val RepeatPath by lazy {
-    Path().apply {
-        // 顶部顺时针循环轨道：从左竖线向上，经左上圆角拐向右侧横线，直达右侧箭头顶点
-        moveTo(100f, 512f)
-        lineTo(100f, 370f)
-        quadraticTo(100f, 210f, 260f, 210f)
-        lineTo(880f, 210f)
-        // 顶部向右箭头顶点向两侧展开的斜边（45°，顶点与横线在 (880, 210) 严格重合，绝无空心点）
-        moveTo(750f, 80f)
-        lineTo(880f, 210f)
-        lineTo(750f, 340f)
-
-        // 底部顺时针循环轨道：从右竖线向下，经右下圆角拐向左侧横线，直达左侧箭头顶点
-        moveTo(924f, 512f)
-        lineTo(924f, 654f)
-        quadraticTo(924f, 814f, 764f, 814f)
-        lineTo(144f, 814f)
-        // 底部向左箭头顶点向两侧展开的斜边（45°，顶点与横线在 (144, 814) 严格重合，绝无空心点）
-        moveTo(274f, 684f)
-        lineTo(144f, 814f)
-        lineTo(274f, 944f)
-    }
 }
 
 private fun DrawScope.drawSvgPathCentered(
@@ -295,27 +257,14 @@ fun AppleMusicPlaybackModeIcon(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(size)) {
-            if (mode == PlaybackMode.SHUFFLE) {
-                drawSvgPathCentered(
-                    path = ShufflePath,
-                    color = solidColor,
-                    style = Fill,
-                    scaleFactor = 0.90f
-                )
-            } else {
-                drawSvgPathCentered(
-                    path = RepeatPath,
-                    color = solidColor,
-                    style = Stroke(
-                        width = 92f,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
-                    ),
-                    scaleFactor = 0.92f
-                )
-            }
-        }
+        Icon(
+            painter = painterResource(
+                id = if (mode == PlaybackMode.SHUFFLE) R.drawable.ic_shuffle else R.drawable.ic_repeat
+            ),
+            contentDescription = null,
+            tint = solidColor,
+            modifier = Modifier.size(size)
+        )
     }
 }
 
@@ -417,9 +366,9 @@ fun AppleMusicExplicitBadge(
 }
 
 /**
- * 1:1 复刻截图底部左侧歌词切换按钮：
- * - 未激活（截图 1）：空心圆角气泡 + 双引号轮廓
- * - 激活（截图 2、4）：半透明白色实心大圆底 + 中心镂空（DstOut）对话气泡 + 内部白色双引号
+ * 1:1 复刻截图底部左侧歌词切换按钮（XML 矢量图标）：
+ * - 未激活：圆角气泡轮廓 + 顺滑自然逗号引号
+ * - 激活：半透明白色实心大圆底 + 中心镂空气泡 + 顺滑自然逗号引号
  */
 @Composable
 fun AppleMusicLyricsToggleIcon(
@@ -430,168 +379,25 @@ fun AppleMusicLyricsToggleIcon(
     inactiveTint: Color = Color.White.copy(alpha = 0.55f)
 ) {
     if (isActive) {
-        Canvas(
-            modifier = modifier
-                .size(buttonSize)
-                .graphicsLayer {
-                    compositingStrategy = CompositingStrategy.Offscreen
-                    alpha = 0.68f
-                }
-        ) {
-            val w = size.width
-            val h = size.height
-
-            // 1. 外层半透明白色圆形底
-            drawCircle(
-                color = Color.White,
-                radius = w * 0.5f,
-                center = Offset(w * 0.5f, h * 0.5f)
-            )
-
-            // 2. 中心镂空对话气泡
-            val bx = w * 0.24f
-            val by = h * 0.25f
-            val bw = w * 0.52f
-            val bh = h * 0.42f
-            val br = bw * 0.25f
-
-            val bubblePath = Path().apply {
-                addRoundRect(
-                    RoundRect(
-                        rect = Rect(bx, by, bx + bw, by + bh),
-                        cornerRadius = CornerRadius(br, br)
-                    )
-                )
-                moveTo(bx + bw * 0.20f, by + bh - 1f)
-                lineTo(bx + bw * 0.14f, by + bh + bh * 0.24f)
-                lineTo(bx + bw * 0.42f, by + bh - 1f)
-                close()
-            }
-            drawPath(
-                path = bubblePath,
-                color = Color.Black,
-                style = Fill,
-                blendMode = BlendMode.DstOut
-            )
-
-            // 3. 在镂空区域内回填两枚圆润双引号
-            drawQuoteMarks(
-                leftCenter = Offset(bx + bw * 0.36f, by + bh * 0.45f),
-                rightCenter = Offset(bx + bw * 0.64f, by + bh * 0.45f),
-                dotRadius = bw * 0.082f,
-                color = Color.White,
-                blendMode = BlendMode.SrcOver
-            )
-        }
+        Icon(
+            painter = painterResource(id = R.drawable.ic_lyrics_active),
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.68f),
+            modifier = modifier.size(buttonSize)
+        )
     } else {
-        val solidColor = inactiveTint.copy(alpha = 1f)
         Box(
-            modifier = modifier
-                .size(buttonSize)
-                .graphicsLayer {
-                    compositingStrategy = CompositingStrategy.Offscreen
-                    alpha = inactiveTint.alpha
-                },
+            modifier = modifier.size(buttonSize),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(iconSize)) {
-                val w = this.size.width
-                val h = this.size.height
-                val r = w * 0.22f
-                val rectBottom = h * 0.78f
-
-                val bubblePath = Path().apply {
-                    addRoundRect(
-                        RoundRect(
-                            left = w * 0.07f,
-                            top = h * 0.10f,
-                            right = w * 0.93f,
-                            bottom = rectBottom,
-                            radiusX = r,
-                            radiusY = r
-                        )
-                    )
-                }
-                val tailPath = Path().apply {
-                    moveTo(w * 0.25f, rectBottom)
-                    lineTo(w * 0.18f, h * 0.93f)
-                    lineTo(w * 0.40f, rectBottom)
-                }
-                drawPath(
-                    bubblePath,
-                    color = solidColor,
-                    style = Stroke(width = w * 0.085f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-                drawPath(
-                    tailPath,
-                    color = solidColor,
-                    style = Stroke(width = w * 0.085f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-
-                drawQuoteMarks(
-                    leftCenter = Offset(w * 0.38f, h * 0.41f),
-                    rightCenter = Offset(w * 0.62f, h * 0.41f),
-                    dotRadius = w * 0.070f,
-                    color = solidColor,
-                    blendMode = BlendMode.SrcOver
-                )
-            }
+            Icon(
+                painter = painterResource(id = R.drawable.ic_lyrics),
+                contentDescription = null,
+                tint = inactiveTint,
+                modifier = Modifier.size(iconSize)
+            )
         }
     }
-}
-
-private fun DrawScope.drawQuoteMarks(
-    leftCenter: Offset,
-    rightCenter: Offset,
-    dotRadius: Float,
-    color: Color,
-    blendMode: BlendMode
-) {
-    drawSingleQuoteMark(center = leftCenter, dotRadius = dotRadius, color = color, blendMode = blendMode)
-    drawSingleQuoteMark(center = rightCenter, dotRadius = dotRadius, color = color, blendMode = blendMode)
-}
-
-private fun DrawScope.drawSingleQuoteMark(
-    center: Offset,
-    dotRadius: Float,
-    color: Color,
-    blendMode: BlendMode
-) {
-    // 使用单一闭合轮廓 Fill 绘制逗号形引号，绝不用 Circle + Stroke 叠加
-    drawCircle(
-        color = color,
-        radius = dotRadius,
-        center = center,
-        blendMode = blendMode
-    )
-    val commaTail = Path().apply {
-        moveTo(center.x + dotRadius * 0.92f, center.y + dotRadius * 0.05f)
-        quadraticTo(
-            center.x + dotRadius * 0.96f,
-            center.y + dotRadius * 1.85f,
-            center.x - dotRadius * 0.48f,
-            center.y + dotRadius * 2.35f
-        )
-        quadraticTo(
-            center.x - dotRadius * 0.85f,
-            center.y + dotRadius * 2.15f,
-            center.x - dotRadius * 0.58f,
-            center.y + dotRadius * 1.82f
-        )
-        quadraticTo(
-            center.x + dotRadius * 0.12f,
-            center.y + dotRadius * 1.38f,
-            center.x - dotRadius * 0.05f,
-            center.y + dotRadius * 0.55f
-        )
-        close()
-    }
-    drawPath(
-        path = commaTail,
-        color = color,
-        style = Fill,
-        blendMode = blendMode
-    )
 }
 
 /**
@@ -651,47 +457,24 @@ fun AppleMusicAirPlayIcon(
 }
 
 /**
- * 1:1 复刻截图底部右侧待播列表图标（纯 Fill 圆点 + 纯 Fill 胶囊横条，无描边，Offscreen 统一透明度）
+ * 底部右侧待播列表图标（复用迷你播放器 XML：ic_mini_playlist）
  */
 @Composable
 fun AppleMusicQueueIcon(
     modifier: Modifier = Modifier,
     tint: Color = Color.White.copy(alpha = 0.55f),
-    size: Dp = 22.dp
+    size: Dp = 19.dp
 ) {
-    val solidColor = tint.copy(alpha = 1f)
-    Canvas(
-        modifier = modifier
-            .size(size)
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-                alpha = tint.alpha
-            }
-    ) {
-        val w = this.size.width
-        val h = this.size.height
-        val barH = w * 0.092f
-        val dotRadius = w * 0.060f
-
-        val ys = floatArrayOf(h * 0.24f, h * 0.50f, h * 0.76f)
-        val dotX = w * 0.14f
-        val startX = w * 0.30f
-        val endX = w * 0.92f
-
-        for (y in ys) {
-            drawCircle(color = solidColor, radius = dotRadius, center = Offset(dotX, y))
-            drawRoundRect(
-                color = solidColor,
-                topLeft = Offset(startX, y - barH * 0.5f),
-                size = Size(endX - startX, barH),
-                cornerRadius = CornerRadius(barH * 0.5f, barH * 0.5f)
-            )
-        }
-    }
+    Icon(
+        painter = painterResource(id = R.drawable.ic_mini_playlist),
+        contentDescription = null,
+        tint = tint,
+        modifier = modifier.size(size)
+    )
 }
 
 /**
- * 1:1 复刻音量条左侧静音/低音量小喇叭（纯 Fill 圆角路径，完全去除描边）
+ * 1:1 复刻音量条左侧静音/低音量小喇叭（XML 圆润矢量图标）
  */
 @Composable
 fun AppleMusicVolumeLowIcon(
@@ -699,36 +482,16 @@ fun AppleMusicVolumeLowIcon(
     tint: Color = Color.White.copy(alpha = 0.55f),
     size: Dp = 15.dp
 ) {
-    val solidColor = tint.copy(alpha = 1f)
-    Canvas(
-        modifier = modifier
-            .size(size)
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-                alpha = tint.alpha
-            }
-    ) {
-        val w = this.size.width
-        val h = this.size.height
-        val speaker = Path().apply {
-            moveTo(w * 0.16f, h * 0.35f)
-            lineTo(w * 0.42f, h * 0.35f)
-            lineTo(w * 0.76f, h * 0.12f)
-            lineTo(w * 0.76f, h * 0.88f)
-            lineTo(w * 0.42f, h * 0.65f)
-            lineTo(w * 0.16f, h * 0.65f)
-            close()
-        }
-        drawRoundedFilledPath(
-            path = speaker,
-            color = solidColor,
-            cornerRadiusPx = w * 0.055f
-        )
-    }
+    Icon(
+        painter = painterResource(id = R.drawable.ic_volume_low),
+        contentDescription = null,
+        tint = tint,
+        modifier = modifier.size(size)
+    )
 }
 
 /**
- * 1:1 复刻音量条右侧高音量喇叭（纯 Fill 圆角喇叭无描边 + 3 道向外辐射声波弧线，Offscreen 统一透明度）
+ * 1:1 复刻音量条右侧高音量喇叭（XML 圆润矢量图标）
  */
 @Composable
 fun AppleMusicVolumeHighIcon(
@@ -736,49 +499,10 @@ fun AppleMusicVolumeHighIcon(
     tint: Color = Color.White.copy(alpha = 0.55f),
     size: Dp = 18.dp
 ) {
-    val solidColor = tint.copy(alpha = 1f)
-    Canvas(
-        modifier = modifier
-            .size(size)
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-                alpha = tint.alpha
-            }
-    ) {
-        val w = this.size.width
-        val h = this.size.height
-        val strokeW = w * 0.072f
-
-        val speaker = Path().apply {
-            moveTo(w * 0.05f, h * 0.35f)
-            lineTo(w * 0.25f, h * 0.35f)
-            lineTo(w * 0.49f, h * 0.13f)
-            lineTo(w * 0.49f, h * 0.87f)
-            lineTo(w * 0.25f, h * 0.65f)
-            lineTo(w * 0.05f, h * 0.65f)
-            close()
-        }
-        drawRoundedFilledPath(
-            path = speaker,
-            color = solidColor,
-            cornerRadiusPx = w * 0.045f
-        )
-
-        val waveCenter = Offset(w * 0.44f, h * 0.50f)
-        val waveRadii = floatArrayOf(w * 0.17f, w * 0.31f, w * 0.45f)
-        val sweeps = floatArrayOf(64f, 74f, 82f)
-        for (i in waveRadii.indices) {
-            val r = waveRadii[i]
-            val sw = sweeps[i]
-            drawArc(
-                color = solidColor,
-                startAngle = -sw * 0.5f,
-                sweepAngle = sw,
-                useCenter = false,
-                topLeft = Offset(waveCenter.x - r, waveCenter.y - r),
-                size = Size(r * 2f, r * 2f),
-                style = Stroke(width = strokeW, cap = StrokeCap.Round)
-            )
-        }
-    }
+    Icon(
+        painter = painterResource(id = R.drawable.ic_volume_high),
+        contentDescription = null,
+        tint = tint,
+        modifier = modifier.size(size)
+    )
 }
