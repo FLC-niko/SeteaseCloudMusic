@@ -173,7 +173,11 @@ object LocalMusicScanner {
     /**
      * 扫描指定物理文件目录下的所有音频文件（递归遍历）
      */
-    suspend fun scanDirectory(context: Context, directory: File): List<Track> = withContext(Dispatchers.IO) {
+    suspend fun scanDirectory(
+        context: Context,
+        directory: File,
+        fallbackToMediaStore: Boolean = true
+    ): List<Track> = withContext(Dispatchers.IO) {
         val directTracks = mutableListOf<Track>()
 
         if (directory.exists() && directory.isDirectory) {
@@ -259,7 +263,7 @@ object LocalMusicScanner {
         }
 
         // 如果直接文件遍历因 Scoped Storage 受限返回为空，则从 MediaStore 中智能匹配该目录相关的音频
-        if (directTracks.isEmpty()) {
+        if (directTracks.isEmpty() && fallbackToMediaStore) {
             val mediaStoreTracks = scanMediaStore(context)
             val filtered = mediaStoreTracks.filter {
                 it.playableUrl?.contains(directory.name, ignoreCase = true) == true ||

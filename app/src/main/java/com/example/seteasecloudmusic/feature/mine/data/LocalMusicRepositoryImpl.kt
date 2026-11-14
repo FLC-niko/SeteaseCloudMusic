@@ -8,12 +8,15 @@ import com.example.seteasecloudmusic.core.local.LocalMusicScanner
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.local.LocalMusicRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -34,8 +37,10 @@ class LocalMusicRepositoryImpl @Inject constructor(
     private val _localTracksFlow = MutableStateFlow<List<Track>>(emptyList())
     override val localTracksFlow: StateFlow<List<Track>> = _localTracksFlow.asStateFlow()
 
+    @Volatile
     private var hasScanned = false
     private val scanMutex = Mutex()
+    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun getCustomDirectoryPath(): String? {
         val saved = prefs.getString(KEY_CUSTOM_DIR, null)
@@ -62,7 +67,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
         // 2. 扫描指定目录
             val dir = File(directoryPath)
             if (dir.exists() && dir.isDirectory) {
-                val dirTracks = LocalMusicScanner.scanDirectory(context, dir)
+                val dirTracks = LocalMusicScanner.scanDirectory(context, dir, fallbackToMediaStore = false)
                 combinedTracks.addAll(dirTracks)
             }
 
@@ -77,7 +82,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
 
     override suspend fun getLocalTracks(forceRefresh: Boolean): List<Track> = scanMutex.withLock {
         withContext(Dispatchers.IO) {
-            if (!forceRefresh && _localTracksFlow.value.isNotEmpty()) {
+            if (!forceRefresh && hasScanned) {
                 return@withContext _localTracksFlow.value
             }
 
@@ -102,7 +107,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
             for (dir in targetDirs.distinctBy { it.absolutePath }) {
                 currentCoroutineContext().ensureActive()
                 if (dir.exists() && dir.isDirectory) {
-                    val dirTracks = LocalMusicScanner.scanDirectory(context, dir)
+                    val dirTracks = LocalMusicScanner.scanDirectory(context, dir, fallbackToMediaStore = false)
                     combinedTracks.addAll(dirTracks)
                 }
             }
@@ -145,11 +150,12 @@ class LocalMusicRepositoryImpl @Inject constructor(
      * 4. 时长容差扩展至 15 秒（适应不同格式的前后静音差异）
      */
     override suspend fun findMatchingLocalTrack(onlineTrack: Track): Track? = withContext(Dispatchers.Default) {
-        val localList = if (_localTracksFlow.value.isEmpty()) {
-            getLocalTracks(forceRefresh = false)
-        } else {
-            _localTracksFlow.value
+        if (!hasScanned && !scanMutex.isLocked) {
+            backgroundScope.launch {
+                runCatching { getLocalTracks(forceRefresh = false) }
+            }
         }
+        val localList = _localTracksFlow.value
 
         if (localList.isEmpty()) {
             Log.d("LocalMusicMatch", "findMatchingLocalTrack: local library is empty, skipping matching for '${onlineTrack.title}'")
