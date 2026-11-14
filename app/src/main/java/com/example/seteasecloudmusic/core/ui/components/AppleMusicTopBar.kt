@@ -392,6 +392,7 @@ fun AppleMusicCollapsedTopBar(
     backdrop: Backdrop? = null,
     showBackButton: Boolean = false,
     onBackClick: (() -> Unit)? = null,
+    isDark: Boolean = false,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     val fullBlurAlpha = if (showBackButton) {
@@ -450,6 +451,7 @@ fun AppleMusicCollapsedTopBar(
                 .padding(horizontal = 20.dp),
             contentAlignment = Alignment.CenterStart
         ) {
+            val barContentColor = if (isDark) Color.White else Color(0xFF111111)
             Row(
                 modifier = Modifier.align(Alignment.CenterStart),
                 verticalAlignment = Alignment.CenterVertically
@@ -460,13 +462,13 @@ fun AppleMusicCollapsedTopBar(
                         onClick = onBackClick,
                         backdrop = backdrop,
                         size = 36.dp,
-                        isDarkSurface = false,
+                        isDarkSurface = isDark,
                         contentDescription = "返回"
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = null,
-                            tint = Color(0xFF111111),
+                            tint = barContentColor,
                             modifier = Modifier.size(19.dp)
                         )
                     }
@@ -478,7 +480,7 @@ fun AppleMusicCollapsedTopBar(
                     text = title,
                     fontSize = 21.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111111),
+                    color = barContentColor,
                     letterSpacing = (-0.5).sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

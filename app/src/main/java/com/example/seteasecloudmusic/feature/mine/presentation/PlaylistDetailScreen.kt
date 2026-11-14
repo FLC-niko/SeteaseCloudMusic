@@ -172,15 +172,18 @@ fun PlaylistDetailScreen(
     onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
     onTracksAddedToPlaylist: ((Long, List<Track>) -> Unit)? = null,
     onTracksReordered: ((List<Track>) -> Unit)? = null,
-    onDeleteTracks: ((Set<Long>) -> Unit)? = null
+    onDeleteTracks: ((Set<Long>) -> Unit)? = null,
+    filterByCurrentUserLikes: Boolean = true
 ) {
     val bottom = LocalContentBottomPadding.current
     val window = LocalAdaptiveWindow.current
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
-    val isLikedPlaylist = remember(detail.name, detail.id) {
-        detail.name.contains("喜欢") || (detail.id != LOCAL_PLAYLIST_ID && detail.description?.contains("红心") == true)
+    val isLikedPlaylist = remember(detail.name, detail.id, filterByCurrentUserLikes) {
+        filterByCurrentUserLikes && (
+            detail.name.contains("喜欢") || (detail.id != LOCAL_PLAYLIST_ID && detail.description?.contains("红心") == true)
+        )
     }
 
     val likedTrackIds by FavoriteTracksManager.likedTrackIds.collectAsState()

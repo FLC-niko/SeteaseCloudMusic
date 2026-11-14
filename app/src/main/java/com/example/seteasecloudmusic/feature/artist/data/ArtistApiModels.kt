@@ -3,7 +3,7 @@ package com.example.seteasecloudmusic.feature.artist.data
 import com.google.gson.annotations.SerializedName
 
 /**
- * /artist/songs response.
+ * /artist/songs & /artist/top/song response.
  */
 data class ArtistSongsResponse(
     val code: Int = 0,
@@ -16,6 +16,7 @@ data class ArtistSongItemResponse(
     val name: String = "",
     val fee: Int? = null,
     val dt: Long? = null,
+    val publishTime: Long? = null,
     @SerializedName("ar")
     val artists: List<ArtistSongArtistResponse> = emptyList(),
     @SerializedName("al")
@@ -67,7 +68,18 @@ data class ArtistAlbumItemResponse(
     @SerializedName("picUrl")
     val coverUrl: String? = null,
     val size: Int? = null,
-    val publishTime: Long? = null
+    val publishTime: Long? = null,
+    val description: String? = null,
+    val artist: ArtistSongArtistResponse? = null
+)
+
+/**
+ * /album response.
+ */
+data class ArtistAlbumDetailResponse(
+    val code: Int = 0,
+    val album: ArtistAlbumItemResponse? = null,
+    val songs: List<ArtistSongItemResponse> = emptyList()
 )
 
 /**
@@ -96,7 +108,14 @@ data class ArtistDetailResponse(
 
 data class ArtistDetailDataResponse(
     val artist: ArtistProfileResponse? = null,
-    val cover: String? = null
+    val cover: String? = null,
+    val user: ArtistUserProfileResponse? = null
+)
+
+data class ArtistUserProfileResponse(
+    val userId: Long? = null,
+    val nickname: String? = null,
+    val avatarUrl: String? = null
 )
 
 data class ArtistProfileResponse(
@@ -108,11 +127,12 @@ data class ArtistProfileResponse(
     val coverUrl: String? = null,
     val musicSize: Int? = null,
     val albumSize: Int? = null,
-    val mvSize: Int? = null
+    val mvSize: Int? = null,
+    val alias: List<String> = emptyList()
 )
 
 /**
- * /simi/artist response.
+ * /simi/artist & /top/artists response.
  */
 data class SimilarArtistsResponse(
     val code: Int = 0,
@@ -125,5 +145,25 @@ data class SimilarArtistItemResponse(
     @SerializedName("picUrl")
     val picUrl: String? = null,
     @SerializedName("img1v1Url")
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val alias: List<String> = emptyList(),
+    val trans: String? = null,
+    val musicSize: Int? = null
+)
+
+/**
+ * /user/playlist response for artist favorite playlists.
+ */
+data class ArtistUserPlaylistsResponse(
+    val code: Int = 0,
+    val playlist: List<ArtistUserPlaylistItemResponse> = emptyList()
+)
+
+data class ArtistUserPlaylistItemResponse(
+    val id: Long = 0L,
+    val name: String? = null,
+    val coverImgUrl: String? = null,
+    val trackCount: Int = 0,
+    val playCount: Long = 0L,
+    val specialType: Int = 0
 )
