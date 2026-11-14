@@ -1,16 +1,26 @@
 package com.example.seteasecloudmusic.feature.player.presentation
 
+import android.content.Context
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Build
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -24,6 +34,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -46,7 +58,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -89,9 +103,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -102,16 +118,23 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlaybackMode
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
+import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 import com.kyant.shapes.RoundedRectangle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -285,6 +308,8 @@ internal fun NativePlayerContent(
                 playbackMode = playbackState.playbackMode,
                 currentQuality = currentAudioQuality,
                 isLocalTrack = isLocalTrack,
+                parsedLyrics = parsedLyrics,
+                queueSource = playbackState.queueSource,
                 onToggleStar = { track?.let { onToggleStar(it.id) } },
                 onSelectPlaybackMode = { mode -> onSetMode(mode) },
                 onOpenQuality = {
@@ -1116,9 +1141,9 @@ internal fun NativePlayerContent(
 }
 
 /**
- * Apple Music 风格更多菜单（••• 按钮弹出：曲目收藏、播放模式切换、音质与待播入口）
+ * Apple Music 风格更多菜单（••• 按钮弹出：曲目收藏、播放模式切换、音质与待播入口、可下拉展开的音频详细信息）
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun AppleMusicMoreActionsSheet(
     track: Track?,
@@ -1126,12 +1151,31 @@ private fun AppleMusicMoreActionsSheet(
     playbackMode: PlaybackMode,
     currentQuality: OnlineAudioQuality,
     isLocalTrack: Boolean,
+    parsedLyrics: ParsedLyrics = ParsedLyrics(emptyList()),
+    queueSource: String? = null,
     onToggleStar: () -> Unit,
     onSelectPlaybackMode: (PlaybackMode) -> Unit,
     onOpenQuality: () -> Unit,
     onOpenQueue: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    var isDetailsExpanded by rememberSaveable(track?.id) { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isDetailsExpanded) 180f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "audioDetailsChevron"
+    )
+    val resolvedDetails = rememberResolvedTrackAudioDetails(
+        track = track,
+        currentQuality = currentQuality,
+        isLocalTrack = isLocalTrack,
+        parsedLyrics = parsedLyrics,
+        queueSource = queueSource
+    )
+
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
         containerColor = Color.White
@@ -1177,6 +1221,7 @@ private fun AppleMusicMoreActionsSheet(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(modifier = Modifier.width(4.dp))
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -1302,8 +1347,593 @@ private fun AppleMusicMoreActionsSheet(
                     fontWeight = FontWeight.Medium
                 )
             }
+
+            if (resolvedDetails != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                AudioDetailsExpandableCard(
+                    details = resolvedDetails,
+                    isExpanded = isDetailsExpanded,
+                    chevronRotation = chevronRotation,
+                    onToggleExpand = { isDetailsExpanded = !isDetailsExpanded }
+                )
+            }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AudioDetailsExpandableCard(
+    details: ResolvedAudioDetails,
+    isExpanded: Boolean,
+    chevronRotation: Float,
+    onToggleExpand: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF5F5F7))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleExpand)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = Color(0xFF515151),
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "音频详细信息",
+                color = Color(0xFF1E1E24),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = details.summaryBadge,
+                color = Color(0xFF8E8E93),
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Filled.KeyboardArrowDown,
+                contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
+                tint = Color(0xFF8E8E93),
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = chevronRotation }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeIn(tween(180)),
+            exit = shrinkVertically(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeOut(tween(140))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 14.dp)
+            ) {
+                HorizontalDivider(color = Color(0xFFE5E5EA), thickness = 0.5.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AudioSpecTagChip(
+                        text = details.sourceTag,
+                        backgroundColor = Color(0xFFFA233B).copy(alpha = 0.12f),
+                        textColor = Color(0xFFFA233B)
+                    )
+                    AudioSpecTagChip(
+                        text = details.formatTag,
+                        backgroundColor = Color(0xFFE9E9EE),
+                        textColor = Color(0xFF3A3A3C)
+                    )
+                    AudioSpecTagChip(
+                        text = details.bitrateTag,
+                        backgroundColor = Color(0xFFE9E9EE),
+                        textColor = Color(0xFF3A3A3C)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val rows = listOf(
+                    "音频来源" to details.sourceText,
+                    "音质规格" to details.qualityText,
+                    "编码格式" to details.formatText,
+                    "音频码率" to details.bitrateText,
+                    "采样率" to details.sampleRateText,
+                    "文件大小" to details.fileSizeText,
+                    "歌词来源" to details.lyricSourceText,
+                    "所属专辑" to details.albumText,
+                    details.identifierLabel to details.identifierValue
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rows.forEach { (label, value) ->
+                        AudioDetailRow(label = label, value = value)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioSpecTagChip(
+    text: String,
+    backgroundColor: Color,
+    textColor: Color
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(backgroundColor)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun AudioDetailRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF8E8E93),
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.width(76.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = value,
+            color = Color(0xFF1E1E24),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+private data class LocalAudioProbeResult(
+    val bitrateKbps: Int? = null,
+    val sampleRateHz: Int? = null,
+    val fileSizeBytes: Long? = null,
+    val format: String? = null
+)
+
+internal data class ResolvedAudioDetails(
+    val summaryBadge: String,
+    val sourceTag: String,
+    val formatTag: String,
+    val bitrateTag: String,
+    val sourceText: String,
+    val qualityText: String,
+    val formatText: String,
+    val bitrateText: String,
+    val sampleRateText: String,
+    val fileSizeText: String,
+    val lyricSourceText: String,
+    val albumText: String,
+    val identifierLabel: String,
+    val identifierValue: String
+)
+
+@Composable
+private fun rememberResolvedTrackAudioDetails(
+    track: Track?,
+    currentQuality: OnlineAudioQuality,
+    isLocalTrack: Boolean,
+    parsedLyrics: ParsedLyrics,
+    queueSource: String?
+): ResolvedAudioDetails? {
+    if (track == null) return null
+
+    val context = LocalContext.current
+    var probedLocal by remember(track.id, track.playableUrl) {
+        mutableStateOf<LocalAudioProbeResult?>(null)
+    }
+
+    LaunchedEffect(track.id, track.playableUrl, isLocalTrack) {
+        val url = track.playableUrl
+        val needsProbe = isLocalTrack && !url.isNullOrBlank() && (
+            track.audioBitrateKbps == null ||
+                track.audioSampleRateHz == null ||
+                track.audioFileSizeBytes == null ||
+                track.audioFormat == null
+            )
+        if (needsProbe) {
+            probedLocal = probeLocalAudioMetadata(context, url, track.durationMs)
+        } else {
+            probedLocal = null
+        }
+    }
+
+    return remember(track, currentQuality, isLocalTrack, parsedLyrics.source, queueSource, probedLocal) {
+        resolveTrackAudioDetails(
+            track = track,
+            currentQuality = currentQuality,
+            isLocalTrack = isLocalTrack,
+            parsedLyrics = parsedLyrics,
+            queueSource = queueSource,
+            probedBitrateKbps = probedLocal?.bitrateKbps,
+            probedSampleRateHz = probedLocal?.sampleRateHz,
+            probedFileSizeBytes = probedLocal?.fileSizeBytes,
+            probedFormat = probedLocal?.format
+        )
+    }
+}
+
+internal fun resolveTrackAudioDetails(
+    track: Track,
+    currentQuality: OnlineAudioQuality,
+    isLocalTrack: Boolean,
+    parsedLyrics: ParsedLyrics,
+    queueSource: String?,
+    probedBitrateKbps: Int? = null,
+    probedSampleRateHz: Int? = null,
+    probedFileSizeBytes: Long? = null,
+    probedFormat: String? = null
+): ResolvedAudioDetails {
+    val rawUrl = track.playableUrl
+    val effectiveQualityLevel = if (isLocalTrack) {
+        "local"
+    } else {
+        track.audioQualityLevel?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
+            ?: currentQuality.levelKey
+    }
+
+    val actualFormat = track.audioFormat?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+        ?: probedFormat?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+        ?: extractAudioFormatFromPathOrUrl(rawUrl)
+
+    val actualFileSizeBytes = track.audioFileSizeBytes?.takeIf { it > 0L }
+        ?: probedFileSizeBytes?.takeIf { it > 0L }
+    val durationMs = track.durationMs?.takeIf { it > 0L }
+
+    val actualBitrateKbps = track.audioBitrateKbps?.takeIf { it > 0 }
+        ?: probedBitrateKbps?.takeIf { it > 0 }
+        ?: if (actualFileSizeBytes != null && durationMs != null) {
+            ((actualFileSizeBytes * 8L) / durationMs).toInt().takeIf { it > 0 }
+        } else {
+            null
+        }
+
+    val actualSampleRateHz = track.audioSampleRateHz?.takeIf { it > 0 }
+        ?: probedSampleRateHz?.takeIf { it > 0 }
+
+    val sourceText = when {
+        !track.audioSourceLabel.isNullOrBlank() -> {
+            if (!isLocalTrack &&
+                queueSource == MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ &&
+                track.audioSourceLabel == "网易云音乐 · 在线流媒体"
+            ) {
+                "网易云音乐 · 私人 DJ 漫游"
+            } else {
+                track.audioSourceLabel
+            }
+        }
+        isLocalTrack -> "本地音乐 · 设备存储"
+        queueSource == MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ -> "网易云音乐 · 私人 DJ 漫游"
+        else -> "网易云音乐 · 在线流媒体"
+    }
+
+    val sourceTag = when {
+        sourceText.contains("智能匹配") -> "本地省流"
+        isLocalTrack -> "本地音源"
+        queueSource == MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ -> "私人 DJ"
+        else -> "在线流媒体"
+    }
+
+    val qualityText = when (effectiveQualityLevel) {
+        "local" -> if (actualFormat in LosslessAudioFormats) "本地无损音频" else "本地原盘音频"
+        "hires", "jymaster" -> "Hi-Res 超清母带"
+        "lossless" -> "SQ 无损音质"
+        "sky" -> "Dolby Atmos 杜比全景声"
+        "exhigh" -> "极高音质 (HQ)"
+        "standard" -> "标准音质"
+        else -> currentQuality.title
+    }
+
+    val formatText = when (actualFormat) {
+        "M4A" -> "AAC / M4A"
+        null -> when (effectiveQualityLevel) {
+            "hires", "jymaster", "lossless" -> "FLAC (预设)"
+            "sky" -> "Dolby Atmos / E-AC-3"
+            "exhigh", "standard" -> "MP3 / AAC"
+            else -> "未知格式"
+        }
+        else -> actualFormat
+    }
+
+    val formatTag = actualFormat ?: when (effectiveQualityLevel) {
+        "hires", "jymaster", "lossless" -> "FLAC"
+        "sky" -> "ATMOS"
+        "exhigh", "standard" -> "MP3/AAC"
+        else -> "AUDIO"
+    }
+
+    val bitrateText = when {
+        actualBitrateKbps != null -> "$actualBitrateKbps kbps"
+        effectiveQualityLevel == "hires" || effectiveQualityLevel == "jymaster" -> "1411+ kbps (预设)"
+        effectiveQualityLevel == "lossless" -> "约 900-1411 kbps"
+        effectiveQualityLevel == "sky" -> "约 768 kbps (Dolby)"
+        effectiveQualityLevel == "exhigh" -> "320 kbps (预设)"
+        effectiveQualityLevel == "standard" -> "128 kbps (预设)"
+        else -> "待播放解析"
+    }
+
+    val bitrateTag = when {
+        actualBitrateKbps != null -> "$actualBitrateKbps kbps"
+        effectiveQualityLevel == "hires" || effectiveQualityLevel == "jymaster" -> "Hi-Res"
+        effectiveQualityLevel == "lossless" -> "Lossless"
+        effectiveQualityLevel == "sky" -> "Dolby"
+        effectiveQualityLevel == "exhigh" -> "320 kbps"
+        effectiveQualityLevel == "standard" -> "128 kbps"
+        else -> "本地文件"
+    }
+
+    val sampleRateText = when {
+        actualSampleRateHz != null -> String.format(Locale.US, "%.1f kHz", actualSampleRateHz / 1000.0)
+        effectiveQualityLevel == "hires" || effectiveQualityLevel == "jymaster" -> "最高 192.0 kHz"
+        effectiveQualityLevel == "lossless" -> "44.1 / 48.0 kHz"
+        effectiveQualityLevel == "sky" -> "48.0 kHz"
+        effectiveQualityLevel == "exhigh" || effectiveQualityLevel == "standard" -> "44.1 kHz"
+        else -> "待播放解析"
+    }
+
+    val fileSizeText = when {
+        actualFileSizeBytes != null -> formatAudioFileSize(actualFileSizeBytes)
+        actualBitrateKbps != null && durationMs != null -> {
+            val estBytes = (actualBitrateKbps.toLong() * durationMs) / 8L
+            "约 ${formatAudioFileSize(estBytes)}"
+        }
+        else -> "待起播获取"
+    }
+
+    val lyricSourceText = when (parsedLyrics.source) {
+        LyricSource.TTML_DB -> "AMLL TTML 逐字词库"
+        LyricSource.YRC -> "网易云 YRC 逐字歌词"
+        LyricSource.LRC -> "网易云 LRC 歌词"
+        LyricSource.NONE -> "暂无歌词"
+    }
+
+    val albumText = track.album.title.ifBlank { "未知专辑" }
+
+    val identifierLabel = if (isLocalTrack) "文件路径" else "歌曲 ID"
+    val identifierValue = if (isLocalTrack) {
+        rawUrl?.takeIf { it.isNotBlank() } ?: "本地存储 (${track.id})"
+    } else {
+        val host = extractHttpHost(rawUrl)
+        if (host != null) "${track.id} · $host" else track.id.toString()
+    }
+
+    val summaryBadge = when {
+        isLocalTrack && actualFormat != null && actualBitrateKbps != null -> "本地 · $actualFormat · $actualBitrateKbps kbps"
+        isLocalTrack && actualFormat != null -> "本地 · $actualFormat"
+        isLocalTrack -> "本地音频"
+        actualFormat != null && actualBitrateKbps != null -> "$actualFormat · $actualBitrateKbps kbps"
+        actualFormat != null -> "$actualFormat · ${currentQuality.badgeText}"
+        else -> currentQuality.badgeText
+    }
+
+    return ResolvedAudioDetails(
+        summaryBadge = summaryBadge,
+        sourceTag = sourceTag,
+        formatTag = formatTag,
+        bitrateTag = bitrateTag,
+        sourceText = sourceText,
+        qualityText = qualityText,
+        formatText = formatText,
+        bitrateText = bitrateText,
+        sampleRateText = sampleRateText,
+        fileSizeText = fileSizeText,
+        lyricSourceText = lyricSourceText,
+        albumText = albumText,
+        identifierLabel = identifierLabel,
+        identifierValue = identifierValue
+    )
+}
+
+private val KnownAudioExtensions = setOf(
+    "flac", "mp3", "m4a", "aac", "wav", "ogg", "opus", "ape", "dff", "dsf", "wma", "alac"
+)
+
+private val LosslessAudioFormats = setOf(
+    "FLAC", "WAV", "APE", "ALAC", "DFF", "DSF"
+)
+
+private fun extractAudioFormatFromPathOrUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    val pathPart = url.substringBefore('?').substringBefore('#')
+    val fileName = pathPart.substringAfterLast('/', "")
+    val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+    return if (ext in KnownAudioExtensions) ext.uppercase(Locale.ROOT) else null
+}
+
+private fun extractHttpHost(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+    val host = url.substringAfter("://", "")
+        .substringBefore('/')
+        .substringBefore('?')
+        .substringBefore(':')
+        .trim()
+    return host.takeIf { it.isNotBlank() }
+}
+
+private fun formatAudioFileSize(bytes: Long): String {
+    return when {
+        bytes >= 1024L * 1024L -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+        bytes >= 1024L -> String.format(Locale.US, "%.0f KB", bytes / 1024.0)
+        else -> "$bytes B"
+    }
+}
+
+private suspend fun probeLocalAudioMetadata(
+    context: Context,
+    url: String,
+    fallbackDurationMs: Long?
+): LocalAudioProbeResult = withContext(Dispatchers.IO) {
+    var fileSizeBytes: Long? = null
+    var bitrateKbps: Int? = null
+    var sampleRateHz: Int? = null
+    var format: String? = extractAudioFormatFromPathOrUrl(url)
+
+    try {
+        when {
+            url.startsWith("content:") -> {
+                val uri = Uri.parse(url)
+                runCatching {
+                    context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                        val col = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (col >= 0 && cursor.moveToFirst()) {
+                            fileSizeBytes = cursor.getLong(col).takeIf { it > 0L }
+                        }
+                    }
+                }
+                if (fileSizeBytes == null) {
+                    runCatching {
+                        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
+                            fileSizeBytes = afd.length.takeIf { it > 0L }
+                        }
+                    }
+                }
+            }
+            url.startsWith("file:") || url.startsWith("/") -> {
+                val file = File(url.removePrefix("file://"))
+                if (file.exists()) {
+                    fileSizeBytes = file.length().takeIf { it > 0L }
+                }
+            }
+        }
+
+        val retriever = MediaMetadataRetriever()
+        var durationMs = fallbackDurationMs
+        try {
+            if (url.startsWith("content:") || url.startsWith("file:")) {
+                retriever.setDataSource(context, Uri.parse(url))
+            } else {
+                retriever.setDataSource(url)
+            }
+            val rawBitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
+            bitrateKbps = rawBitrate?.let { if (it > 10000) (it + 500) / 1000 else it }?.takeIf { it > 0 }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                sampleRateHz = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+                    ?.toIntOrNull()?.takeIf { it > 0 }
+            }
+            if (durationMs == null || durationMs <= 0L) {
+                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            }
+            if (format == null) {
+                val mime = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)?.lowercase(Locale.ROOT)
+                format = when {
+                    mime == null -> null
+                    mime.contains("flac") -> "FLAC"
+                    mime.contains("mpeg") || mime.contains("mp3") -> "MP3"
+                    mime.contains("mp4") || mime.contains("m4a") -> "M4A"
+                    mime.contains("aac") -> "AAC"
+                    mime.contains("wav") -> "WAV"
+                    mime.contains("ogg") -> "OGG"
+                    mime.contains("opus") -> "OPUS"
+                    else -> null
+                }
+            }
+        } finally {
+            runCatching { retriever.release() }
+        }
+
+        if (sampleRateHz == null) {
+            val extractor = MediaExtractor()
+            try {
+                if (url.startsWith("content:") || url.startsWith("file:")) {
+                    extractor.setDataSource(context, Uri.parse(url), null)
+                } else {
+                    extractor.setDataSource(url)
+                }
+                for (i in 0 until extractor.trackCount) {
+                    val trackFormat = extractor.getTrackFormat(i)
+                    val mime = trackFormat.getString(MediaFormat.KEY_MIME)
+                    if (mime?.startsWith("audio/") == true && trackFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                        sampleRateHz = trackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE).takeIf { it > 0 }
+                        if (format == null) {
+                            format = when {
+                                mime.contains("flac") -> "FLAC"
+                                mime.contains("mpeg") -> "MP3"
+                                mime.contains("mp4a") -> "AAC"
+                                mime.contains("raw") -> "WAV"
+                                mime.contains("opus") -> "OPUS"
+                                mime.contains("vorbis") -> "OGG"
+                                else -> null
+                            }
+                        }
+                        break
+                    }
+                }
+            } finally {
+                runCatching { extractor.release() }
+            }
+        }
+
+        val resolvedSize = fileSizeBytes
+        val resolvedDuration = durationMs
+        if (bitrateKbps == null && resolvedSize != null && resolvedDuration != null && resolvedDuration > 0L) {
+            bitrateKbps = ((resolvedSize * 8L) / resolvedDuration).toInt().takeIf { it > 0 }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        // 探测失败时静默降级至已有元数据
+    }
+
+    LocalAudioProbeResult(
+        bitrateKbps = bitrateKbps,
+        sampleRateHz = sampleRateHz,
+        fileSizeBytes = fileSizeBytes,
+        format = format
+    )
 }
 
 /**

@@ -38,7 +38,12 @@ class SearchRepositoryImpl @Inject constructor(
 
     private data class CachedTrackUrl(
         val url: String,
-        val fetchedAtMs: Long = System.currentTimeMillis()
+        val fetchedAtMs: Long = System.currentTimeMillis(),
+        val bitrateKbps: Int? = null,
+        val sampleRateHz: Int? = null,
+        val fileSizeBytes: Long? = null,
+        val format: String? = null,
+        val level: String? = null
     )
 
     // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链与获取时间 (0ms 极速切歌)
@@ -177,6 +182,18 @@ class SearchRepositoryImpl @Inject constructor(
         trackUrlCache.keys.removeIf { it.startsWith(prefix) }
     }
 
+    private fun extractAudioFormatFromUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val pathPart = url.substringBefore('?').substringBefore('#')
+        val fileName = pathPart.substringAfterLast('/', "")
+        val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return if (ext in SUPPORTED_AUDIO_FORMAT_EXTS) {
+            ext.uppercase(Locale.ROOT)
+        } else {
+            null
+        }
+    }
+
     override suspend fun getTrackUrl(
         trackId: Long,
         level: String
@@ -201,7 +218,28 @@ class SearchRepositoryImpl @Inject constructor(
                 } else {
                     url
                 }
-                trackUrlCache[cacheKey] = CachedTrackUrl(secureUrl)
+                val bitrateKbps = songData.br?.let { br ->
+                    when {
+                        br > 10000 -> (br + 500) / 1000
+                        br in 1..10000 -> br
+                        else -> null
+                    }
+                }
+                val sampleRateHz = songData.sr?.takeIf { it > 0 }
+                val fileSizeBytes = songData.size?.takeIf { it > 0L }
+                val format = songData.encodeType?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+                    ?: songData.type?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+                    ?: extractAudioFormatFromUrl(secureUrl)
+                val resolvedLevel = songData.level?.trim()?.takeIf { it.isNotBlank() } ?: level
+
+                trackUrlCache[cacheKey] = CachedTrackUrl(
+                    url = secureUrl,
+                    bitrateKbps = bitrateKbps,
+                    sampleRateHz = sampleRateHz,
+                    fileSizeBytes = fileSizeBytes,
+                    format = format,
+                    level = resolvedLevel
+                )
                 Result.success(secureUrl)
             } else {
                 Result.failure(Exception("No playable URL available for track $trackId at level $level"))
@@ -214,10 +252,36 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     override suspend fun invoke(track: Track): Result<Track> {
+        val currentQualityLevel = playerSettingsManager.audioQuality.value.levelKey
+
         // 1. 若当前曲目已带有可用播放直链（本地扫描或预先准备），先校验在线直链是否未过期
         val existingUrl = track.playableUrl
         if (!existingUrl.isNullOrBlank() && track.isPlayable && !isUrlExpired(existingUrl)) {
-            return Result.success(track)
+            val isLocalUrl = existingUrl.startsWith("content:") ||
+                existingUrl.startsWith("file:") ||
+                existingUrl.startsWith("/")
+            return if (isLocalUrl) {
+                Result.success(
+                    track.copy(
+                        audioSourceLabel = track.audioSourceLabel ?: "本地音乐 · 设备存储",
+                        audioFormat = track.audioFormat ?: extractAudioFormatFromUrl(existingUrl),
+                        audioQualityLevel = track.audioQualityLevel ?: "local"
+                    )
+                )
+            } else {
+                val cached = trackUrlCache["${track.id}-$currentQualityLevel"]
+                    ?: trackUrlCache.values.firstOrNull { it.url == existingUrl }
+                Result.success(
+                    track.copy(
+                        audioSourceLabel = track.audioSourceLabel ?: "网易云音乐 · 在线流媒体",
+                        audioBitrateKbps = track.audioBitrateKbps ?: cached?.bitrateKbps,
+                        audioSampleRateHz = track.audioSampleRateHz ?: cached?.sampleRateHz,
+                        audioFileSizeBytes = track.audioFileSizeBytes ?: cached?.fileSizeBytes,
+                        audioFormat = track.audioFormat ?: cached?.format ?: extractAudioFormatFromUrl(existingUrl),
+                        audioQualityLevel = track.audioQualityLevel ?: cached?.level ?: currentQualityLevel
+                    )
+                )
+            }
         }
 
         // 2. 核心省流量机制：在线歌单曲目优先检索本地已下载/已存在的本地音频
@@ -227,16 +291,31 @@ class SearchRepositoryImpl @Inject constructor(
             return Result.success(
                 track.copy(
                     playableUrl = localMatch.playableUrl,
-                    isPlayable = true
+                    isPlayable = true,
+                    audioSourceLabel = "本地音乐 · 智能匹配省流",
+                    audioFormat = localMatch.audioFormat ?: extractAudioFormatFromUrl(localMatch.playableUrl),
+                    audioBitrateKbps = localMatch.audioBitrateKbps,
+                    audioSampleRateHz = localMatch.audioSampleRateHz,
+                    audioFileSizeBytes = localMatch.audioFileSizeBytes,
+                    audioQualityLevel = "local"
                 )
             )
         }
-        val currentQualityLevel = playerSettingsManager.audioQuality.value.levelKey
         android.util.Log.d("SearchRepo", "Online track '${track.title}' (ID: ${track.id}) no local match, fetching online stream for quality: $currentQualityLevel")
 
         // 3. 本地无匹配，根据用户设定的音质等级向云端请求直链
         return getTrackUrl(track.id, level = currentQualityLevel).map { url ->
-            track.copy(playableUrl = url, isPlayable = url.isNotBlank())
+            val cached = trackUrlCache["${track.id}-$currentQualityLevel"]
+            track.copy(
+                playableUrl = url,
+                isPlayable = url.isNotBlank(),
+                audioSourceLabel = "网易云音乐 · 在线流媒体",
+                audioBitrateKbps = cached?.bitrateKbps,
+                audioSampleRateHz = cached?.sampleRateHz,
+                audioFileSizeBytes = cached?.fileSizeBytes,
+                audioFormat = cached?.format ?: extractAudioFormatFromUrl(url),
+                audioQualityLevel = cached?.level ?: currentQualityLevel
+            )
         }
     }
 
@@ -499,6 +578,12 @@ class SearchRepositoryImpl @Inject constructor(
             qualityTags = qualityTags,
             playableUrl = null,
             isPlayable = song.fee != 4
+        )
+    }
+
+    companion object {
+        private val SUPPORTED_AUDIO_FORMAT_EXTS = setOf(
+            "flac", "mp3", "m4a", "aac", "wav", "ogg", "opus", "ape", "dff", "dsf", "wma", "alac"
         )
     }
 }

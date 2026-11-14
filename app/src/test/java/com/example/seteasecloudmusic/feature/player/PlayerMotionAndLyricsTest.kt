@@ -4,9 +4,12 @@ import androidx.compose.ui.geometry.Rect
 import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.feature.player.data.parser.LrcParser
 import com.example.seteasecloudmusic.feature.player.data.parser.YrcParser
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
+import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricWord
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 import com.example.seteasecloudmusic.feature.player.presentation.amllEmpEasing
@@ -21,6 +24,7 @@ import com.example.seteasecloudmusic.feature.player.presentation.playerArtworkRe
 import com.example.seteasecloudmusic.feature.player.presentation.playerContainerCornerRadius
 import com.example.seteasecloudmusic.feature.player.presentation.playerContainerRect
 import com.example.seteasecloudmusic.feature.player.presentation.playerTopAnchoredArtworkRect
+import com.example.seteasecloudmusic.feature.player.presentation.resolveTrackAudioDetails
 import com.example.seteasecloudmusic.feature.player.presentation.shouldEmphasizeWord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -300,6 +304,87 @@ class PlayerMotionAndLyricsTest {
         }
         assertEquals(com.example.seteasecloudmusic.core.player.PlaybackMode.SHUFFLE, nextMode(com.example.seteasecloudmusic.core.player.PlaybackMode.SEQUENTIAL))
         assertEquals(com.example.seteasecloudmusic.core.player.PlaybackMode.SEQUENTIAL, nextMode(com.example.seteasecloudmusic.core.player.PlaybackMode.SHUFFLE))
+    }
+
+    @Test
+    fun resolveTrackAudioDetails_formatsOnlineLocalAndFallbackMetadata() {
+        val onlineTrack = Track(
+            id = 123456L,
+            title = "Hong Kong",
+            artists = listOf(Artist(1L, "The Weeknd")),
+            album = Album(10L, "After Hours"),
+            durationMs = 240_000L,
+            playableUrl = "https://m801.music.126.net/test/sample.flac",
+            audioSourceLabel = "网易云音乐 · 在线流媒体",
+            audioBitrateKbps = 1850,
+            audioSampleRateHz = 96000,
+            audioFileSizeBytes = 55_500_000L,
+            audioFormat = "FLAC",
+            audioQualityLevel = "hires"
+        )
+        val onlineDetails = resolveTrackAudioDetails(
+            track = onlineTrack,
+            currentQuality = OnlineAudioQuality.HIRES,
+            isLocalTrack = false,
+            parsedLyrics = ParsedLyrics(emptyList(), source = LyricSource.TTML_DB),
+            queueSource = null
+        )
+        assertEquals("FLAC · 1850 kbps", onlineDetails.summaryBadge)
+        assertEquals("网易云音乐 · 在线流媒体", onlineDetails.sourceText)
+        assertEquals("Hi-Res 超清母带", onlineDetails.qualityText)
+        assertEquals("FLAC", onlineDetails.formatText)
+        assertEquals("1850 kbps", onlineDetails.bitrateText)
+        assertEquals("96.0 kHz", onlineDetails.sampleRateText)
+        assertEquals("52.9 MB", onlineDetails.fileSizeText)
+        assertEquals("AMLL TTML 逐字词库", onlineDetails.lyricSourceText)
+        assertEquals("歌曲 ID", onlineDetails.identifierLabel)
+        assertEquals("123456 · m801.music.126.net", onlineDetails.identifierValue)
+
+        val matchedLocalTrack = Track(
+            id = 654321L,
+            title = "Hong Kong",
+            artists = listOf(Artist(1L, "The Weeknd")),
+            album = Album(10L, "After Hours"),
+            durationMs = 200_000L,
+            playableUrl = "/storage/emulated/0/Music/hong_kong.flac",
+            audioSourceLabel = "本地音乐 · 智能匹配省流",
+            audioQualityLevel = "local"
+        )
+        val matchedDetails = resolveTrackAudioDetails(
+            track = matchedLocalTrack,
+            currentQuality = OnlineAudioQuality.STANDARD,
+            isLocalTrack = true,
+            parsedLyrics = ParsedLyrics(emptyList(), source = LyricSource.YRC),
+            queueSource = null,
+            probedSampleRateHz = 44100,
+            probedFileSizeBytes = 25_000_000L
+        )
+        assertEquals("本地 · FLAC · 1000 kbps", matchedDetails.summaryBadge)
+        assertEquals("本地音乐 · 智能匹配省流", matchedDetails.sourceText)
+        assertEquals("本地无损音频", matchedDetails.qualityText)
+        assertEquals("1000 kbps", matchedDetails.bitrateText)
+        assertEquals("44.1 kHz", matchedDetails.sampleRateText)
+        assertEquals("文件路径", matchedDetails.identifierLabel)
+        assertEquals("/storage/emulated/0/Music/hong_kong.flac", matchedDetails.identifierValue)
+
+        val djRestoredTrack = Track(
+            id = 777L,
+            title = "Night Drive",
+            artists = listOf(Artist(2L, "Luna")),
+            album = Album(20L, "")
+        )
+        val djDetails = resolveTrackAudioDetails(
+            track = djRestoredTrack,
+            currentQuality = OnlineAudioQuality.HIGH,
+            isLocalTrack = false,
+            parsedLyrics = ParsedLyrics(emptyList(), source = LyricSource.NONE),
+            queueSource = MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ
+        )
+        assertEquals("网易云音乐 · 私人 DJ 漫游", djDetails.sourceText)
+        assertEquals("极高音质 (HQ)", djDetails.qualityText)
+        assertEquals("320 kbps (预设)", djDetails.bitrateText)
+        assertEquals("未知专辑", djDetails.albumText)
+        assertEquals("暂无歌词", djDetails.lyricSourceText)
     }
 }
 

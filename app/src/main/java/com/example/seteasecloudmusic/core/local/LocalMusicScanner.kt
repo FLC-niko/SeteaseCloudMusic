@@ -34,15 +34,21 @@ object LocalMusicScanner {
      */
     suspend fun scanMediaStore(context: Context): List<Track> = withContext(Dispatchers.IO) {
         val tracks = mutableListOf<Track>()
-        val projection = arrayOf(
+        val projectionList = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.ALBUM_ID
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.MIME_TYPE
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            projectionList.add(MediaStore.Audio.Media.BITRATE)
+        }
+        val projection = projectionList.toTypedArray()
 
         // 筛选条件：去除小于 5 秒的提示音与录音碎片，放宽 IS_MUSIC 条件以防部分 ROM 误标
         val selection = "${MediaStore.Audio.Media.DURATION} >= 5000"
@@ -69,6 +75,13 @@ object LocalMusicScanner {
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
                 val albumIdCol = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID)
+                val sizeCol = cursor.getColumnIndex(MediaStore.Audio.Media.SIZE)
+                val mimeCol = cursor.getColumnIndex(MediaStore.Audio.Media.MIME_TYPE)
+                val bitrateCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    cursor.getColumnIndex(MediaStore.Audio.Media.BITRATE)
+                } else {
+                    -1
+                }
 
                 while (cursor.moveToNext()) {
                     currentCoroutineContext().ensureActive()
@@ -79,6 +92,9 @@ object LocalMusicScanner {
                     val durationMs = cursor.getLong(durationCol)
                     val dataPath = if (dataCol >= 0) cursor.getString(dataCol) ?: "" else ""
                     val albumId = if (albumIdCol >= 0) cursor.getLong(albumIdCol) else -1L
+                    val fileSizeBytes = if (sizeCol >= 0) cursor.getLong(sizeCol).takeIf { it > 0L } else null
+                    val mimeType = if (mimeCol >= 0) cursor.getString(mimeCol) else null
+                    val rawBitrate = if (bitrateCol >= 0) cursor.getInt(bitrateCol).takeIf { it > 0 } else null
 
                     // 生成 MediaStore 标准 Content Uri，在 Android 10/11/12/13/14/15 均可稳定播放
                     val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaId)
@@ -108,6 +124,13 @@ object LocalMusicScanner {
                         else -> listOf(AudioQuality.STANDARD)
                     }
 
+                    val audioFormat = ext.takeIf { it.isNotBlank() }?.uppercase()
+                        ?: formatFromMimeType(mimeType)
+                    val audioBitrateKbps = rawBitrate?.let { if (it > 10000) (it + 500) / 1000 else it }?.takeIf { it > 0 }
+                        ?: if (fileSizeBytes != null && durationMs > 0L) {
+                            ((fileSizeBytes * 8L) / durationMs).toInt().takeIf { it > 0 }
+                        } else null
+
                     tracks.add(
                         Track(
                             id = localId,
@@ -128,7 +151,12 @@ object LocalMusicScanner {
                             coverUrl = albumCoverUri,
                             durationMs = durationMs,
                             playableUrl = playableUrl,
-                            isPlayable = true
+                            isPlayable = true,
+                            audioSourceLabel = "本地音乐 · MediaStore",
+                            audioBitrateKbps = audioBitrateKbps,
+                            audioFileSizeBytes = fileSizeBytes,
+                            audioFormat = audioFormat,
+                            audioQualityLevel = "local"
                         )
                     )
                 }
@@ -164,8 +192,15 @@ object LocalMusicScanner {
                         val rawArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
                         val rawAlbum = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
                         val rawDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val rawBitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
+                        val rawSampleRate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toIntOrNull()
+                        } else {
+                            null
+                        }
 
                         val durationMs = rawDuration?.toLongOrNull() ?: 0L
+                        val fileSizeBytes = file.length().takeIf { it > 0L }
                         val parsed = parseFilenameFallback(file.nameWithoutExtension)
                         val title = rawTitle?.takeIf { it.isNotBlank() } ?: parsed.first
                         val artistName = rawArtist?.takeIf { it.isNotBlank() } ?: parsed.second
@@ -173,10 +208,15 @@ object LocalMusicScanner {
 
                         val localId = ((file.absolutePath.hashCode().toLong() and 0x7FFFFFFF) or 0x40000000_00000000L)
 
-                        val quality = when (file.extension.lowercase()) {
+                        val ext = file.extension.lowercase()
+                        val quality = when (ext) {
                             "flac", "wav", "ape", "dff", "dsf" -> listOf(AudioQuality.LOSSLESS, AudioQuality.HIRES)
                             else -> listOf(AudioQuality.STANDARD)
                         }
+                        val audioBitrateKbps = rawBitrate?.let { if (it > 10000) (it + 500) / 1000 else it }?.takeIf { it > 0 }
+                            ?: if (fileSizeBytes != null && durationMs > 0L) {
+                                ((fileSizeBytes * 8L) / durationMs).toInt().takeIf { it > 0 }
+                            } else null
 
                         directTracks.add(
                             Track(
@@ -198,7 +238,13 @@ object LocalMusicScanner {
                                 coverUrl = null,
                                 durationMs = durationMs,
                                 playableUrl = file.absolutePath,
-                                isPlayable = true
+                                isPlayable = true,
+                                audioSourceLabel = "本地音乐 · 目录扫描",
+                                audioBitrateKbps = audioBitrateKbps,
+                                audioSampleRateHz = rawSampleRate?.takeIf { it > 0 },
+                                audioFileSizeBytes = fileSizeBytes,
+                                audioFormat = ext.takeIf { it.isNotBlank() }?.uppercase(),
+                                audioQualityLevel = "local"
                             )
                         )
                     } catch (e: CancellationException) {
@@ -242,5 +288,19 @@ object LocalMusicScanner {
             }
         }
         return (if (cleanName.isNotBlank()) cleanName else nameWithoutExt) to "未知歌手"
+    }
+
+    private fun formatFromMimeType(mimeType: String?): String? {
+        return when (mimeType?.lowercase()?.substringBefore(';')?.trim()) {
+            "audio/flac", "audio/x-flac" -> "FLAC"
+            "audio/mpeg", "audio/mp3" -> "MP3"
+            "audio/mp4", "audio/m4a" -> "M4A"
+            "audio/aac", "audio/aac-adts" -> "AAC"
+            "audio/wav", "audio/x-wav", "audio/wave" -> "WAV"
+            "audio/ogg", "application/ogg" -> "OGG"
+            "audio/opus" -> "OPUS"
+            "audio/x-ape", "audio/ape" -> "APE"
+            else -> null
+        }
     }
 }
