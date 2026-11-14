@@ -13,7 +13,15 @@ data class Track(
 
     val playableUrl: String? = null,
     val isPlayable: Boolean = true,
-    val recommendReason: String? = null
+    val recommendReason: String? = null,
+
+    // 音频详细元数据（来源、码率、采样率、大小、编码格式、实际音质等级）
+    val audioSourceLabel: String? = null,
+    val audioBitrateKbps: Int? = null,
+    val audioSampleRateHz: Int? = null,
+    val audioFileSizeBytes: Long? = null,
+    val audioFormat: String? = null,
+    val audioQualityLevel: String? = null
 )
 
 data class Album(

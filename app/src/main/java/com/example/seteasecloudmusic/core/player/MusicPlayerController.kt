@@ -817,8 +817,15 @@ class MusicPlayerController @Inject constructor(
                             connect()
                         }
                         _playbackState.update {
+                            val idx = it.currentQueueIndex
+                            val updatedQueue = if (idx in it.queueTracks.indices) {
+                                it.queueTracks.toMutableList().apply { this[idx] = newTrack }
+                            } else {
+                                it.queueTracks
+                            }
                             it.copy(
                                 currentTrack = newTrack,
+                                queueTracks = updatedQueue,
                                 status = if (c != null) PlayerStatus.PLAYING else PlayerStatus.BUFFERING
                             )
                         }
@@ -925,7 +932,31 @@ class MusicPlayerController @Inject constructor(
             // 0. 若曲目已带有可用且未过期的直链（预加载命中），立即 0ms 起播，无需等待任何网络！
             val directUrl = track.playableUrl
             if (!directUrl.isNullOrBlank() && track.isPlayable && !trackPlaybackPreparer.isStreamUrlExpired(directUrl)) {
-                val item = buildMediaItem(track, directUrl)
+                val enrichedTrack = if (track.audioBitrateKbps == null && track.audioSourceLabel == null) {
+                    val preparedTrack = withContext(ioDispatcher) {
+                        runCatchingCancellable { trackPlaybackPreparer(track) }.getOrNull()?.getOrNull()
+                    }
+                    if (isStaleRequest(requestId)) {
+                        return@launch
+                    }
+                    preparedTrack ?: track
+                } else {
+                    track
+                }
+                val resolvedUrl = enrichedTrack.playableUrl?.takeIf { it.isNotBlank() } ?: directUrl
+                val item = buildMediaItem(enrichedTrack, resolvedUrl)
+
+                _playbackState.update { current ->
+                    val updatedQueue = current.queueTracks.toMutableList()
+                    if (index in updatedQueue.indices) {
+                        updatedQueue[index] = enrichedTrack
+                    }
+                    current.copy(
+                        currentTrack = enrichedTrack,
+                        queueTracks = updatedQueue,
+                        status = PlayerStatus.PLAYING
+                    )
+                }
 
                 val activePlayer = controller ?: servicePlayer
                 if (activePlayer != null) {
