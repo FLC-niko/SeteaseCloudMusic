@@ -247,18 +247,7 @@ class NcblReporter @Inject constructor(
         val rawCookie = getSavedCookie()
         if (rawCookie.isBlank()) return null
 
-        val cookieMap = mutableMapOf<String, String>()
-        rawCookie.split(";").forEach { part ->
-            val idx = part.indexOf('=')
-            if (idx > 0) {
-                val k = part.substring(0, idx).trim()
-                val v = part.substring(idx + 1).trim()
-                val lowerK = k.lowercase()
-                if (k.isNotEmpty() && lowerK != "path" && lowerK != "expires" && lowerK != "max-age" && lowerK != "domain" && lowerK != "httponly" && lowerK != "secure" && lowerK != "samesite") {
-                    cookieMap[k] = v
-                }
-            }
-        }
+        val cookieMap = com.example.seteasecloudmusic.core.network.CookieSanitizer.parsePairs(rawCookie)
 
         val token = cookieMap["MUSIC_U"] ?: ""
         if (token.isBlank()) return null

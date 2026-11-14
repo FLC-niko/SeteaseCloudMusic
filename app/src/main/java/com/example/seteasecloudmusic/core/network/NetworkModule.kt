@@ -9,6 +9,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -92,10 +93,28 @@ class NetworkModule {
          */
         val loggingInterceptor = Interceptor { chain ->
             val request = chain.request()
+            val safeUrl = if (BuildConfig.DEBUG) CookieSanitizer.sanitizeUrlForLog(request.url) else ""
             if (BuildConfig.DEBUG) {
-                Log.d("NetworkModule", "HTTP ${request.method} ${request.url}")
+                Log.d("NetworkModule", "HTTP --> ${request.method} $safeUrl")
             }
-            chain.proceed(request)
+            val startNs = System.nanoTime()
+            try {
+                val response = chain.proceed(request)
+                if (BuildConfig.DEBUG) {
+                    val elapsedMs = (System.nanoTime() - startNs) / 1_000_000L
+                    Log.d("NetworkModule", "HTTP <-- ${response.code} ${request.method} $safeUrl (${elapsedMs}ms)")
+                }
+                response
+            } catch (t: Throwable) {
+                if (BuildConfig.DEBUG) {
+                    val elapsedMs = (System.nanoTime() - startNs) / 1_000_000L
+                    Log.w(
+                        "NetworkModule",
+                        "HTTP ERR ${request.method} $safeUrl (${elapsedMs}ms): ${t::class.java.simpleName}: ${t.message}"
+                    )
+                }
+                throw t
+            }
         }
 
         /**
@@ -139,8 +158,9 @@ class NetworkModule {
         }
 
         return OkHttpClient.Builder()
+            .dispatcher(createApiDispatcher())
             .dns(smartDns)
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             // 优先补充 randomCNIP 参数，确保后续日志能打印最终 URL。
@@ -167,6 +187,20 @@ class NetworkModule {
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
+    }
+
+    companion object {
+        private const val API_MAX_REQUESTS = 64
+        private const val API_MAX_REQUESTS_PER_HOST = 16
+
+        /**
+         * 提高单主机并发请求上限（OkHttp 默认为 5），
+         * 避免冷启动首屏批量接口占满连接队列导致 `/song/url/v1` 等关键起播请求被延迟数秒。
+         */
+        internal fun createApiDispatcher(): Dispatcher = Dispatcher().apply {
+            maxRequests = API_MAX_REQUESTS
+            maxRequestsPerHost = API_MAX_REQUESTS_PER_HOST
+        }
     }
 
 }

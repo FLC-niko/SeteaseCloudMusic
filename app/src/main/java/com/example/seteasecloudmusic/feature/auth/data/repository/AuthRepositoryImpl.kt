@@ -328,10 +328,13 @@ class AuthRepositoryImpl @Inject constructor(
         if (cookie.isNullOrBlank()) {
             return
         }
+        val cleanCookie = com.example.seteasecloudmusic.core.network.CookieSanitizer
+            .sanitize(cookie)
+            .ifBlank { cookie }
 
         context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(COOKIE_KEY, cookie)
+            .putString(COOKIE_KEY, cleanCookie)
             .apply()
     }
 

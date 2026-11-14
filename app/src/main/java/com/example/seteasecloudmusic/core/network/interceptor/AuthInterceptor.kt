@@ -103,10 +103,13 @@ class AuthInterceptor(private val context: Context) : Interceptor {
                 .build()
         }
 
-        // Node.js API 代理服务：同时在 URL 参数和 Header 中附带 Cookie，确保 100% 识别 VIP 会员身份
+        // Node.js API 代理服务：仅附带清洗去重后的有效会话 Cookie，避免约 4KB Set-Cookie 属性冗余拖慢每个请求 URL
+        val cleanCookie = com.example.seteasecloudmusic.core.network.CookieSanitizer
+            .sanitize(savedCookie)
+            .ifBlank { savedCookie }
         val updatedUrl = if (originalUrl.queryParameter("cookie") == null) {
             originalUrl.newBuilder()
-                .addQueryParameter("cookie", savedCookie)
+                .addQueryParameter("cookie", cleanCookie)
                 .build()
         } else {
             originalUrl
