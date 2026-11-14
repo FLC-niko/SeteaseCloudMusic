@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -91,6 +92,7 @@ fun AppleMusicPlaybackControls(
     currentPositionMs: Int,
     durationMs: Int,
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     isLyricsPage: Boolean = false,
     hasTrack: Boolean = true,
     currentAudioQuality: OnlineAudioQuality = OnlineAudioQuality.DOLBY,
@@ -126,6 +128,7 @@ fun AppleMusicPlaybackControls(
 
         AppleMusicMainTransportButtons(
             isPlaying = isPlaying,
+            isBuffering = isBuffering,
             hasTrack = hasTrack,
             onPlayPause = onPlayPause,
             onNext = onNext,
@@ -368,6 +371,7 @@ fun AppleMusicProgressSlider(
 @Composable
 fun AppleMusicMainTransportButtons(
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     hasTrack: Boolean,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -412,20 +416,34 @@ fun AppleMusicMainTransportButtons(
             modifier = Modifier
                 .size(72.dp)
                 .clip(CircleShape)
-                .semantics { contentDescription = if (isPlaying) "暂停" else "播放" }
+                .semantics {
+                    contentDescription = when {
+                        isBuffering -> "缓冲中"
+                        isPlaying -> "暂停"
+                        else -> "播放"
+                    }
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    enabled = hasTrack,
+                    enabled = hasTrack && !isBuffering,
                     onClick = onPlayPause
                 ),
             contentAlignment = Alignment.Center
         ) {
-            AppleMusicPlayPauseAnimatedIcon(
-                isPlaying = isPlaying,
-                size = 48.dp,
-                tint = if (hasTrack) Color.White else Color.White.copy(alpha = 0.35f)
-            )
+            if (isBuffering) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(32.dp),
+                    color = if (hasTrack) Color.White else Color.White.copy(alpha = 0.35f),
+                    strokeWidth = 3.dp
+                )
+            } else {
+                AppleMusicPlayPauseAnimatedIcon(
+                    isPlaying = isPlaying,
+                    size = 48.dp,
+                    tint = if (hasTrack) Color.White else Color.White.copy(alpha = 0.35f)
+                )
+            }
         }
 
         Box(

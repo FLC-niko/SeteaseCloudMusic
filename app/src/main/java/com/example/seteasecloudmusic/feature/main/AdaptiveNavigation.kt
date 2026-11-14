@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
@@ -209,14 +210,22 @@ internal fun SideMiniPlayer(
             else Icon(painterResource(R.drawable.ic_nav_radio), null, Modifier.size(22.dp), tint = Color.Gray)
         }
         IconButton(onPlayPause, Modifier.size(44.dp), enabled = track != null) {
-            Icon(
-                painter = painterResource(
-                    id = if (state.status == PlayerStatus.PLAYING) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
-                ),
-                contentDescription = if (state.status == PlayerStatus.PLAYING) "暂停" else "播放",
-                tint = Color(0xFF494950),
-                modifier = Modifier.size(20.dp)
-            )
+            if (state.status == PlayerStatus.BUFFERING) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color(0xFF494950),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    painter = painterResource(
+                        id = if (state.status == PlayerStatus.PLAYING) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
+                    ),
+                    contentDescription = if (state.status == PlayerStatus.PLAYING) "暂停" else "播放",
+                    tint = Color(0xFF494950),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
         IconButton(onQueue, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Filled.QueueMusic, "播放列表", tint = Color(0xFF494950)) }
     }

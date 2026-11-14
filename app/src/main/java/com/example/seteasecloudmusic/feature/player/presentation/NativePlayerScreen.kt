@@ -228,6 +228,7 @@ internal fun NativePlayerContent(
 ) {
     val currentPosition = playbackState.currentPositionMs
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
+    val isBuffering = playbackState.status == PlayerStatus.BUFFERING
     val track = playbackState.currentTrack
     val hasTrack = track != null
     val isLocalTrack = remember(track) {
@@ -911,6 +912,7 @@ internal fun NativePlayerContent(
                             currentPositionMs = currentPosition,
                             durationMs = playbackState.durationMs,
                             isPlaying = isPlaying,
+                            isBuffering = isBuffering,
                             isLyricsPage = currentPage == NativePlayerPage.LYRIC,
                             hasTrack = hasTrack,
                             currentAudioQuality = currentAudioQuality,

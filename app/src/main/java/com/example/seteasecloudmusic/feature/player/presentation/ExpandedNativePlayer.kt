@@ -116,6 +116,7 @@ internal fun ExpandedNativePlayerContent(
     val background = sharedBackground ?: rememberLayerBackdrop { drawContent() }
     val track = state.currentTrack
     val playing = state.status == PlayerStatus.PLAYING
+    val buffering = state.status == PlayerStatus.BUFFERING
     val window = LocalAdaptiveWindow.current
     val local = track?.let {
         it.id < 0 || it.playableUrl?.let { url ->
@@ -133,6 +134,7 @@ internal fun ExpandedNativePlayerContent(
             currentPositionMs = state.currentPositionMs,
             durationMs = state.durationMs,
             isPlaying = playing,
+            isBuffering = buffering,
             isLyricsPage = isLyricsPage,
             hasTrack = track != null,
             currentAudioQuality = quality,

@@ -5,6 +5,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +49,7 @@ internal fun ExpandedPlaybackBar(
     val track = state.currentTrack
     val hasTrack = track != null
     val playing = state.status == PlayerStatus.PLAYING
+    val buffering = state.status == PlayerStatus.BUFFERING
     var volumeOpen by remember { mutableStateOf(false) }
     var previousClicks by remember { mutableIntStateOf(0) }
     var nextClicks by remember { mutableIntStateOf(0) }
@@ -84,8 +86,24 @@ internal fun ExpandedPlaybackBar(
                     BarAction("上一首", hasTrack, { previousClicks++; onPrevious() }) {
                         AppleMusicSkipIcon(false, previousClicks, size = 28.dp, tint = Color.White)
                     }
-                    BarAction(if (playing) "暂停" else "播放", hasTrack, onPlayPause) {
-                        AppleMusicPlayPauseAnimatedIcon(playing, size = 30.dp, tint = Color.White)
+                    BarAction(
+                        when {
+                            buffering -> "缓冲中"
+                            playing -> "暂停"
+                            else -> "播放"
+                        },
+                        hasTrack,
+                        onPlayPause
+                    ) {
+                        if (buffering) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = Color.White,
+                                strokeWidth = 2.2.dp
+                            )
+                        } else {
+                            AppleMusicPlayPauseAnimatedIcon(playing, size = 30.dp, tint = Color.White)
+                        }
                     }
                     BarAction("下一首", hasTrack, { nextClicks++; onNext() }) {
                         AppleMusicSkipIcon(true, nextClicks, size = 28.dp, tint = Color.White)

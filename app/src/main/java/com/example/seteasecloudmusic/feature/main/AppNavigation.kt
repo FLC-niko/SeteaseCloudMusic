@@ -64,6 +64,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import android.widget.Toast
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
@@ -302,6 +305,7 @@ fun AppNavigation(
     val nowPlayingScope = rememberCoroutineScope()
     var nowPlayingAnimJob by remember { mutableStateOf<Job?>(null) }
     val rootDensity = LocalDensity.current
+    val rootContext = LocalContext.current
 
     // 仅在曲目封面 URL 变化时发射，绝不因 500ms 播放进度更新触发导航外壳重组
     val activeArtworkUrlFlow = remember(playerViewModel) {
@@ -310,6 +314,20 @@ fun AppNavigation(
             .distinctUntilChanged()
     }
     val activeArtworkUrl by activeArtworkUrlFlow.collectAsStateWithLifecycle(initialValue = null)
+
+    // 起播或网络超时进入 ERROR 状态时弹出提示，避免界面静默停在暂停图标
+    val playbackErrorFlow = remember(playerViewModel) {
+        playerViewModel.playbackState
+            .map { state -> (state.status == PlayerStatus.ERROR) to state.errorMessage }
+            .distinctUntilChanged()
+    }
+    val playbackError by playbackErrorFlow.collectAsStateWithLifecycle(initialValue = false to null)
+    LaunchedEffect(playbackError) {
+        val (isError, message) = playbackError
+        if (isError && !message.isNullOrBlank()) {
+            Toast.makeText(rootContext, message, Toast.LENGTH_SHORT).show()
+        }
+    }
     val hasSearchPlaylistDetailFlow = remember(searchViewModel) {
         searchViewModel.uiState
             .map { it.activePlaylistDetail != null }
@@ -1992,6 +2010,7 @@ internal fun SearchMiniPlayerBar(
     val playbackState by playbackStateFlow.collectAsStateWithLifecycle()
     val hasTrack = playbackState.currentTrack != null
     val isPlaying = playbackState.status == PlayerStatus.PLAYING
+    val isBuffering = playbackState.status == PlayerStatus.BUFFERING
     val duration = playbackState.durationMs
     val currentPosition = playbackState.currentPositionMs
 
@@ -2370,6 +2389,7 @@ internal fun SearchMiniPlayerBar(
             // 播放暂停在最靠右，外面加上一个圈，显示播放进度，与组件的圆角和大小对齐
             MiniPlayerProgressPlayButton(
                 isPlaying = isPlaying,
+                isBuffering = isBuffering,
                 hasTrack = hasTrack && enabled,
                 progress = animatedProgress,
                 onClick = onPlayPauseClick
@@ -2385,6 +2405,7 @@ internal fun SearchMiniPlayerBar(
 @Composable
 private fun MiniPlayerProgressPlayButton(
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     hasTrack: Boolean,
     progress: Float,
     onClick: () -> Unit,
@@ -2433,15 +2454,23 @@ private fun MiniPlayerProgressPlayButton(
             }
         }
 
-        // 3. 居中播放/暂停图标
-        Icon(
-            painter = painterResource(
-                id = if (isPlaying) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
-            ),
-            contentDescription = if (isPlaying) "暂停" else "播放",
-            tint = ringColor,
-            modifier = Modifier.size(16.dp)
-        )
+        // 3. 居中播放/暂停/缓冲图标
+        if (isBuffering) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                color = ringColor,
+                strokeWidth = 1.8.dp
+            )
+        } else {
+            Icon(
+                painter = painterResource(
+                    id = if (isPlaying) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
+                ),
+                contentDescription = if (isPlaying) "暂停" else "播放",
+                tint = ringColor,
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 
