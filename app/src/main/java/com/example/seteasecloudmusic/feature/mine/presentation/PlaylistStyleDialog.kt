@@ -65,7 +65,7 @@ private enum class PlaylistMoreMenuLevel {
 /**
  * 歌单详情页「更多操作」底栏（类似播放列表 PlaylistQueueSheet 从底部冒出贴底展示）：
  * 一级菜单包含「歌单壁纸」（二级菜单入口）及「歌曲排序」等扩展功能；
- * 歌单壁纸二级菜单支持在大封面墙、静态海报墙、动态海报墙之间切换，关闭键统一使用主题色红。
+ * 歌单壁纸二级菜单支持在大封面墙、静态海报墙、动态海报墙、全屏封面之间切换，关闭键统一使用主题色红。
  */
 @Composable
 fun PlaylistMoreActionSheet(

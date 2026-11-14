@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
+import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,14 +31,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -435,6 +442,223 @@ fun PlaylistHeroDynamicPosterWallSection(
             }
         }
     }
+}
+
+/**
+ * 风格 4：全屏封面（顶部全宽沉浸封面，底部轻柔渐变融入取色背景，保留歌单名与播放键）
+ */
+@Composable
+fun PlaylistHeroFullCoverSection(
+    detail: PlaylistDetail,
+    dominantDarkColor: Color,
+    onPlayAll: () -> Unit,
+    modifier: Modifier = Modifier,
+    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    isDark: Boolean = true,
+    showControls: Boolean = true,
+    artworkHeight: androidx.compose.ui.unit.Dp? = null,
+    titleAlphaProvider: () -> Float = { 1f },
+    onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
+    onTitleLineCount: ((Int) -> Unit)? = null
+) {
+    val effectiveCoverUrl = remember(detail.coverUrl, detail.tracks) {
+        detail.coverUrl?.takeIf { it.isNotBlank() }
+            ?: detail.tracks.firstOrNull { !it.coverUrl.isNullOrBlank() }?.coverUrl
+    }
+    val totalCount = detail.trackCount.coerceAtLeast(detail.tracks.size)
+    val maskColor = dominantDarkColor
+    val effectiveDark = isDark && maskColor.luminance() < 0.7f
+    val textColor = if (effectiveDark) Color.White else Color(0xFF111111)
+    val artworkBoxHeight = artworkHeight ?: if (topInset > 0.dp) 380.dp + topInset else 300.dp
+    val artworkShape = if (topInset > 0.dp) {
+        RectangleShape
+    } else {
+        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    }
+    val smoothScrimBrush = remember(maskColor) {
+        buildSmoothFullCoverScrimBrush(maskColor)
+    }
+    val bottomEdgeBlurMask = remember {
+        Brush.verticalGradient(
+            0.00f to Color.Transparent,
+            0.68f to Color.Transparent,
+            0.80f to Color.Black.copy(alpha = 0.65f),
+            0.88f to Color.Black,
+            1.00f to Color.Black
+        )
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        // 1. 顶部全宽沉浸封面：主体保持高清晰度，底缘预留安全边距并用遮罩外延封死，杜绝下拉弹性缩放时底部出现闪动细线
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(artworkBoxHeight)
+                .align(Alignment.TopCenter)
+                .background(maskColor)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 8.dp)
+                    .then(
+                        if (topInset > 0.dp) Modifier.clipToBounds() else Modifier.clip(artworkShape)
+                    )
+            ) {
+                if (!effectiveCoverUrl.isNullOrBlank()) {
+                    val modelUrl = effectiveCoverUrl.toCoverThumbnailUrl(720)
+                    AsyncImage(
+                        model = modelUrl,
+                        contentDescription = detail.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        AsyncImage(
+                            model = modelUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .blur(10.dp, BlurredEdgeTreatment.Rectangle)
+                                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                .drawWithContent {
+                                    drawContent()
+                                    drawRect(brush = bottomEdgeBlurMask, blendMode = BlendMode.DstIn)
+                                }
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF28364A), Color(0xFF161F2E))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MusicNote,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(68.dp)
+                        )
+                    }
+                }
+
+                // 顶部轻暗角：保证浅色封面下状态栏与玻璃按钮清晰可读
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(topInset + 72.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to Color.Black.copy(alpha = 0.22f),
+                                1.0f to Color.Transparent
+                            )
+                        )
+                )
+            }
+
+            // 底部 S 曲线平滑垂直渐变，从约 62% 处过渡并在 92% 处完全不透明，同时下延 4dp 封死接缝
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset(y = 4.dp)
+                    .background(brush = smoothScrimBrush)
+            )
+        }
+
+        if (!showControls) return@Box
+
+        // 2. 居中歌单名与播放键（与其他歌单风格保持一致）
+        val contentTopPadding = (artworkBoxHeight - 58.dp)
+            .coerceAtLeast(if (topInset > 0.dp) topInset + 160.dp else 180.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = contentTopPadding, bottom = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = detail.displayTitle,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                ),
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = if (onTitleLineCount != null) {
+                    { result -> onTitleLineCount(result.lineCount) }
+                } else {
+                    null
+                },
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .graphicsLayer { alpha = titleAlphaProvider() }
+                    .let { base ->
+                        if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
+                    }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Surface(
+                onClick = onPlayAll,
+                enabled = totalCount > 0,
+                shape = RoundedCornerShape(24.dp),
+                color = PlaylistAccentColor,
+                border = null,
+                shadowElevation = 2.dp,
+                modifier = Modifier.height(48.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 38.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    AppleMusicPlayTriangleIcon(
+                        tint = Color.White,
+                        size = 15.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "播放",
+                        style = TextStyle(
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun buildSmoothFullCoverScrimBrush(targetColor: Color): Brush {
+    val startPos = 0.62f
+    val endPos = 0.92f
+    val steps = 12
+    val stops = Array(steps + 2) { index ->
+        when (index) {
+            0 -> 0.00f to Color.Transparent
+            steps + 1 -> 1.00f to targetColor
+            else -> {
+                val t = (index - 1).toFloat() / (steps - 1).toFloat()
+                val eased = t * t * (3f - 2f * t)
+                val pos = startPos + (endPos - startPos) * t
+                pos to targetColor.copy(alpha = eased)
+            }
+        }
+    }
+    return Brush.verticalGradient(colorStops = stops)
 }
 
 /**

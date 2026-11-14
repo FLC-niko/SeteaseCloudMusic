@@ -227,8 +227,17 @@ fun PlaylistDetailScreen(
         }
     }
 
-    val currentDetail = remember(detail, localTracks) {
+    val firstTrackCoverUrl = remember(localTracks) {
+        localTracks.firstOrNull { !it.coverUrl.isNullOrBlank() }?.coverUrl
+            ?: localTracks.firstOrNull { !it.album.coverUrl.isNullOrBlank() }?.album?.coverUrl
+    }
+    val resolvedCoverUrl = remember(isLikedPlaylist, firstTrackCoverUrl, detail.coverUrl) {
+        if (isLikedPlaylist) firstTrackCoverUrl else detail.coverUrl
+    }
+
+    val currentDetail = remember(detail, localTracks, resolvedCoverUrl) {
         detail.copy(
+            coverUrl = resolvedCoverUrl,
             tracks = localTracks,
             trackCount = if (isLikedPlaylist) localTracks.size else detail.trackCount.coerceAtLeast(localTracks.size)
         )
@@ -333,7 +342,7 @@ fun PlaylistDetailScreen(
         prefs.edit().putBoolean(KEY_PLAYLIST_COLOR_BACKGROUND, enabled).apply()
     }
 
-    val dominantDarkColor by rememberCoverDominantDarkColor(detail.coverUrl)
+    val dominantDarkColor by rememberCoverDominantDarkColor(currentDetail.coverUrl)
     val isDark = useColorBackground
     val solidBackgroundColor = if (isDark) dominantDarkColor.copy(alpha = 1f) else Color.White
 
@@ -667,11 +676,12 @@ fun PlaylistDetailScreen(
                                             val mediaHeight = maxHeight
                                             val cap = when (currentStyle) {
                                                 PlaylistDetailStyle.APPLE_MUSIC -> ((maxHeight - 22.dp) / 0.88f).coerceAtLeast(96.dp)
-                                                PlaylistDetailStyle.POSTER_WALL -> (maxHeight - 8.dp).coerceAtLeast(96.dp)
+                                                PlaylistDetailStyle.POSTER_WALL,
+                                                PlaylistDetailStyle.FULL_COVER -> (maxHeight - 8.dp).coerceAtLeast(96.dp)
                                                 PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> 560.dp
                                             }.coerceAtMost(560.dp)
                                             Box(Modifier.widthIn(max = cap).fillMaxWidth()) {
-                                                RenderPlaylistHero(currentStyle, detail, solidBackgroundColor, onPlayAll,
+                                                RenderPlaylistHero(currentStyle, currentDetail, solidBackgroundColor, onPlayAll,
                                                     isDark = expandedDark, expanded = true, mediaOnly = true, artworkHeight = mediaHeight)
                                             }
                                         }
@@ -704,7 +714,7 @@ fun PlaylistDetailScreen(
                                         ) {
                                             Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
                                                 RenderPlaylistHero(
-                                                    currentStyle, detail, solidBackgroundColor,
+                                                    currentStyle, currentDetail, solidBackgroundColor,
                                                     onPlayAll, isDark = expandedDark, expanded = true
                                                 )
                                             }
@@ -1257,11 +1267,13 @@ private fun CompactPlaylistDetailScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
 
-    val isPosterWall = currentStyle == PlaylistDetailStyle.POSTER_WALL || currentStyle == PlaylistDetailStyle.DYNAMIC_POSTER_WALL
+    val isEdgeToEdgeHero = currentStyle == PlaylistDetailStyle.POSTER_WALL ||
+        currentStyle == PlaylistDetailStyle.DYNAMIC_POSTER_WALL ||
+        currentStyle == PlaylistDetailStyle.FULL_COVER
     var heroTitleOffsetFromTopPx by remember(detail.id, currentStyle) { mutableFloatStateOf(0f) }
     var heroTitleLineCount by remember(detail.id, currentStyle) { mutableIntStateOf(1) }
-    val contentTopPaddingPx = remember(density, isPosterWall, statusBarHeight) {
-        with(density) { (if (isPosterWall) 0.dp else statusBarHeight + 12.dp).toPx() }
+    val contentTopPaddingPx = remember(density, isEdgeToEdgeHero, statusBarHeight) {
+        with(density) { (if (isEdgeToEdgeHero) 0.dp else statusBarHeight + 12.dp).toPx() }
     }
     val dockCenterY = remember(density, statusBarHeight) {
         with(density) { (statusBarHeight + 27.dp).toPx() }
@@ -1324,10 +1336,10 @@ private fun CompactPlaylistDetailScreen(
                     .playlistReorderGesture(state = dragReorderState, enabled = isEditMode && canReorder)
                     .verticalElasticOverscroll(),
                 contentPadding = PaddingValues(
-                    top = if (isPosterWall) 0.dp else statusBarHeight + 12.dp,
+                    top = if (isEdgeToEdgeHero) 0.dp else statusBarHeight + 12.dp,
                     bottom = constantBottomPadding,
-                    start = if (isPosterWall) 0.dp else 16.dp,
-                    end = if (isPosterWall) 0.dp else 16.dp
+                    start = if (isEdgeToEdgeHero) 0.dp else 16.dp,
+                    end = if (isEdgeToEdgeHero) 0.dp else 16.dp
                 )
             ) {
             // 1. Hero 头部（原地保持，长按与退出不自动跳动列表）
@@ -1337,7 +1349,7 @@ private fun CompactPlaylistDetailScreen(
                     detail = detail,
                     dominantDarkColor = dominantDarkColor,
                     onPlayAll = onPlayAll,
-                    topInset = if (isPosterWall) statusBarHeight else 0.dp,
+                    topInset = if (isEdgeToEdgeHero) statusBarHeight else 0.dp,
                     isDark = isDark,
                     titleAlphaProvider = {
                         val currentY = heroTitleCenterY
@@ -1406,7 +1418,7 @@ private fun CompactPlaylistDetailScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .then(if (isPosterWall) Modifier.padding(horizontal = 16.dp) else Modifier)
+                                .then(if (isEdgeToEdgeHero) Modifier.padding(horizontal = 16.dp) else Modifier)
                                 .background(
                                     color = if (isDark) Color.White.copy(alpha = highlightAlpha) else Color.Black.copy(alpha = highlightAlpha * 0.5f),
                                     shape = RoundedCornerShape(12.dp)
@@ -1429,8 +1441,8 @@ private fun CompactPlaylistDetailScreen(
                             HorizontalDivider(
                                 color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
                                 modifier = Modifier.padding(
-                                    start = if (isPosterWall) 92.dp else 76.dp,
-                                    end = if (isPosterWall) 16.dp else 0.dp
+                                    start = if (isEdgeToEdgeHero) 92.dp else 76.dp,
+                                    end = if (isEdgeToEdgeHero) 16.dp else 0.dp
                                 )
                             )
                         }
@@ -1449,7 +1461,7 @@ private fun CompactPlaylistDetailScreen(
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 // 1. 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无白色状态栏遮罩）
-                if (isPosterWall) {
+                if (isEdgeToEdgeHero) {
                     ProgressiveTopBlur(
                         backdrop = playlistTopBackdrop,
                         totalHeight = statusBarHeight + 24.dp,
@@ -1818,6 +1830,20 @@ private fun RenderPlaylistHero(
             }
             PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> {
                 PlaylistHeroDynamicPosterWallSection(
+                    detail = detail,
+                    dominantDarkColor = dominantDarkColor,
+                    isDark = isDark,
+                    onPlayAll = onPlayAll,
+                    topInset = topInset,
+                    showControls = !mediaOnly,
+                    artworkHeight = artworkHeight,
+                    titleAlphaProvider = titleAlphaProvider,
+                    onTitlePositioned = onTitlePositioned,
+                    onTitleLineCount = onTitleLineCount
+                )
+            }
+            PlaylistDetailStyle.FULL_COVER -> {
+                PlaylistHeroFullCoverSection(
                     detail = detail,
                     dominantDarkColor = dominantDarkColor,
                     isDark = isDark,

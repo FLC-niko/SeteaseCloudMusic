@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
+import com.example.seteasecloudmusic.feature.mine.presentation.LOCAL_PLAYLIST_ID
 import com.example.seteasecloudmusic.feature.mine.presentation.MineViewModel
 import com.example.seteasecloudmusic.feature.mine.presentation.rememberCoverDominantDarkColor
 import com.example.seteasecloudmusic.feature.mine.presentation.rememberPlaylistColorBackgroundEnabled
@@ -43,7 +44,19 @@ internal fun ExpandedPlaylistChromeBackground(
                 2 -> mine.uiState.map { it.activePlaylistDetail }
                 3 -> search.uiState.map { it.activePlaylistDetail }
                 else -> kotlinx.coroutines.flow.flowOf(null)
-            }.map { detail -> detail?.let { it.id to it.coverUrl } }.distinctUntilChanged()
+            }.map { detail ->
+                detail?.let {
+                    val isLikedPlaylist = it.name.contains("喜欢") ||
+                        (it.id != LOCAL_PLAYLIST_ID && it.description?.contains("红心") == true)
+                    val coverUrl = if (isLikedPlaylist) {
+                        it.tracks.firstOrNull { t -> !t.coverUrl.isNullOrBlank() }?.coverUrl
+                            ?: it.tracks.firstOrNull { t -> !t.album.coverUrl.isNullOrBlank() }?.album?.coverUrl
+                    } else {
+                        it.coverUrl
+                    }
+                    it.id to coverUrl
+                }
+            }.distinctUntilChanged()
         }
         val detail by flow.collectAsStateWithLifecycle(initialValue = null)
         if (window.showDetailAlongside(detail != null, window.width - window.sideControlWidth, window.height)) {

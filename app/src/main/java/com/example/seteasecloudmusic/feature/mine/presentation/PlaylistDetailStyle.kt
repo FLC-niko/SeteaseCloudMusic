@@ -32,6 +32,15 @@ enum class PlaylistDetailStyle(
     DYNAMIC_POSTER_WALL(
         id = "dynamic_poster_wall",
         title = "动态海报墙"
+    ),
+
+    /**
+     * 全屏封面：
+     * 顶部全宽沉浸封面，下侧轻柔渐变融入取色背景，保留歌单名与播放键。
+     */
+    FULL_COVER(
+        id = "full_cover",
+        title = "全屏封面"
     );
 
     val subtitle: String
