@@ -102,6 +102,7 @@ import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeomet
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.kyant.backdrop.Backdrop
@@ -254,9 +255,10 @@ fun SearchScreenContent(
     val resultsTopPadding = topContentPadding + 58.dp
 
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+    val lastIsAlbum = remember { mutableStateOf(false) }
     val lastOpenedPlaylistId = remember { mutableStateOf<Long?>(null) }
     val playlistOpenCounter = remember { mutableIntStateOf(0) }
-    LaunchedEffect(uiState.activePlaylistDetail) {
+    LaunchedEffect(uiState.activePlaylistDetail, uiState.isActiveDetailAlbum) {
         val current = uiState.activePlaylistDetail
         if (current != null) {
             if (lastOpenedPlaylistId.value != current.id) {
@@ -264,6 +266,7 @@ fun SearchScreenContent(
                 lastOpenedPlaylistId.value = current.id
             }
             lastPlaylistDetail.value = current
+            lastIsAlbum.value = uiState.isActiveDetailAlbum
         } else {
             lastOpenedPlaylistId.value = null
         }
@@ -271,6 +274,7 @@ fun SearchScreenContent(
     LaunchedEffect(isForeground) {
         if (!isForeground) {
             lastPlaylistDetail.value = null
+            lastIsAlbum.value = false
         }
     }
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
@@ -426,7 +430,9 @@ fun SearchScreenContent(
                     onShufflePlay = { onShufflePlaylist(detail.tracks) },
                     isLoading = uiState.isLoadingDetail,
                     listState = detailListState,
-                    filterByCurrentUserLikes = false
+                    filterByCurrentUserLikes = false,
+                    defaultStyle = PlaylistDetailStyle.APPLE_MUSIC,
+                    isAlbum = uiState.isActiveDetailAlbum
                 )
             }
         } else {
@@ -449,6 +455,11 @@ fun SearchScreenContent(
                     .zIndex(20f)
             ) {
                 val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
+                val displayIsAlbum = if (uiState.activePlaylistDetail != null) {
+                    uiState.isActiveDetailAlbum
+                } else {
+                    lastIsAlbum.value
+                }
                 displayDetail?.let { detail ->
                     key(playlistOpenCounter.intValue) {
                         val glassBackdrop = LocalGlassBackdrop.current ?: searchBackdrop
@@ -461,7 +472,9 @@ fun SearchScreenContent(
                             onShufflePlay = { onShufflePlaylist(detail.tracks) },
                             isLoading = uiState.isLoadingDetail,
                             listState = detailListState,
-                            filterByCurrentUserLikes = false
+                            filterByCurrentUserLikes = false,
+                            defaultStyle = PlaylistDetailStyle.APPLE_MUSIC,
+                            isAlbum = displayIsAlbum
                         )
                     }
                 }

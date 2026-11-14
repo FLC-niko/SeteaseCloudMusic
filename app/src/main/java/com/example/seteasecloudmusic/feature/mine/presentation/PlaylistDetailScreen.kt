@@ -156,6 +156,20 @@ private const val PREFS_NAME = "app_settings_prefs"
 private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
 private const val KEY_PLAYLIST_COLOR_BACKGROUND = "playlist_color_background_enabled"
 
+internal fun playlistStylePrefKey(playlistId: Long): String = "${KEY_PLAYLIST_STYLE}_$playlistId"
+
+internal fun playlistColorBackgroundPrefKey(playlistId: Long?): String =
+    if (playlistId != null) "${KEY_PLAYLIST_COLOR_BACKGROUND}_$playlistId" else KEY_PLAYLIST_COLOR_BACKGROUND
+
+internal fun loadPlaylistDetailStyle(
+    prefs: android.content.SharedPreferences,
+    playlistId: Long,
+    defaultStyle: PlaylistDetailStyle
+): PlaylistDetailStyle {
+    val saved = prefs.getString(playlistStylePrefKey(playlistId), null)
+    return PlaylistDetailStyle.values().firstOrNull { it.id == saved } ?: defaultStyle
+}
+
 @Composable
 fun PlaylistDetailScreen(
     detail: PlaylistDetail,
@@ -173,7 +187,9 @@ fun PlaylistDetailScreen(
     onTracksAddedToPlaylist: ((Long, List<Track>) -> Unit)? = null,
     onTracksReordered: ((List<Track>) -> Unit)? = null,
     onDeleteTracks: ((Set<Long>) -> Unit)? = null,
-    filterByCurrentUserLikes: Boolean = true
+    filterByCurrentUserLikes: Boolean = true,
+    defaultStyle: PlaylistDetailStyle = PlaylistDetailStyle.APPLE_MUSIC,
+    isAlbum: Boolean = false
 ) {
     val bottom = LocalContentBottomPadding.current
     val window = LocalAdaptiveWindow.current
@@ -243,9 +259,9 @@ fun PlaylistDetailScreen(
         )
     }
 
-    var currentStyle by remember {
-        val saved = prefs.getString(KEY_PLAYLIST_STYLE, PlaylistDetailStyle.APPLE_MUSIC.id)
-        mutableStateOf(PlaylistDetailStyle.values().firstOrNull { it.id == saved } ?: PlaylistDetailStyle.APPLE_MUSIC)
+    val stylePrefKey = remember(detail.id) { playlistStylePrefKey(detail.id) }
+    var currentStyle by remember(prefs, stylePrefKey, defaultStyle) {
+        mutableStateOf(loadPlaylistDetailStyle(prefs, detail.id, defaultStyle))
     }
 
     var showMoreSheet by remember { mutableStateOf(false) }
@@ -329,17 +345,17 @@ fun PlaylistDetailScreen(
 
     val handleStyleChange: (PlaylistDetailStyle) -> Unit = { newStyle ->
         currentStyle = newStyle
-        prefs.edit().putString(KEY_PLAYLIST_STYLE, newStyle.id).apply()
+        prefs.edit().putString(stylePrefKey, newStyle.id).apply()
     }
 
-    var useColorBackground by remember {
-        val saved = prefs.getBoolean(KEY_PLAYLIST_COLOR_BACKGROUND, true)
-        mutableStateOf(saved)
+    val colorBgPrefKey = remember(detail.id) { playlistColorBackgroundPrefKey(detail.id) }
+    var useColorBackground by remember(prefs, colorBgPrefKey) {
+        mutableStateOf(prefs.getBoolean(colorBgPrefKey, true))
     }
 
     val handleToggleColorBackground: (Boolean) -> Unit = { enabled ->
         useColorBackground = enabled
-        prefs.edit().putBoolean(KEY_PLAYLIST_COLOR_BACKGROUND, enabled).apply()
+        prefs.edit().putBoolean(colorBgPrefKey, enabled).apply()
     }
 
     val dominantDarkColor by rememberCoverDominantDarkColor(currentDetail.coverUrl)
@@ -610,6 +626,7 @@ fun PlaylistDetailScreen(
                                                 isEditMode = isEditMode,
                                                 isSelected = isSelected,
                                                 canReorder = canReorder,
+                                                showTrackCover = !isAlbum,
                                                 onClick = { onPlayTrack(track) },
                                                 onLongClick = { handleEnterEditMode(track) },
                                                 onToggleSelect = { handleToggleSelect(track.id) },
@@ -618,7 +635,10 @@ fun PlaylistDetailScreen(
                                         }
                                         if (!isElevated) {
                                             HorizontalDivider(
-                                                modifier = Modifier.padding(start = 88.dp, end = 20.dp),
+                                                modifier = Modifier.padding(
+                                                    start = if (isAlbum) 52.dp else 88.dp,
+                                                    end = 20.dp
+                                                ),
                                                 color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor
                                             )
                                         }
@@ -761,6 +781,7 @@ fun PlaylistDetailScreen(
                     onTrackMoreClick = { selectedTrackForAction = it },
                     isEditMode = isEditMode,
                     canReorder = canReorder,
+                    isAlbum = isAlbum,
                     selectedTrackIds = selectedTrackIds,
                     onToggleSelect = handleToggleSelect,
                     onSelectAll = handleSelectAll,
@@ -885,13 +906,14 @@ fun PlaylistDetailScreen(
 
 /** 侧栏与详情共用取色背景；偏好变化只在实际切换时通知导航层。 */
 @Composable
-internal fun rememberPlaylistColorBackgroundEnabled(): Boolean {
+internal fun rememberPlaylistColorBackgroundEnabled(playlistId: Long? = null): Boolean {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
-    var enabled by remember(prefs) { mutableStateOf(prefs.getBoolean(KEY_PLAYLIST_COLOR_BACKGROUND, true)) }
-    DisposableEffect(prefs) {
+    val prefKey = remember(playlistId) { playlistColorBackgroundPrefKey(playlistId) }
+    var enabled by remember(prefs, prefKey) { mutableStateOf(prefs.getBoolean(prefKey, true)) }
+    DisposableEffect(prefs, prefKey) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_PLAYLIST_COLOR_BACKGROUND) enabled = prefs.getBoolean(key, true)
+            if (key == prefKey) enabled = prefs.getBoolean(prefKey, true)
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
@@ -1248,6 +1270,7 @@ private fun CompactPlaylistDetailScreen(
     onTrackMoreClick: (Track) -> Unit,
     isEditMode: Boolean,
     canReorder: Boolean = false,
+    isAlbum: Boolean = false,
     selectedTrackIds: Set<Long>,
     onToggleSelect: (Long) -> Unit,
     onSelectAll: () -> Unit,
@@ -1431,6 +1454,7 @@ private fun CompactPlaylistDetailScreen(
                                 isEditMode = isEditMode,
                                 isSelected = isSelected,
                                 canReorder = canReorder,
+                                showTrackCover = !isAlbum,
                                 onClick = { onPlayTrack(track) },
                                 onLongClick = { onEnterEditMode(track) },
                                 onToggleSelect = { onToggleSelect(track.id) },
@@ -1441,7 +1465,11 @@ private fun CompactPlaylistDetailScreen(
                             HorizontalDivider(
                                 color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
                                 modifier = Modifier.padding(
-                                    start = if (isEdgeToEdgeHero) 92.dp else 76.dp,
+                                    start = if (isAlbum) {
+                                        if (isEdgeToEdgeHero) 56.dp else 40.dp
+                                    } else {
+                                        if (isEdgeToEdgeHero) 92.dp else 76.dp
+                                    },
                                     end = if (isEdgeToEdgeHero) 16.dp else 0.dp
                                 )
                             )
@@ -1872,6 +1900,7 @@ private fun PlaylistDetailTrackRow(
     isEditMode: Boolean = false,
     isSelected: Boolean = false,
     canReorder: Boolean = true,
+    showTrackCover: Boolean = true,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     onToggleSelect: (() -> Unit)? = null,
@@ -1930,32 +1959,37 @@ private fun PlaylistDetailTrackRow(
             }
         }
 
-        // 2. 封面缩略方块
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFFF0F0F3)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!track.coverUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = track.coverUrl.toCoverThumbnailUrl(140),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.MusicNote,
-                    contentDescription = null,
-                    tint = if (isDark) Color.White.copy(alpha = 0.8f) else PlaylistAccentColor,
-                    modifier = Modifier.size(22.dp)
-                )
+        // 2. 封面缩略方块（专辑页所有歌曲共享同一张封面，隐藏每行前面的封面）
+        if (showTrackCover) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .testTag("playlist_track_cover")
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFFF0F0F3)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!track.coverUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = track.coverUrl.toCoverThumbnailUrl(140),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.MusicNote,
+                        contentDescription = null,
+                        tint = if (isDark) Color.White.copy(alpha = 0.8f) else PlaylistAccentColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(14.dp))
+        } else {
+            Spacer(modifier = Modifier.width(6.dp))
+        }
 
         // 3. 歌曲标题与歌手专辑
         Column(modifier = Modifier.weight(1f)) {

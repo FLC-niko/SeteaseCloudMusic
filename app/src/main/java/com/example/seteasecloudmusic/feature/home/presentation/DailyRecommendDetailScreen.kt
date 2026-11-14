@@ -10,6 +10,7 @@ import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
@@ -79,6 +80,11 @@ fun DailyRecommendDetailScreen(
         )
     }
 
+    val defaultStyle = remember(title) {
+        if (title == "每日推荐") PlaylistDetailStyle.DYNAMIC_POSTER_WALL
+        else PlaylistDetailStyle.FULL_COVER
+    }
+
     PlaylistDetailScreen(
         detail = playlistDetail,
         backdrop = glassBackdrop,
@@ -87,6 +93,7 @@ fun DailyRecommendDetailScreen(
         onPlayAll = onPlayAll,
         onShufflePlay = onShufflePlay,
         modifier = modifier,
-        listState = listState
+        listState = listState,
+        defaultStyle = defaultStyle
     )
 }

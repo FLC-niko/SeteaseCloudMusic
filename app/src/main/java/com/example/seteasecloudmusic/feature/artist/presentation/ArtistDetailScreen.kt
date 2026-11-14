@@ -120,6 +120,7 @@ import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScro
 import com.example.seteasecloudmusic.feature.main.navigation.toNavigationViewport
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
 import com.example.seteasecloudmusic.feature.mine.presentation.TrackActionSheet
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicPlayTriangleIcon
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -293,10 +294,12 @@ fun ArtistDetailScreen(
     var selectedTrackForAction by remember { mutableStateOf<Track?>(null) }
 
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+    val lastIsAlbum = remember { mutableStateOf(false) }
     val playlistOpenCounter = remember { mutableIntStateOf(0) }
-    LaunchedEffect(uiState.activePlaylistDetail) {
+    LaunchedEffect(uiState.activePlaylistDetail, uiState.isPlaylistDetailAlbum) {
         if (uiState.activePlaylistDetail != null) {
             lastPlaylistDetail.value = uiState.activePlaylistDetail
+            lastIsAlbum.value = uiState.isPlaylistDetailAlbum
             playlistOpenCounter.intValue++
         }
     }
@@ -704,6 +707,11 @@ fun ArtistDetailScreen(
                 .zIndex(30f)
         ) {
             val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
+            val displayIsAlbum = if (uiState.activePlaylistDetail != null) {
+                uiState.isPlaylistDetailAlbum
+            } else {
+                lastIsAlbum.value
+            }
             displayDetail?.let { detail ->
                 key(playlistOpenCounter.intValue) {
                     PlaylistDetailScreen(
@@ -722,7 +730,9 @@ fun ArtistDetailScreen(
                         },
                         isLoading = uiState.isPlaylistDetailLoading,
                         listState = playlistDetailListState,
-                        filterByCurrentUserLikes = false
+                        filterByCurrentUserLikes = false,
+                        defaultStyle = PlaylistDetailStyle.APPLE_MUSIC,
+                        isAlbum = displayIsAlbum
                     )
                 }
             }

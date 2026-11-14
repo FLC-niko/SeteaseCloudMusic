@@ -57,6 +57,7 @@ data class SearchUiState(
     val isHotSearchLoading: Boolean = false,
     val isSearchSubmitted: Boolean = false,
     val activePlaylistDetail: PlaylistDetail? = null,
+    val isActiveDetailAlbum: Boolean = false,
     val isLoadingDetail: Boolean = false
 )
 
@@ -499,6 +500,7 @@ class SearchViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 activePlaylistDetail = instantPreview,
+                isActiveDetailAlbum = false,
                 isLoadingDetail = instantPreview.tracks.isEmpty()
             )
         }
@@ -560,6 +562,7 @@ class SearchViewModel @Inject constructor(
                         creatorName = artistName.takeIf { name -> name.isNotBlank() },
                         tracks = matchingTracks
                     ),
+                    isActiveDetailAlbum = true,
                     isLoadingDetail = false
                 )
             }
@@ -579,6 +582,7 @@ class SearchViewModel @Inject constructor(
                     creatorName = artistName.takeIf { name -> name.isNotBlank() },
                     tracks = emptyList()
                 ),
+                isActiveDetailAlbum = true,
                 isLoadingDetail = true
             )
         }
@@ -626,7 +630,13 @@ class SearchViewModel @Inject constructor(
         detailJob?.cancel()
         detailJob = null
         detailRequestId += 1L
-        _uiState.update { it.copy(activePlaylistDetail = null, isLoadingDetail = false) }
+        _uiState.update {
+            it.copy(
+                activePlaylistDetail = null,
+                isActiveDetailAlbum = false,
+                isLoadingDetail = false
+            )
+        }
     }
 
     /**

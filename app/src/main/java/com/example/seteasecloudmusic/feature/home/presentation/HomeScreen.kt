@@ -19,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.zIndex
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -369,7 +370,8 @@ internal fun HomeScreenContent(
             PlaylistDetailScreen(
                 detail, glassBackdrop, onClosePlaylistDetail, onTrackClick,
                 { onPlayAll(detail.tracks) },
-                onShufflePlay = { onShufflePlay(detail.tracks) }, listState = detailListState
+                onShufflePlay = { onShufflePlay(detail.tracks) }, listState = detailListState,
+                defaultStyle = homeDetailDefaultStyle(detail)
             )
         }
     } else {
@@ -404,7 +406,8 @@ internal fun HomeScreenContent(
                         onClose = onClosePlaylistDetail,
                         onPlayTrack = onTrackClick,
                         onPlayAll = { onPlayAll(detail.tracks) },
-                        onShufflePlay = { onShufflePlay(detail.tracks) }
+                        onShufflePlay = { onShufflePlay(detail.tracks) },
+                        defaultStyle = homeDetailDefaultStyle(detail)
                     )
                 }
             }
@@ -412,6 +415,13 @@ internal fun HomeScreenContent(
     }
     }
 }
+
+internal fun homeDetailDefaultStyle(detail: PlaylistDetail): PlaylistDetailStyle =
+    if (detail.id == -1001L || detail.name == "每日推荐") {
+        PlaylistDetailStyle.DYNAMIC_POSTER_WALL
+    } else {
+        PlaylistDetailStyle.FULL_COVER
+    }
 
 @Composable
 private fun HomeCollapsedTopBar(

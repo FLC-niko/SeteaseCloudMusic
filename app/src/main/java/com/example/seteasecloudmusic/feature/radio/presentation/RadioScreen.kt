@@ -92,6 +92,7 @@ import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.trySyncExtractColor
 import com.example.seteasecloudmusic.feature.radio.domain.model.ArtistHotSectionData
@@ -472,7 +473,8 @@ internal fun RadioScreenContent(
                         onClose = onClosePlaylistDetail,
                         onPlayTrack = { track -> onPlayTrackInPlaylist(track, detail.tracks) },
                         onPlayAll = { onPlayAllTracks(detail.tracks) },
-                        onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) }
+                        onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
+                        defaultStyle = PlaylistDetailStyle.FULL_COVER
                     )
                 }
             }
@@ -486,7 +488,8 @@ internal fun RadioScreenContent(
             PlaylistDetailScreen(detail, radioBackdrop, onClosePlaylistDetail,
                 { onPlayTrackInPlaylist(it, detail.tracks) }, { onPlayAllTracks(detail.tracks) },
                 onShufflePlay = { onPlayAllTracks(detail.tracks.shuffled()) },
-                isLoading = uiState.isLoadingDetail, listState = detailListState)
+                isLoading = uiState.isLoadingDetail, listState = detailListState,
+                defaultStyle = PlaylistDetailStyle.FULL_COVER)
         }
     }
     }
