@@ -1,17 +1,13 @@
 package com.example.seteasecloudmusic.feature.mine.presentation
 
 import android.os.Build
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +15,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -43,6 +38,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
@@ -52,6 +48,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -59,8 +56,21 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.feature.home.presentation.ScrollingPosterWall
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicPlayTriangleIcon
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawPlainBackdrop
+import com.kyant.backdrop.effects.blur
 
 private val PlaylistAccentColor = Color(0xFFFA233B)
+
+private val BottomEdgeBlurMask = Brush.verticalGradient(
+    0.00f to Color.Transparent,
+    0.68f to Color.Transparent,
+    0.80f to Color.Black.copy(alpha = 0.65f),
+    0.88f to Color.Black,
+    1.00f to Color.Black
+)
 
 val PlaylistDetail.displayTitle: String
     get() = if (name.endsWith("喜欢的音乐")) "我喜欢的音乐" else name
@@ -113,23 +123,7 @@ fun PlaylistHeroAppleMusicSection(
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF28364A), Color(0xFF161F2E))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MusicNote,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(68.dp)
-                    )
-                }
+                CoverPlaceholderBox()
             }
         }
 
@@ -137,62 +131,16 @@ fun PlaylistHeroAppleMusicSection(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // 2. 居中歌单标题
-        Text(
-            text = detail.displayTitle,
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDark) Color.White else Color(0xFF111111)
-            ),
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = if (onTitleLineCount != null) {
-                { result -> onTitleLineCount(result.lineCount) }
-            } else {
-                null
-            },
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .graphicsLayer { alpha = titleAlphaProvider() }
-                .let { base ->
-                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
-                }
+        PlaylistHeroTitleAndPlayButton(
+            detail = detail,
+            totalCount = totalCount,
+            isDark = isDark,
+            onPlayAll = onPlayAll,
+            titleAlphaProvider = titleAlphaProvider,
+            onTitlePositioned = onTitlePositioned,
+            onTitleLineCount = onTitleLineCount,
+            modifier = Modifier.fillMaxWidth()
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 3. 中间胶囊播放键（主题红底白字）
-        Surface(
-            onClick = onPlayAll,
-            enabled = totalCount > 0,
-            shape = RoundedCornerShape(24.dp),
-            color = PlaylistAccentColor,
-            border = null,
-            shadowElevation = 2.dp,
-            modifier = Modifier.height(48.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 38.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                AppleMusicPlayTriangleIcon(
-                    tint = Color.White,
-                    size = 15.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "播放",
-                    style = TextStyle(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                )
-            }
-        }
     }
 }
 
@@ -205,7 +153,7 @@ fun PlaylistHeroPosterWallSection(
     dominantDarkColor: Color,
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
-    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    topInset: Dp = 0.dp,
     isDark: Boolean = true,
     showControls: Boolean = true,
     titleAlphaProvider: () -> Float = { 1f },
@@ -227,7 +175,6 @@ fun PlaylistHeroPosterWallSection(
         Box(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // 多封面拼贴海报网格：严格 4 行 x 4 列 = 16 个 1:1 正方形封面
             PosterCoverGrid(
                 covers = wallCovers,
                 dominantDarkColor = dominantDarkColor,
@@ -260,67 +207,23 @@ fun PlaylistHeroPosterWallSection(
 
         if (!showControls) return@Column
 
-        // 2. 歌单主标题
         Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = detail.displayTitle,
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDark) Color.White else Color(0xFF111111)
-            ),
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = if (onTitleLineCount != null) {
-                { result -> onTitleLineCount(result.lineCount) }
-            } else {
-                null
-            },
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .graphicsLayer { alpha = titleAlphaProvider() }
-                .let { base ->
-                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
-                }
-        )
 
-        // 3. 播放键（主题红底白字）
-        Spacer(modifier = Modifier.height(16.dp))
-        Surface(
-            onClick = onPlayAll,
-            enabled = totalCount > 0,
-            shape = RoundedCornerShape(24.dp),
-            color = PlaylistAccentColor,
-            border = null,
-            shadowElevation = 2.dp,
-            modifier = Modifier.height(48.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 38.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                AppleMusicPlayTriangleIcon(
-                    tint = Color.White,
-                    size = 15.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "播放",
-                    style = TextStyle(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                )
-            }
-        }
+        PlaylistHeroTitleAndPlayButton(
+            detail = detail,
+            totalCount = totalCount,
+            isDark = isDark,
+            onPlayAll = onPlayAll,
+            titleAlphaProvider = titleAlphaProvider,
+            onTitlePositioned = onTitlePositioned,
+            onTitleLineCount = onTitleLineCount,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
 /**
- * 风格 3：动态海报墙（复刻首页 30° 倾斜交替多列无限滚动海报墙，下侧取色渐变遮罩自然融合）
+ * 风格 3：动态海报墙（30° 倾斜交替多列滚动海报墙，底缘轻柔焦与平滑渐隐，歌单名与播放键叠加于底缘过渡区）
  */
 @Composable
 fun PlaylistHeroDynamicPosterWallSection(
@@ -328,10 +231,10 @@ fun PlaylistHeroDynamicPosterWallSection(
     dominantDarkColor: Color,
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
-    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    topInset: Dp = 0.dp,
     isDark: Boolean = true,
     showControls: Boolean = true,
-    artworkHeight: androidx.compose.ui.unit.Dp? = null,
+    artworkHeight: Dp? = null,
     titleAlphaProvider: () -> Float = { 1f },
     onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
     onTitleLineCount: ((Int) -> Unit)? = null
@@ -341,105 +244,68 @@ fun PlaylistHeroDynamicPosterWallSection(
         if (tracksCovers.isNotEmpty()) tracksCovers else listOfNotNull(detail.coverUrl)
     }
     val totalCount = detail.trackCount.coerceAtLeast(detail.tracks.size)
-    val maskColor = if (isDark) dominantDarkColor else Color(0xFF333338)
+    val maskColor = dominantDarkColor
+    val effectiveDark = isDark && maskColor.luminance() < 0.7f
+    val artworkBoxHeight = artworkHeight ?: if (topInset > 0.dp) 380.dp + topInset else 300.dp
+    val artworkShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    val smoothScrimBrush = remember(maskColor) {
+        buildSmoothHeroScrimBrush(maskColor)
+    }
+    val wallBackdrop = rememberLayerBackdrop {
+        drawRect(maskColor)
+        drawContent()
+    }
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // 1. 顶格 30° 倾斜滚动海报墙（直接复用首页 ScrollingPosterWall）
+    Box(modifier = modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(artworkHeight ?: if (topInset > 0.dp) 350.dp + topInset else 320.dp)
-                .clipToBounds()
+                .height(artworkBoxHeight)
+                .align(Alignment.TopCenter)
+                .background(maskColor)
         ) {
-            ScrollingPosterWall(
-                covers = wallCovers,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // 底部柔和微渐变遮罩：开启取色时为 dominantDarkColor，关闭取色时改为灰色遮罩
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .align(Alignment.BottomCenter)
-                    .offset(y = 4.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            0.00f to Color.Transparent,
-                            0.12f to maskColor.copy(alpha = 0.03f),
-                            0.24f to maskColor.copy(alpha = 0.12f),
-                            0.36f to maskColor.copy(alpha = 0.28f),
-                            0.48f to maskColor.copy(alpha = 0.48f),
-                            0.60f to maskColor.copy(alpha = 0.68f),
-                            0.72f to maskColor.copy(alpha = 0.84f),
-                            0.84f to maskColor.copy(alpha = 0.95f),
-                            0.92f to maskColor,
-                            1.00f to maskColor
-                        )
+                    .fillMaxSize()
+                    .padding(bottom = 8.dp)
+                    .then(
+                        if (topInset > 0.dp) Modifier.clipToBounds() else Modifier.clip(artworkShape)
                     )
+            ) {
+                ScrollingPosterWall(
+                    covers = wallCovers,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .layerBackdrop(wallBackdrop)
+                )
+
+                BottomBackdropBlurOverlay(backdrop = wallBackdrop)
+                TopProtectionScrim(topInset = topInset)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset(y = 4.dp)
+                    .background(brush = smoothScrimBrush)
             )
         }
 
-        if (!showControls) return@Column
-
-        // 2. 歌单主标题
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = detail.displayTitle,
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDark) Color.White else Color(0xFF111111)
-            ),
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = if (onTitleLineCount != null) {
-                { result -> onTitleLineCount(result.lineCount) }
-            } else {
-                null
-            },
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .graphicsLayer { alpha = titleAlphaProvider() }
-                .let { base ->
-                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
-                }
-        )
-
-        // 3. 播放键（主题红底白字）
-        Spacer(modifier = Modifier.height(16.dp))
-        Surface(
-            onClick = onPlayAll,
-            enabled = totalCount > 0,
-            shape = RoundedCornerShape(24.dp),
-            color = PlaylistAccentColor,
-            border = null,
-            shadowElevation = 2.dp,
-            modifier = Modifier.height(48.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 38.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                AppleMusicPlayTriangleIcon(
-                    tint = Color.White,
-                    size = 15.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "播放",
-                    style = TextStyle(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                )
-            }
+        if (showControls) {
+            val contentTopPadding = (artworkBoxHeight - 58.dp)
+                .coerceAtLeast(if (topInset > 0.dp) topInset + 160.dp else 180.dp)
+            PlaylistHeroTitleAndPlayButton(
+                detail = detail,
+                totalCount = totalCount,
+                isDark = effectiveDark,
+                onPlayAll = onPlayAll,
+                titleAlphaProvider = titleAlphaProvider,
+                onTitlePositioned = onTitlePositioned,
+                onTitleLineCount = onTitleLineCount,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = contentTopPadding, bottom = 6.dp)
+            )
         }
     }
 }
@@ -453,10 +319,10 @@ fun PlaylistHeroFullCoverSection(
     dominantDarkColor: Color,
     onPlayAll: () -> Unit,
     modifier: Modifier = Modifier,
-    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    topInset: Dp = 0.dp,
     isDark: Boolean = true,
     showControls: Boolean = true,
-    artworkHeight: androidx.compose.ui.unit.Dp? = null,
+    artworkHeight: Dp? = null,
     titleAlphaProvider: () -> Float = { 1f },
     onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
     onTitleLineCount: ((Int) -> Unit)? = null
@@ -468,24 +334,10 @@ fun PlaylistHeroFullCoverSection(
     val totalCount = detail.trackCount.coerceAtLeast(detail.tracks.size)
     val maskColor = dominantDarkColor
     val effectiveDark = isDark && maskColor.luminance() < 0.7f
-    val textColor = if (effectiveDark) Color.White else Color(0xFF111111)
     val artworkBoxHeight = artworkHeight ?: if (topInset > 0.dp) 380.dp + topInset else 300.dp
-    val artworkShape = if (topInset > 0.dp) {
-        RectangleShape
-    } else {
-        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
-    }
+    val artworkShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
     val smoothScrimBrush = remember(maskColor) {
-        buildSmoothFullCoverScrimBrush(maskColor)
-    }
-    val bottomEdgeBlurMask = remember {
-        Brush.verticalGradient(
-            0.00f to Color.Transparent,
-            0.68f to Color.Transparent,
-            0.80f to Color.Black.copy(alpha = 0.65f),
-            0.88f to Color.Black,
-            1.00f to Color.Black
-        )
+        buildSmoothHeroScrimBrush(maskColor)
     }
 
     Box(modifier = modifier.fillMaxWidth()) {
@@ -525,43 +377,15 @@ fun PlaylistHeroFullCoverSection(
                                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                                 .drawWithContent {
                                     drawContent()
-                                    drawRect(brush = bottomEdgeBlurMask, blendMode = BlendMode.DstIn)
+                                    drawRect(brush = BottomEdgeBlurMask, blendMode = BlendMode.DstIn)
                                 }
                         )
                     }
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF28364A), Color(0xFF161F2E))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MusicNote,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(68.dp)
-                        )
-                    }
+                    CoverPlaceholderBox()
                 }
 
-                // 顶部轻暗角：保证浅色封面下状态栏与玻璃按钮清晰可读
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(topInset + 72.dp)
-                        .align(Alignment.TopCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                0.0f to Color.Black.copy(alpha = 0.22f),
-                                1.0f to Color.Transparent
-                            )
-                        )
-                )
+                TopProtectionScrim(topInset = topInset)
             }
 
             // 底部 S 曲线平滑垂直渐变，从约 62% 处过渡并在 92% 处完全不透明，同时下延 4dp 封死接缝
@@ -573,76 +397,153 @@ fun PlaylistHeroFullCoverSection(
             )
         }
 
-        if (!showControls) return@Box
-
-        // 2. 居中歌单名与播放键（与其他歌单风格保持一致）
-        val contentTopPadding = (artworkBoxHeight - 58.dp)
-            .coerceAtLeast(if (topInset > 0.dp) topInset + 160.dp else 180.dp)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = contentTopPadding, bottom = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = detail.displayTitle,
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                ),
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                onTextLayout = if (onTitleLineCount != null) {
-                    { result -> onTitleLineCount(result.lineCount) }
-                } else {
-                    null
-                },
+        if (showControls) {
+            val contentTopPadding = (artworkBoxHeight - 58.dp)
+                .coerceAtLeast(if (topInset > 0.dp) topInset + 160.dp else 180.dp)
+            PlaylistHeroTitleAndPlayButton(
+                detail = detail,
+                totalCount = totalCount,
+                isDark = effectiveDark,
+                onPlayAll = onPlayAll,
+                titleAlphaProvider = titleAlphaProvider,
+                onTitlePositioned = onTitlePositioned,
+                onTitleLineCount = onTitleLineCount,
                 modifier = Modifier
-                    .padding(horizontal = 24.dp)
-                    .graphicsLayer { alpha = titleAlphaProvider() }
-                    .let { base ->
-                        if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
-                    }
+                    .fillMaxWidth()
+                    .padding(top = contentTopPadding, bottom = 6.dp)
             )
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Surface(
-                onClick = onPlayAll,
-                enabled = totalCount > 0,
-                shape = RoundedCornerShape(24.dp),
-                color = PlaylistAccentColor,
-                border = null,
-                shadowElevation = 2.dp,
-                modifier = Modifier.height(48.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 38.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    AppleMusicPlayTriangleIcon(
-                        tint = Color.White,
-                        size = 15.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "播放",
-                        style = TextStyle(
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    )
+@Composable
+private fun PlaylistHeroTitleAndPlayButton(
+    detail: PlaylistDetail,
+    totalCount: Int,
+    isDark: Boolean,
+    onPlayAll: () -> Unit,
+    titleAlphaProvider: () -> Float,
+    onTitlePositioned: ((LayoutCoordinates) -> Unit)?,
+    onTitleLineCount: ((Int) -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = detail.displayTitle,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isDark) Color.White else Color(0xFF111111)
+            ),
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = if (onTitleLineCount != null) {
+                { result -> onTitleLineCount(result.lineCount) }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer { alpha = titleAlphaProvider() }
+                .let { base ->
+                    if (onTitlePositioned != null) base.onGloballyPositioned(onTitlePositioned) else base
                 }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Surface(
+            onClick = onPlayAll,
+            enabled = totalCount > 0,
+            shape = RoundedCornerShape(24.dp),
+            color = PlaylistAccentColor,
+            border = null,
+            shadowElevation = 2.dp,
+            modifier = Modifier.height(48.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 38.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                AppleMusicPlayTriangleIcon(
+                    tint = Color.White,
+                    size = 15.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "播放",
+                    style = TextStyle(
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                )
             }
         }
     }
 }
 
-private fun buildSmoothFullCoverScrimBrush(targetColor: Color): Brush {
+@Composable
+private fun BottomBackdropBlurOverlay(backdrop: Backdrop) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(brush = BottomEdgeBlurMask, blendMode = BlendMode.DstIn)
+            }
+            .drawPlainBackdrop(
+                backdrop = backdrop,
+                shape = { RectangleShape },
+                effects = { blur(10.dp.toPx(), TileMode.Clamp) }
+            )
+    )
+}
+
+@Composable
+private fun TopProtectionScrim(topInset: Dp) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(topInset + 72.dp)
+            .background(
+                Brush.verticalGradient(
+                    0.0f to Color.Black.copy(alpha = 0.22f),
+                    1.0f to Color.Transparent
+                )
+            )
+    )
+}
+
+@Composable
+private fun CoverPlaceholderBox() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF28364A), Color(0xFF161F2E))
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.MusicNote,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.85f),
+            modifier = Modifier.size(68.dp)
+        )
+    }
+}
+
+private fun buildSmoothHeroScrimBrush(targetColor: Color): Brush {
     val startPos = 0.62f
     val endPos = 0.92f
     val steps = 12
@@ -736,4 +637,3 @@ private fun PosterCoverGrid(
         }
     }
 }
-
