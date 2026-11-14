@@ -17,7 +17,9 @@ interface RadioService {
      * 1. 获取排行榜摘要及前三首歌曲
      */
     @GET("toplist/detail")
-    suspend fun getToplistDetail(): ToplistDetailResponse
+    suspend fun getToplistDetail(
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
+    ): ToplistDetailResponse
 
     /**
      * 2. 获取热门歌手列表
@@ -41,14 +43,17 @@ interface RadioService {
      */
     @GET("personalized")
     suspend fun getPersonalized(
-        @Query("limit") limit: Int = 10
+        @Query("limit") limit: Int = 10,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): PersonalizedResponse
 
     /**
      * 5. 每日推荐歌单（需登录，含个性化雷达歌单）
      */
     @GET("recommend/resource")
-    suspend fun getRecommendResource(): RecommendResourceResponse
+    suspend fun getRecommendResource(
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
+    ): RecommendResourceResponse
 
     /**
      * 6. 分类歌单（用于每周新热趋势、心情氛围等）
@@ -58,7 +63,8 @@ interface RadioService {
         @Query("cat") cat: String? = null,
         @Query("order") order: String = "hot",
         @Query("limit") limit: Int = 10,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): HotPlaylistResponse
 
     /**
@@ -66,14 +72,17 @@ interface RadioService {
      */
     @GET("playlist/detail")
     suspend fun getPlaylistDetail(
-        @Query("id") id: Long
+        @Query("id") id: Long,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): PlaylistDetailResponse
 
     /**
      * 8. 每日推荐歌曲（需登录，用于漫游歌曲起点）
      */
     @GET("recommend/songs")
-    suspend fun getDailyRecommendSongs(): DailyRecommendSongsResponse
+    suspend fun getDailyRecommendSongs(
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
+    ): DailyRecommendSongsResponse
 
     /**
      * 9. 心动模式 / 智能漫游
@@ -81,7 +90,9 @@ interface RadioService {
     @GET("playmode/intelligence/list")
     suspend fun getIntelligenceList(
         @Query("id") id: Long,
-        @Query("pid") pid: Long
+        @Query("pid") pid: Long,
+        @Query("sid") sid: Long? = null,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): RadioIntelligenceResponse
 
     /**
@@ -89,7 +100,8 @@ interface RadioService {
      */
     @GET("artist/sublist")
     suspend fun getArtistSublist(
-        @Query("limit") limit: Int = 10
+        @Query("limit") limit: Int = 10,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): RadioArtistSublistResponse
 
     /**
@@ -97,7 +109,8 @@ interface RadioService {
      */
     @GET("artist/new/song")
     suspend fun getArtistNewSong(
-        @Query("limit") limit: Int = 10
+        @Query("limit") limit: Int = 10,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): RadioArtistNewSongResponse
 
     /**
@@ -105,7 +118,8 @@ interface RadioService {
      */
     @GET("top/song")
     suspend fun getTopSongs(
-        @Query("type") type: Int = 0
+        @Query("type") type: Int = 0,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): RadioTopSongResponse
 
     /**
@@ -113,7 +127,8 @@ interface RadioService {
      */
     @GET("personalized/newsong")
     suspend fun getPersonalizedNewsong(
-        @Query("limit") limit: Int = 10
+        @Query("limit") limit: Int = 10,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): PersonalizedNewsongResponse
 
     /**
@@ -121,7 +136,8 @@ interface RadioService {
      */
     @GET("simi/song")
     suspend fun getSimiSongs(
-        @Query("id") id: Long
+        @Query("id") id: Long,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): RadioSimiSongResponse
 
     /**
@@ -130,7 +146,8 @@ interface RadioService {
     @GET("homepage/block/page")
     suspend fun getHomepageBlockPage(
         @Query("refresh") refresh: Boolean = false,
-        @Query("cursor") cursor: String? = null
+        @Query("cursor") cursor: String? = null,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): HomepageBlockPageResponse
 }
 

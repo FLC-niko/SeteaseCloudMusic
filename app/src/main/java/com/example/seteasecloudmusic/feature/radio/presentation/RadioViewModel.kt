@@ -61,12 +61,17 @@ class RadioViewModel @Inject constructor(
     private val radioRepository: RadioRepository,
     private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
     private val musicPlayerController: MusicPlayerController,
-    private val networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor,
+    private val authStateProvider: com.example.seteasecloudmusic.core.auth.AuthStateProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RadioUiState(isLoading = true))
     val uiState = _uiState.asStateFlow()
 
+    private var loadAllJob: Job? = null
+    private var roamRefreshJob: Job? = null
+    private var lastRoamRefreshTimeMs: Long = 0L
+    private var isRoamDirty: Boolean = false
     private var playlistDetailJob: Job? = null
     private var playlistDetailRequestId: Long = 0L
 
@@ -79,6 +84,34 @@ class RadioViewModel @Inject constructor(
                 loadAllSections(silent = false)
             }
         }
+
+        // 监听登录态变化（登录后/切换账号自动刷新个性化电台与喜欢歌曲漫游）
+        viewModelScope.launch {
+            var lastAuthKey: Pair<Boolean, Long?>? = null
+            authStateProvider.observeAuthState().collect { session ->
+                val currentKey = (session?.isLoggedIn == true) to session?.userId
+                if (lastAuthKey == null) {
+                    lastAuthKey = currentKey
+                } else if (lastAuthKey != currentKey) {
+                    lastAuthKey = currentKey
+                    loadAllSections(silent = true)
+                }
+            }
+        }
+
+        // 监听“我喜欢的音乐”集合变化，实时标记并刷新喜欢歌曲漫游
+        viewModelScope.launch {
+            var lastLikedIds: Set<Long>? = null
+            com.example.seteasecloudmusic.core.player.FavoriteTracksManager.likedTrackIds.collect { ids ->
+                if (lastLikedIds == null) {
+                    lastLikedIds = ids
+                } else if (lastLikedIds != ids) {
+                    lastLikedIds = ids
+                    isRoamDirty = true
+                    refreshRoamItems(debounced = true)
+                }
+            }
+        }
     }
 
     fun onRefreshClick() {
@@ -89,8 +122,30 @@ class RadioViewModel @Inject constructor(
         loadAllSections(silent = false)
     }
 
+    fun onEnterForeground() {
+        val elapsedMs = System.currentTimeMillis() - lastRoamRefreshTimeMs
+        if (isRoamDirty || (lastRoamRefreshTimeMs > 0L && elapsedMs >= 120_000L)) {
+            refreshRoamItems(debounced = false)
+        }
+    }
+
+    private fun refreshRoamItems(debounced: Boolean) {
+        roamRefreshJob?.cancel()
+        roamRefreshJob = viewModelScope.launch {
+            if (debounced) {
+                kotlinx.coroutines.delay(500L)
+            }
+            val roam = radioRepository.getRoamItems().getOrNull() ?: return@launch
+            isRoamDirty = false
+            lastRoamRefreshTimeMs = System.currentTimeMillis()
+            _uiState.update { it.copy(roamItems = roam) }
+        }
+    }
+
     private fun loadAllSections(silent: Boolean = true) {
-        viewModelScope.launch {
+        loadAllJob?.cancel()
+        roamRefreshJob?.cancel()
+        loadAllJob = viewModelScope.launch {
             if (!silent) {
                 _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             }
@@ -114,6 +169,9 @@ class RadioViewModel @Inject constructor(
             val trends = trendsDeferred.await().getOrDefault(emptyList())
             val mood = moodDeferred.await().getOrDefault(emptyList())
             val followed = followedDeferred.await().getOrDefault(FollowedArtistSectionData())
+
+            isRoamDirty = false
+            lastRoamRefreshTimeMs = System.currentTimeMillis()
 
             _uiState.update {
                 it.copy(

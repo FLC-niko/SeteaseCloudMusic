@@ -29,11 +29,12 @@ data class RadioArtistTopSongResponse(
 data class RadioSongItemResponse(
     val id: Long = 0L,
     val name: String = "",
+    @SerializedName("dt", alternate = ["duration"])
     val dt: Long? = null,
     val fee: Int? = null,
-    @SerializedName("ar")
+    @SerializedName("ar", alternate = ["artists"])
     val artists: List<RadioArtistReferenceResponse> = emptyList(),
-    @SerializedName("al")
+    @SerializedName("al", alternate = ["album"])
     val album: RadioAlbumReferenceResponse? = null
 )
 

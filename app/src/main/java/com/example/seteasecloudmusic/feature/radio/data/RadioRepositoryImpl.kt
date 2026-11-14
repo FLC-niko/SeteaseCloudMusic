@@ -35,8 +35,14 @@ import javax.inject.Singleton
 class RadioRepositoryImpl @Inject constructor(
     private val radioService: RadioService,
     private val dailyRecommendService: DailyRecommendService,
+    private val mineRepository: com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository,
     @param:ApplicationContext private val context: Context
 ) : RadioRepository {
+
+    private fun getLoggedInUserId(): Long {
+        return context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .getLong("user_id", -1L)
+    }
 
     private fun hasLoginCookie(): Boolean {
         val authCookies = context.getSharedPreferences("auth_cookies", Context.MODE_PRIVATE)
@@ -217,75 +223,159 @@ class RadioRepositoryImpl @Inject constructor(
     // ==========================================
     override suspend fun getRoamItems(): Result<List<RadioRoamItem>> = withContext(Dispatchers.IO) {
         try {
-            val roamList = mutableListOf<RadioRoamItem>()
+            val isLoggedIn = hasLoginCookie()
+            val userId = getLoggedInUserId()
+            var likedPlaylistId = -1L
+            val seedPool = mutableListOf<Track>()
+            var fromLikedPlaylist = false
 
-            // 获取起点歌曲列表：登录用户取每日推荐，未登录取新歌
-            val baseSongs = mutableListOf<Pair<Long, String>>() // id to name
-            val baseCovers = mutableMapOf<Long, String?>()
-
-            if (hasLoginCookie()) {
+            // 1. 优先从用户“我喜欢的音乐”歌单获取真实喜欢曲目作为漫游起点
+            if (isLoggedIn && userId > 0L) {
                 try {
-                    val recSongs = dailyRecommendService.getDailyRecommendSongs(false)
-                    val songs = recSongs.data?.dailySongs?.takeIf { it.isNotEmpty() } ?: recSongs.dailySongs
-                    for (s in songs.take(6)) {
-                        baseSongs.add(s.id to s.name)
-                        baseCovers[s.id] = s.album?.picUrl
-                    }
-                } catch (_: Exception) {}
-            }
-
-            if (baseSongs.isEmpty()) {
-                try {
-                    val newsongResp = radioService.getPersonalizedNewsong(limit = 6)
-                    for (item in newsongResp.result) {
-                        baseSongs.add(item.id to (item.name ?: "未知歌曲"))
-                        baseCovers[item.id] = item.picUrl
-                    }
-                } catch (_: Exception) {}
-            }
-
-            // 对每首起点歌曲，调用 /simi/song 获取漫游曲目列表，构造全真实歌名
-            for ((songId, songName) in baseSongs) {
-                var simiSongNames = emptyList<String>()
-                val trackList = mutableListOf<Track>()
-
-                try {
-                    val simiResp = radioService.getSimiSongs(songId)
-                    if (simiResp.code == 200 && simiResp.songs.isNotEmpty()) {
-                        simiSongNames = simiResp.songs.map { it.name }.filter { it.isNotBlank() }
-                        trackList.addAll(simiResp.songs.map { mapSongItemToTrack(it) })
-                    }
-                } catch (_: Exception) {}
-
-                // 上下文字全为歌名：顶部为起点歌名，下方为漫游联播的各首歌名连接（如 "歌名1、歌名2、歌名3..."）
-                val subtitleText = if (simiSongNames.isNotEmpty()) {
-                    "$songName、${simiSongNames.take(4).joinToString("、")}"
-                } else {
-                    songName
-                }
-
-                val cover = baseCovers[songId]
-                roamList.add(
-                    RadioRoamItem(
-                        id = songId,
-                        songTitle = songName,
-                        artistName = "",
-                        coverUrl = cover,
-                        subtitle = subtitleText,
-                        tracks = trackList.ifEmpty {
-                            listOf(
-                                Track(
-                                    id = songId,
-                                    title = songName,
-                                    artists = emptyList(),
-                                    album = Album(id = 0L, title = songName, coverUrl = cover),
-                                    coverUrl = cover,
-                                    recommendReason = "歌曲漫游"
-                                )
-                            )
+                    val likedPlaylist = mineRepository.getUserPlaylists(userId).getOrNull()?.likedPlaylist
+                    if (likedPlaylist != null && likedPlaylist.id > 0L) {
+                        likedPlaylistId = likedPlaylist.id
+                        val detail = radioService.getPlaylistDetail(likedPlaylistId)
+                        val fallbackCover = detail.playlist?.coverImgUrl ?: likedPlaylist.coverUrl
+                        val likedTracks = (detail.playlist?.tracks ?: emptyList())
+                            .map { mapPlaylistTrackToTrack(it, fallbackCover) }
+                            .filter { it.id > 0L && it.title.isNotBlank() }
+                        if (likedTracks.isNotEmpty()) {
+                            seedPool.addAll(likedTracks)
+                            fromLikedPlaylist = true
+                        } else {
+                            val fullDetail = mineRepository.getPlaylistDetail(likedPlaylistId).getOrNull()
+                            val fallbackTracks = fullDetail?.tracks
+                                ?.filter { it.id > 0L && it.title.isNotBlank() }
+                                ?: emptyList()
+                            if (fallbackTracks.isNotEmpty()) {
+                                seedPool.addAll(fallbackTracks)
+                                fromLikedPlaylist = true
+                            }
                         }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
+            }
+
+            // 2. 兜底：若无法获取我喜欢的歌曲（如未创建/无权限），尝试每日推荐歌曲（afresh=true 强制刷新）
+            if (isLoggedIn && seedPool.isEmpty()) {
+                try {
+                    val recSongs = dailyRecommendService.getDailyRecommendSongs(true)
+                    val songs = recSongs.data?.dailySongs?.takeIf { it.isNotEmpty() } ?: recSongs.dailySongs
+                    for (s in songs) {
+                        if (s.id <= 0L || s.name.isBlank()) continue
+                        val artists = s.artists.map { ar ->
+                            Artist(id = ar.id ?: 0L, name = ar.name?.takeIf { n -> n.isNotBlank() } ?: "未知歌手")
+                        }.ifEmpty { listOf(Artist(0L, "未知歌手")) }
+                        val cover = s.album?.picUrl
+                        seedPool.add(
+                            Track(
+                                id = s.id,
+                                title = s.name,
+                                artists = artists,
+                                album = Album(id = s.album?.id ?: 0L, title = s.album?.name ?: "未知专辑", coverUrl = cover),
+                                coverUrl = cover,
+                                durationMs = s.dt ?: 0L,
+                                isPlayable = (s.fee ?: 0) != 4,
+                                recommendReason = s.recommendReason ?: s.reason
+                            )
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
+            }
+
+            // 3. 未登录或前两步皆空时，使用推荐新歌兜底
+            if (seedPool.isEmpty()) {
+                try {
+                    val newsongResp = radioService.getPersonalizedNewsong(limit = 12)
+                    seedPool.addAll(
+                        newsongResp.result
+                            .map { mapNewsongItemToTrack(it) }
+                            .filter { it.id > 0L && it.title.isNotBlank() }
                     )
-                )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
+            }
+
+            // 4. 每次刷新兼顾近期新喜欢的歌与其余收藏随机轮换，避免固定不变
+            val distinctPool = seedPool.distinctBy { it.id }
+            val seedTracks = if (fromLikedPlaylist && distinctPool.size > 6) {
+                val recentPicks = distinctPool.take(5).shuffled().take(2)
+                val recentIds = recentPicks.map { it.id }.toHashSet()
+                val restPicks = distinctPool.filterNot { it.id in recentIds }.shuffled().take(4)
+                recentPicks + restPicks
+            } else {
+                distinctPool.shuffled().take(6)
+            }
+
+            // 5. 并发为每首起点歌曲拉取心动智能漫游 (/playmode/intelligence/list)，失败或未登录时降级 /simi/song
+            val roamList = coroutineScope {
+                seedTracks.map { seed ->
+                    async {
+                        val fetchedTracks = mutableListOf<Track>()
+
+                        if (isLoggedIn && likedPlaylistId > 0L) {
+                            try {
+                                val intelResp = radioService.getIntelligenceList(
+                                    id = seed.id,
+                                    pid = likedPlaylistId,
+                                    sid = seed.id
+                                )
+                                if (intelResp.code == 200 && intelResp.data.isNotEmpty()) {
+                                    fetchedTracks.addAll(
+                                        intelResp.data
+                                            .mapNotNull { it.songInfo }
+                                            .filter { it.id > 0L && it.name.isNotBlank() }
+                                            .map { mapSongItemToTrack(it) }
+                                    )
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {}
+                        }
+
+                        if (fetchedTracks.isEmpty()) {
+                            try {
+                                val simiResp = radioService.getSimiSongs(seed.id)
+                                if (simiResp.code == 200 && simiResp.songs.isNotEmpty()) {
+                                    fetchedTracks.addAll(
+                                        simiResp.songs
+                                            .filter { it.id > 0L && it.name.isNotBlank() }
+                                            .map { mapSongItemToTrack(it) }
+                                    )
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {}
+                        }
+
+                        val roamTracks = (listOf(seed) + fetchedTracks).distinctBy { it.id }
+                        val companionNames = roamTracks
+                            .drop(1)
+                            .map { it.title }
+                            .filter { it.isNotBlank() }
+                            .take(4)
+                        val subtitleText = if (companionNames.isNotEmpty()) {
+                            "${seed.title}、${companionNames.joinToString("、")}"
+                        } else {
+                            seed.title
+                        }
+
+                        RadioRoamItem(
+                            id = seed.id,
+                            songTitle = seed.title,
+                            artistName = seed.artists.firstOrNull()?.name ?: "",
+                            coverUrl = seed.coverUrl,
+                            subtitle = subtitleText,
+                            tracks = roamTracks
+                        )
+                    }
+                }.awaitAll()
             }
 
             Result.success(roamList)

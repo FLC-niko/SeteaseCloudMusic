@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,8 +61,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -106,6 +115,10 @@ private val RadioBackground = Color.White
 private val RadioTextPrimary = Color(0xFF111111)
 private val RadioTextSecondary = Color(0xFF8F8F95)
 private val RadioAccent = Color(0xFFFA233B)
+private val RadioCoverBorder = Color(0x12000000)
+private val RadioHorizontalCardWidth = 160.dp
+private val RadioHorizontalCardSpacing = 12.dp
+private val RadioCoverCornerRadius = 12.dp
 
 @Composable
 fun RadioRoute(
@@ -121,6 +134,12 @@ fun RadioRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    androidx.compose.runtime.LaunchedEffect(isForeground) {
+        if (isForeground) {
+            viewModel.onEnterForeground()
+        }
+    }
 
     RadioScreenContent(
         uiState = uiState,
@@ -201,6 +220,7 @@ internal fun RadioScreenContent(
                 .fillMaxSize()
                 .layerBackdrop(radioBackdrop)
         ) {
+        val sectionTopPadding = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp
         AdaptiveSectionColumn(
             state = lazyListState,
             modifier = Modifier
@@ -296,7 +316,7 @@ internal fun RadioScreenContent(
                         items = uiState.radarPlaylists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayRadar,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -307,7 +327,7 @@ internal fun RadioScreenContent(
                     RoamSection(
                         items = uiState.roamItems,
                         onItemClick = onPlayRoam,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -320,7 +340,7 @@ internal fun RadioScreenContent(
                         onSingerClick = { artist ->
                             onArtistClick?.invoke(artist.id, artist.name, artist.avatarUrl)
                         },
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -332,7 +352,7 @@ internal fun RadioScreenContent(
                         items = uiState.recommendedPlaylists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayPlaylist,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -343,7 +363,7 @@ internal fun RadioScreenContent(
                     ArtistHotSection(
                         sectionData = uiState.artistHotSection,
                         onItemClick = onPlayArtistHot,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -355,7 +375,7 @@ internal fun RadioScreenContent(
                         items = uiState.trends,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayTrend,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -367,7 +387,7 @@ internal fun RadioScreenContent(
                         items = uiState.moodPlaylists,
                         onOpenDetail = { item -> onOpenPlaylistDetail(item.id, item.title, item.coverUrl) },
                         onPlayClick = onPlayMood,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -378,7 +398,7 @@ internal fun RadioScreenContent(
                     FollowedArtistSection(
                         sectionData = uiState.followedArtistSection,
                         onItemClick = onPlayFollowedNewSong,
-                        modifier = Modifier.padding(top = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp)
+                        modifier = Modifier.padding(top = sectionTopPadding)
                     )
                 }
             }
@@ -474,7 +494,7 @@ internal fun RadioScreenContent(
 }
 
 // =========================================================================
-// 标题通用组件 (全部移除末尾的 >)
+// 标题通用组件与卡片复用组件 (对齐艺人页专辑区排版与尺寸)
 // =========================================================================
 @Composable
 private fun SectionHeader(
@@ -487,21 +507,87 @@ private fun SectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = onClick != null) { onClick?.invoke() }
-            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 2.dp)
     ) {
         leadingContent?.invoke()
         Text(
             text = title,
-            fontSize = 19.sp,
+            fontSize = 21.sp,
+            lineHeight = 26.sp,
+            letterSpacing = (-0.3).sp,
             fontWeight = FontWeight.Bold,
             color = RadioTextPrimary
         )
     }
 }
 
+@Composable
+private fun RadioPlayCountBadge(
+    playCount: Long?,
+    modifier: Modifier = Modifier
+) {
+    if (playCount == null || playCount <= 0L) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_headphone),
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.9f),
+            modifier = Modifier.size(12.dp)
+        )
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(
+            text = formatPlayCount(playCount),
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun RadioQuickPlayButton(
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(34.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_mini_play),
+            contentDescription = "播放",
+            tint = Color.White,
+            modifier = Modifier.size(26.dp)
+        )
+    }
+}
+
+@Composable
+private fun RadioCardTitle(
+    text: String,
+    maxLines: Int = 2,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        color = RadioTextPrimary,
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
+        fontWeight = FontWeight.Normal,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
+}
+
 // =========================================================================
-// 1. 排行榜 (热歌榜、飙升榜、新歌榜排序，固定副标题高度防跳动，点卡片开详情)
+// 1. 排行榜 (热歌榜、飙升榜、新歌榜排序，双行固定高度对齐，点卡片开详情)
 // =========================================================================
 @Composable
 private fun ToplistSection(
@@ -512,91 +598,128 @@ private fun ToplistSection(
 ) {
     Column(modifier = modifier) {
         SectionHeader(title = "排行榜")
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(items, key = { it.id }) { item ->
+            itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
                 Column(
                     modifier = Modifier
-                        .width(140.dp)
+                        .width(RadioHorizontalCardWidth)
                         .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    if (item.gradientColors.isNotEmpty()) item.gradientColors
-                                    else listOf(Color(0xFFFF9A44), Color(0xFFFC6076))
-                                )
-                            )
-                            .padding(10.dp)
+                            .size(RadioHorizontalCardWidth)
+                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
+                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
                     ) {
-                        // 播放量
-                        if (item.playCount != null && item.playCount > 0L) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.align(Alignment.TopStart)
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_headphone),
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(11.dp)
+                        ToplistCoverArtwork(
+                            item = item,
+                            variant = index,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        RadioPlayCountBadge(
+                            playCount = item.playCount,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = 10.dp, top = 10.dp)
+                        )
+
+                        // 右上角迷你榜单标识（阶梯柱状图 + TOP）
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 9.dp, end = 9.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color.White.copy(alpha = 0.16f))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Canvas(modifier = Modifier.size(width = 10.dp, height = 9.dp)) {
+                                val barW = size.width * 0.24f
+                                val gap = size.width * 0.14f
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    topLeft = Offset(0f, size.height * 0.42f),
+                                    size = Size(barW, size.height * 0.58f),
+                                    cornerRadius = CornerRadius(2f, 2f)
                                 )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = formatPlayCount(item.playCount),
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
+                                drawRoundRect(
+                                    color = Color.White,
+                                    topLeft = Offset(barW + gap, 0f),
+                                    size = Size(barW, size.height),
+                                    cornerRadius = CornerRadius(2f, 2f)
+                                )
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.78f),
+                                    topLeft = Offset((barW + gap) * 2f, size.height * 0.25f),
+                                    size = Size(barW, size.height * 0.75f),
+                                    cornerRadius = CornerRadius(2f, 2f)
                                 )
                             }
+                            Text(
+                                text = "TOP",
+                                color = Color.White.copy(alpha = 0.94f),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.4.sp
+                            )
                         }
 
                         // 榜单名称
                         Text(
                             text = item.name,
                             color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.Center)
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(horizontal = 10.dp)
                         )
 
-                        // 独立播放图标快速播放
-                        Box(
+                        RadioQuickPlayButton(
+                            onClick = { onPlayClick(item) },
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .size(28.dp)
-                                .clickable { onPlayClick(item) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mini_play),
-                                contentDescription = "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                                .padding(end = 6.dp, bottom = 5.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
-                    // 固定高度 36dp，确保划动到歌曲较少的项目时整体高度一致，下方内容绝不往上抬
-                    Box(
+                    // 固定高度 38dp，双行单曲展示，避免跨行折断凌乱
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(36.dp)
+                            .height(38.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        if (item.topSongs.isNotEmpty()) {
+                        val firstSong = item.topSongs.firstOrNull()
+                        if (!firstSong.isNullOrBlank()) {
+                            RadioCardTitle(
+                                text = "1. $firstSong",
+                                maxLines = 1
+                            )
+                        }
+                        if (item.topSongs.size > 1) {
+                            val restSongs = item.topSongs
+                                .drop(1)
+                                .mapIndexed { index, song -> "${index + 2}. $song" }
+                                .joinToString("  ")
                             Text(
-                                text = item.topSongs.joinToString("、"),
+                                text = restSongs,
+                                color = RadioTextSecondary,
                                 fontSize = 13.sp,
                                 lineHeight = 17.sp,
-                                color = Color(0xFF333333),
-                                maxLines = 2,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -605,6 +728,193 @@ private fun ToplistSection(
             }
         }
     }
+}
+
+@Composable
+private fun ToplistCoverArtwork(
+    item: RadioToplistItem,
+    variant: Int,
+    modifier: Modifier = Modifier
+) {
+    val baseStart = item.gradientColors.getOrNull(0) ?: Color(0xFFFF9A44)
+    val baseEnd = item.gradientColors.getOrNull(1) ?: Color(0xFFFC6076)
+    val mode = ((variant % 4) + 4) % 4
+    val accentWarm = remember(item.id) {
+        shiftColorHsv(baseStart, hueDelta = 26f, satScale = 1.08f, valScale = 1.12f)
+    }
+    val accentCool = remember(item.id) {
+        shiftColorHsv(baseEnd, hueDelta = -34f, satScale = 1.14f, valScale = 0.84f)
+    }
+    val accentDeep = remember(item.id) {
+        shiftColorHsv(baseEnd, hueDelta = 18f, satScale = 1.16f, valScale = 0.68f)
+    }
+
+    Box(modifier = modifier) {
+        // 不规则多层次色彩流动底图 + 排行榜动态柱状/光弧几何元素
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            val (gradStart, gradEnd) = when (mode) {
+                0 -> Offset(0f, 0f) to Offset(w, h)
+                1 -> Offset(w * 0.85f, 0f) to Offset(w * 0.1f, h)
+                2 -> Offset(0f, h * 0.65f) to Offset(w, h * 0.15f)
+                else -> Offset(w * 0.25f, 0f) to Offset(w * 0.9f, h)
+            }
+            drawRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(baseStart, accentCool, baseEnd),
+                    start = gradStart,
+                    end = gradEnd
+                )
+            )
+
+            // 三个错位有机色块，打破工整对称渐变
+            val blob1Center = when (mode) {
+                0 -> Offset(w * 0.86f, h * 0.16f)
+                1 -> Offset(w * 0.18f, h * 0.22f)
+                2 -> Offset(w * 0.78f, h * 0.78f)
+                else -> Offset(w * 0.14f, h * 0.74f)
+            }
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accentWarm.copy(alpha = 0.78f), Color.Transparent),
+                    center = blob1Center,
+                    radius = w * 0.74f
+                ),
+                center = blob1Center,
+                radius = w * 0.74f
+            )
+
+            val blob2Center = when (mode) {
+                0 -> Offset(w * 0.16f, h * 0.88f)
+                1 -> Offset(w * 0.84f, h * 0.82f)
+                2 -> Offset(w * 0.20f, h * 0.14f)
+                else -> Offset(w * 0.82f, h * 0.20f)
+            }
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accentDeep.copy(alpha = 0.74f), Color.Transparent),
+                    center = blob2Center,
+                    radius = w * 0.68f
+                ),
+                center = blob2Center,
+                radius = w * 0.68f
+            )
+
+            val blob3Center = when (mode) {
+                0 -> Offset(w * 0.44f, h * 0.48f)
+                1 -> Offset(w * 0.60f, h * 0.36f)
+                2 -> Offset(w * 0.42f, h * 0.60f)
+                else -> Offset(w * 0.56f, h * 0.52f)
+            }
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                    center = blob3Center,
+                    radius = w * 0.52f
+                ),
+                center = blob3Center,
+                radius = w * 0.52f
+            )
+
+            // 斜向柔光色带（不规则倾角）
+            val ribbonAngle = when (mode) {
+                0 -> -22f
+                1 -> 18f
+                2 -> -14f
+                else -> 24f
+            }
+            rotate(degrees = ribbonAngle, pivot = Offset(w * 0.5f, h * 0.5f)) {
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.14f),
+                            Color.Transparent
+                        )
+                    ),
+                    topLeft = Offset(-w * 0.2f, h * 0.34f),
+                    size = Size(w * 1.4f, h * 0.28f),
+                    cornerRadius = CornerRadius(h * 0.14f, h * 0.14f)
+                )
+            }
+
+            // 排行榜视觉元素 1：斜切角标圆弧（暗喻榜单与唱片）
+            val arcCenter = when (mode % 2) {
+                0 -> Offset(w * 0.92f, h * 0.88f)
+                else -> Offset(w * 0.10f, h * 0.18f)
+            }
+            drawCircle(
+                color = Color.White.copy(alpha = 0.12f),
+                radius = w * 0.40f,
+                center = arcCenter,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.015f)
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.08f),
+                radius = w * 0.54f,
+                center = arcCenter,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.010f)
+            )
+
+            // 排行榜视觉元素 2：左下角错落律动排名柱状图（带轻微倾角）
+            val heights = listOf(0.42f, 0.78f, 0.56f, 0.96f, 0.64f)
+            val barWidth = w * 0.044f
+            val barGap = w * 0.026f
+            val maxBarHeight = h * 0.19f
+            val originX = w * 0.075f
+            val baseY = h * 0.92f
+            rotate(degrees = -5f, pivot = Offset(originX, baseY)) {
+                heights.forEachIndexed { i, ratio ->
+                    val bh = maxBarHeight * ratio
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.14f + ratio * 0.12f),
+                        topLeft = Offset(originX + i * (barWidth + barGap), baseY - bh),
+                        size = Size(barWidth, bh),
+                        cornerRadius = CornerRadius(barWidth * 0.5f, barWidth * 0.5f)
+                    )
+                }
+            }
+        }
+
+        // 排行榜视觉元素 3：不规则倾斜水印数字（#1 / TOP）
+        Text(
+            text = when (mode) {
+                0 -> "TOP"
+                1 -> "NO.1"
+                2 -> "HOT"
+                else -> "#1"
+            },
+            color = Color.White.copy(alpha = 0.11f),
+            fontSize = 36.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-1).sp,
+            modifier = Modifier
+                .align(if (mode % 2 == 0) Alignment.BottomEnd else Alignment.TopStart)
+                .offset(
+                    x = if (mode % 2 == 0) (-8).dp else 6.dp,
+                    y = if (mode % 2 == 0) (-18).dp else 22.dp
+                )
+                .graphicsLayer {
+                    rotationZ = if (mode % 2 == 0) -14f else 12f
+                }
+        )
+    }
+}
+
+private fun shiftColorHsv(
+    color: Color,
+    hueDelta: Float,
+    satScale: Float,
+    valScale: Float
+): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+    hsv[0] = ((hsv[0] + hueDelta) % 360f + 360f) % 360f
+    hsv[1] = (hsv[1] * satScale).coerceIn(0.28f, 0.95f)
+    hsv[2] = (hsv[2] * valScale).coerceIn(0.22f, 0.96f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 // =========================================================================
@@ -620,69 +930,68 @@ private fun RadarSection(
 ) {
     Column(modifier = modifier) {
         SectionHeader(title = title)
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(items, key = { it.id }) { item ->
                 Column(
                     modifier = Modifier
-                        .width(140.dp)
+                        .width(RadioHorizontalCardWidth)
                         .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(RadioHorizontalCardWidth)
+                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
                             .background(Color(0xFF222222))
+                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
                     ) {
                         AsyncImage(
-                            model = item.coverUrl?.toCoverThumbnailUrl(300),
+                            model = item.coverUrl?.toCoverThumbnailUrl(320),
                             contentDescription = item.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0.0f to Color.Black.copy(alpha = 0.22f),
+                                        0.24f to Color.Transparent,
+                                        1.0f to Color.Transparent
+                                    )
+                                )
+                        )
 
-                        // 播放量 (避开封面自带的网易云 Logo，文字往右偏移且不展示耳机图标)
+                        // 播放量 (避开封面左上角网易云 Logo 并与其对齐)
                         if (item.playCount != null && item.playCount > 0L) {
                             Text(
                                 text = formatPlayCount(item.playCount),
-                                color = Color.White.copy(alpha = 0.95f),
+                                color = Color.White.copy(alpha = 0.96f),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
-                                    .padding(start = 26.dp, top = 8.dp)
+                                    .padding(start = 33.dp, top = 10.dp)
                             )
                         }
 
-                        // 快速播放按钮（右下角，封面已自带标题故不再重复绘制标题文本）
-                        Box(
+                        RadioQuickPlayButton(
+                            onClick = { onPlayClick(item) },
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(end = 8.dp, bottom = 5.dp)
-                                .size(28.dp)
-                                .clickable { onPlayClick(item) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mini_play),
-                                contentDescription = "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                                .padding(end = 6.dp, bottom = 5.dp)
+                        )
                     }
 
                     if (item.subtitle.isNotBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
+                        RadioCardTitle(
                             text = item.subtitle,
-                            fontSize = 13.sp,
-                            color = Color(0xFF333333),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 1
                         )
                     }
                 }
@@ -702,10 +1011,10 @@ private fun RoamSection(
 ) {
     Column(modifier = modifier) {
         SectionHeader(title = "从你喜欢的歌曲开始漫游")
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(items, key = { it.id }) { item ->
                 RoamCardItem(item = item, onClick = { onItemClick(item) })
@@ -752,9 +1061,10 @@ private fun RoamCardItem(
 
     Box(
         modifier = Modifier
-            .size(width = 152.dp, height = 196.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .size(width = RadioHorizontalCardWidth, height = 204.dp)
+            .clip(RoundedCornerShape(RadioCoverCornerRadius))
             .background(animatedBg)
+            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
             .clickable { onClick() }
     ) {
         Column(
@@ -765,39 +1075,77 @@ private fun RoamCardItem(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .padding(top = 10.dp, bottom = 6.dp)
             ) {
                 // 上方歌名
                 Text(
                     text = item.songTitle,
                     color = Color.White,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // 中间专辑封面（带背板微卡片层级，与网易云视觉保持一致）
+                // 中间三张错落叠放专辑封面（两边为第2/第3首带小倾角，中间为主曲目）
+                val firstCover = item.coverUrl ?: item.tracks.firstOrNull()?.coverUrl
+                val secondCover = item.tracks.getOrNull(1)?.coverUrl ?: firstCover
+                val thirdCover = item.tracks.getOrNull(2)?.coverUrl ?: secondCover ?: firstCover
+
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .size(width = 86.dp, height = 70.dp),
+                        .fillMaxWidth()
+                        .height(94.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 86.dp, height = 62.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.White.copy(alpha = 0.12f))
-                    )
+                    // 左侧第 2 首封面（向左偏转小倾角）
                     AsyncImage(
-                        model = item.coverUrl?.toCoverThumbnailUrl(200),
+                        model = secondCover?.toCoverThumbnailUrl(180),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .offset(x = (-28).dp, y = 3.dp)
+                            .size(74.dp)
+                            .graphicsLayer {
+                                rotationZ = -8f
+                                shape = RoundedCornerShape(8.dp)
+                                clip = true
+                            }
+                            .background(Color.White.copy(alpha = 0.14f))
+                            .border(0.6.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    // 右侧第 3 首封面（向右偏转小倾角）
+                    AsyncImage(
+                        model = thirdCover?.toCoverThumbnailUrl(180),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .offset(x = 28.dp, y = 3.dp)
+                            .size(74.dp)
+                            .graphicsLayer {
+                                rotationZ = 8f
+                                shape = RoundedCornerShape(8.dp)
+                                clip = true
+                            }
+                            .background(Color.White.copy(alpha = 0.14f))
+                            .border(0.6.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    // 中间第 1 首主封面
+                    AsyncImage(
+                        model = firstCover?.toCoverThumbnailUrl(240),
                         contentDescription = item.songTitle,
                         modifier = Modifier
-                            .size(70.dp)
-                            .clip(RoundedCornerShape(8.dp)),
+                            .zIndex(1f)
+                            .size(90.dp)
+                            .shadow(elevation = 6.dp, shape = RoundedCornerShape(9.dp), clip = false)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(Color.White.copy(alpha = 0.16f))
+                            .border(0.6.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(9.dp)),
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -807,15 +1155,15 @@ private fun RoamCardItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+                    .clip(RoundedCornerShape(bottomStart = RadioCoverCornerRadius, bottomEnd = RadioCoverCornerRadius))
                     .background(Color.Black.copy(alpha = 0.28f))
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = item.subtitle,
                     color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -835,22 +1183,24 @@ private fun RecommendedSingersSection(
 ) {
     Column(modifier = modifier) {
         Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
         ) {
             Text(
                 text = "歌手推荐",
-                fontSize = 19.sp,
+                fontSize = 21.sp,
+                lineHeight = 26.sp,
+                letterSpacing = (-0.3).sp,
                 fontWeight = FontWeight.Bold,
                 color = RadioTextPrimary
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "发现你可能喜欢的音乐人",
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 color = RadioTextSecondary
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -859,23 +1209,24 @@ private fun RecommendedSingersSection(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .width(76.dp)
+                        .width(80.dp)
                         .clickable { onSingerClick(artist) }
                 ) {
                     AsyncImage(
-                        model = artist.avatarUrl?.toCoverThumbnailUrl(160),
+                        model = artist.avatarUrl?.toCoverThumbnailUrl(200),
                         contentDescription = artist.name,
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(76.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFEFEFEF)),
+                            .background(Color(0xFFEFEFEF))
+                            .border(0.5.dp, RadioCoverBorder, CircleShape),
                         contentScale = ContentScale.Crop
                     )
-                    Spacer(modifier = Modifier.height(7.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = artist.name,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         color = RadioTextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -899,25 +1250,26 @@ private fun RecommendedPlaylistsSection(
 ) {
     Column(modifier = modifier) {
         SectionHeader(title = "推荐歌单")
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(items, key = { it.id }) { item ->
                 Column(
                     modifier = Modifier
-                        .width(140.dp)
+                        .width(RadioHorizontalCardWidth)
                         .clickable { onOpenDetail(item) }
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(RadioHorizontalCardWidth)
+                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
                             .background(Color(0xFFEAEAEA))
+                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
                     ) {
                         AsyncImage(
-                            model = item.coverUrl?.toCoverThumbnailUrl(300),
+                            model = item.coverUrl?.toCoverThumbnailUrl(320),
                             contentDescription = item.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -936,38 +1288,24 @@ private fun RecommendedPlaylistsSection(
                                 Text(
                                     text = item.tag,
                                     color = Color.White,
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
                         }
 
-                        // 播放图标快速播放
-                        Box(
+                        RadioQuickPlayButton(
+                            onClick = { onPlayClick(item) },
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(end = 6.dp, bottom = 5.dp)
-                                .size(28.dp)
-                                .clickable { onPlayClick(item) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mini_play),
-                                contentDescription = "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(
+                    RadioCardTitle(
                         text = item.title,
-                        fontSize = 13.sp,
-                        lineHeight = 17.sp,
-                        color = Color(0xFF222222),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2
                     )
                 }
             }
@@ -1001,93 +1339,157 @@ private fun ArtistHotSection(
                 }
             }
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(sectionData.items, key = { it.artistId }) { item ->
                 Column(
                     modifier = Modifier
-                        .width(140.dp)
+                        .width(RadioHorizontalCardWidth)
                         .clickable { onItemClick(item) }
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(width = 140.dp, height = 160.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(RadioHorizontalCardWidth)
+                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
                             .background(Color(0xFF333333))
+                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
                     ) {
                         AsyncImage(
-                            model = item.coverUrl?.toCoverThumbnailUrl(300),
+                            model = item.coverUrl?.toCoverThumbnailUrl(320),
                             contentDescription = item.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0.0f to Color.Transparent,
+                                        0.68f to Color.Transparent,
+                                        1.0f to Color.Black.copy(alpha = 0.45f)
+                                    )
+                                )
+                        )
 
-                        // 顶部播放量
-                        if (item.playCount != null && item.playCount > 0L) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_headphone),
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.9f),
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = formatPlayCount(item.playCount),
-                                color = Color.White.copy(alpha = 0.9f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                        RadioPlayCountBadge(
+                            playCount = item.playCount,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                        )
 
                         // 艺人名称水印
                         Text(
                             text = item.artistName,
                             color = Color.White,
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .padding(start = 10.dp, bottom = 10.dp)
+                                .padding(start = 10.dp, end = 44.dp, bottom = 10.dp)
                         )
 
-                        // 播放图标
-                        Box(
+                        RadioQuickPlayButton(
+                            onClick = null,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(end = 6.dp, bottom = 5.dp)
-                                .size(28.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mini_play),
-                                contentDescription = "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(
+                    RadioCardTitle(
                         text = item.title,
-                        fontSize = 13.sp,
-                        color = Color(0xFF222222),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 1
                     )
                 }
             }
         }
+    }
+}
+
+// =========================================================================
+// 7 & 8 共用封面卡（每周新热趋势 / 心情氛围）
+// =========================================================================
+@Composable
+private fun OverlayLabeledCoverCard(
+    title: String,
+    overlayLabel: String,
+    overlayLabelWeight: FontWeight,
+    coverUrl: String?,
+    playCount: Long?,
+    onOpenDetail: () -> Unit,
+    onPlayClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(RadioHorizontalCardWidth)
+            .clickable(onClick = onOpenDetail)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(RadioHorizontalCardWidth)
+                .clip(RoundedCornerShape(RadioCoverCornerRadius))
+                .background(Color(0xFF333333))
+                .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+        ) {
+            AsyncImage(
+                model = coverUrl?.toCoverThumbnailUrl(320),
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.0f to Color.Black.copy(alpha = 0.28f),
+                            0.22f to Color.Transparent,
+                            0.78f to Color.Transparent,
+                            1.0f to Color.Black.copy(alpha = 0.48f)
+                        )
+                    )
+            )
+
+            RadioPlayCountBadge(
+                playCount = playCount,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
+
+            Text(
+                text = overlayLabel,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = overlayLabelWeight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 10.dp, end = 44.dp, bottom = 10.dp)
+            )
+
+            RadioQuickPlayButton(
+                onClick = onPlayClick,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 6.dp, bottom = 5.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+        RadioCardTitle(
+            text = title,
+            maxLines = 2
+        )
     }
 }
 
@@ -1103,105 +1505,21 @@ private fun WeeklyTrendsSection(
 ) {
     Column(modifier = modifier) {
         SectionHeader(title = "每周新热趋势")
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(items, key = { it.id }) { item ->
-                Column(
-                    modifier = Modifier
-                        .width(140.dp)
-                        .clickable { onOpenDetail(item) }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF333333))
-                    ) {
-                        AsyncImage(
-                            model = item.coverUrl?.toCoverThumbnailUrl(300),
-                            contentDescription = item.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.0f to Color.Black.copy(alpha = 0.28f),
-                                        0.22f to Color.Transparent,
-                                        0.78f to Color.Transparent,
-                                        1.0f to Color.Black.copy(alpha = 0.48f)
-                                    )
-                                )
-                        )
-
-                        // 顶部播放量
-                        if (item.playCount != null && item.playCount > 0L) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_headphone),
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = formatPlayCount(item.playCount),
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        // TREND 标签
-                        Text(
-                            text = item.badge,
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 10.dp, bottom = 10.dp)
-                        )
-
-                        // 播放图标快速播放
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = 6.dp, bottom = 5.dp)
-                                .size(28.dp)
-                                .clickable { onPlayClick(item) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mini_play),
-                                contentDescription = "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = item.title,
-                        fontSize = 13.sp,
-                        lineHeight = 17.sp,
-                        color = Color(0xFF222222),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                OverlayLabeledCoverCard(
+                    title = item.title,
+                    overlayLabel = item.badge,
+                    overlayLabelWeight = FontWeight.ExtraBold,
+                    coverUrl = item.coverUrl,
+                    playCount = item.playCount,
+                    onOpenDetail = { onOpenDetail(item) },
+                    onPlayClick = { onPlayClick(item) }
+                )
             }
         }
     }
@@ -1219,105 +1537,21 @@ private fun MoodSection(
 ) {
     Column(modifier = modifier) {
         SectionHeader(title = "心情氛围")
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(items, key = { it.id }) { item ->
-                Column(
-                    modifier = Modifier
-                        .width(140.dp)
-                        .clickable { onOpenDetail(item) }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF333333))
-                    ) {
-                        AsyncImage(
-                            model = item.coverUrl?.toCoverThumbnailUrl(300),
-                            contentDescription = item.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.0f to Color.Black.copy(alpha = 0.28f),
-                                        0.22f to Color.Transparent,
-                                        0.78f to Color.Transparent,
-                                        1.0f to Color.Black.copy(alpha = 0.48f)
-                                    )
-                                )
-                        )
-
-                        // 顶部播放量
-                        if (item.playCount != null && item.playCount > 0L) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_headphone),
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = formatPlayCount(item.playCount),
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        // 氛围标签
-                        Text(
-                            text = item.moodTag,
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 10.dp, bottom = 10.dp)
-                        )
-
-                        // 播放图标快速播放
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = 6.dp, bottom = 5.dp)
-                                .size(28.dp)
-                                .clickable { onPlayClick(item) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mini_play),
-                                contentDescription = "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = item.title,
-                        fontSize = 13.sp,
-                        lineHeight = 17.sp,
-                        color = Color(0xFF222222),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                OverlayLabeledCoverCard(
+                    title = item.title,
+                    overlayLabel = item.moodTag,
+                    overlayLabelWeight = FontWeight.ExtraBold,
+                    coverUrl = item.coverUrl,
+                    playCount = item.playCount,
+                    onOpenDetail = { onOpenDetail(item) },
+                    onPlayClick = { onPlayClick(item) }
+                )
             }
         }
     }
@@ -1359,10 +1593,10 @@ private fun FollowedArtistSection(
                 }
             }
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
             items(sectionData.items, key = { it.songId }) { item ->
                 FollowedArtistCardItem(item = item, onClick = { onItemClick(item) })
@@ -1409,11 +1643,12 @@ private fun FollowedArtistCardItem(
 
     Box(
         modifier = Modifier
-            .size(width = 280.dp, height = 104.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .size(width = 296.dp, height = 112.dp)
+            .clip(RoundedCornerShape(RadioCoverCornerRadius))
             .background(animatedBg)
+            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
             .clickable { onClick() }
-            .padding(10.dp)
+            .padding(12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -1422,11 +1657,11 @@ private fun FollowedArtistCardItem(
             // 左侧专辑封面 + 新单曲标签
             Box(
                 modifier = Modifier
-                    .size(84.dp)
+                    .size(88.dp)
                     .clip(RoundedCornerShape(8.dp))
             ) {
                 AsyncImage(
-                    model = item.coverUrl?.toCoverThumbnailUrl(200),
+                    model = item.coverUrl?.toCoverThumbnailUrl(240),
                     contentDescription = item.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -1437,11 +1672,11 @@ private fun FollowedArtistCardItem(
                         .align(Alignment.TopStart)
                         .clip(RoundedCornerShape(topStart = 8.dp, bottomEnd = 6.dp))
                         .background(Color.Black.copy(alpha = 0.5f))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = item.tag,
-                        fontSize = 9.sp,
+                        fontSize = 10.sp,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
@@ -1462,7 +1697,7 @@ private fun FollowedArtistCardItem(
                         text = item.title,
                         color = Color.White,
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1470,7 +1705,7 @@ private fun FollowedArtistCardItem(
                     Text(
                         text = item.artistName,
                         color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1478,29 +1713,19 @@ private fun FollowedArtistCardItem(
                 Text(
                     text = "收录于《${item.albumName}》",
                     color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Spacer(modifier = Modifier.width(36.dp))
+            Spacer(modifier = Modifier.width(40.dp))
         }
 
-        // 播放按钮（位于卡片右下角）
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .size(28.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_mini_play),
-                contentDescription = "播放",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+        RadioQuickPlayButton(
+            onClick = null,
+            modifier = Modifier.align(Alignment.BottomEnd)
+        )
     }
 }
 
