@@ -6,7 +6,10 @@ import com.example.seteasecloudmusic.core.common.toUserFriendlyMessage
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlayerStatus
+import com.example.seteasecloudmusic.feature.artist.domain.usecase.GetAlbumDetailUseCase
 import com.example.seteasecloudmusic.feature.artist.domain.usecase.GetArtistDetailUseCase
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
+import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetPlaylistDetailUseCase
 import com.example.seteasecloudmusic.feature.search.data.SearchHistoryManager
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
@@ -52,7 +55,9 @@ data class SearchUiState(
     val searchHistory: List<String> = emptyList(),
     val hotSearches: List<HotSearchItem> = emptyList(),
     val isHotSearchLoading: Boolean = false,
-    val isSearchSubmitted: Boolean = false
+    val isSearchSubmitted: Boolean = false,
+    val activePlaylistDetail: PlaylistDetail? = null,
+    val isLoadingDetail: Boolean = false
 )
 
 @HiltViewModel
@@ -63,6 +68,8 @@ class SearchViewModel @Inject constructor(
     private val searchHistoryManager: SearchHistoryManager,
     private val searchRepository: SearchRepository,
     private val getArtistDetailUseCase: GetArtistDetailUseCase,
+    private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
+    private val getAlbumDetailUseCase: GetAlbumDetailUseCase,
     val musicPlayerController: MusicPlayerController
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -73,12 +80,16 @@ class SearchViewModel @Inject constructor(
     // 正式搜索和联想建议各自维护独立 Job，避免互相取消或状态覆盖。
     private var searchJob: Job? = null
     private var suggestionJob: Job? = null
+    private var detailJob: Job? = null
     private var searchRequestId = 0L
     private var suggestionRequestId = 0L
+    private var detailRequestId = 0L
 
     companion object {
         // 输入联想不需要每次敲字都立刻请求，做一层轻量防抖更节省接口调用。
         private const val SEARCH_SUGGEST_DEBOUNCE_MS = 250L
+        // 专辑使用独立负向 ID 空间映射到 PlaylistDetail，避免与真实歌单 ID 冲突。
+        private const val SYNTHETIC_ALBUM_PLAYLIST_OFFSET = 1_000_000_000L
     }
 
     init {
@@ -136,6 +147,9 @@ class SearchViewModel @Inject constructor(
         }
 
         // 输入变化后先更新输入态，并重置提交状态（进入建议模式）
+        detailJob?.cancel()
+        detailJob = null
+        detailRequestId += 1L
         _uiState.update { state ->
             if (normalizedQuery.isEmpty()) {
                 state.copy(
@@ -148,7 +162,9 @@ class SearchViewModel @Inject constructor(
                     playlists = emptyList(),
                     errorMessage = null,
                     isLoading = false,
-                    isSearchSubmitted = false
+                    isSearchSubmitted = false,
+                    activePlaylistDetail = null,
+                    isLoadingDetail = false
                 )
             } else {
                 state.copy(
@@ -158,7 +174,9 @@ class SearchViewModel @Inject constructor(
                     suggestionErrorMessage = null,
                     errorMessage = null,
                     isLoading = false,
-                    isSearchSubmitted = false
+                    isSearchSubmitted = false,
+                    activePlaylistDetail = null,
+                    isLoadingDetail = false
                 )
             }
         }
@@ -189,6 +207,7 @@ class SearchViewModel @Inject constructor(
         }
 
         searchHistoryManager.addHistory(query)
+        closePlaylistDetail()
         clearSearchSuggestions()
         lastSubmittedQuery = query
         _uiState.update { it.copy(isSearchSubmitted = true) }
@@ -209,6 +228,7 @@ class SearchViewModel @Inject constructor(
         }
 
         searchHistoryManager.addHistory(query)
+        closePlaylistDetail()
         _uiState.update { state ->
             state.copy(
                 query = query,
@@ -430,6 +450,9 @@ class SearchViewModel @Inject constructor(
         lastSubmittedQuery = null
 
         // 3) 回到初始 UI 状态：输入为空、非加载、无结果、无错误、未提交搜索。
+        detailJob?.cancel()
+        detailJob = null
+        detailRequestId += 1L
         _uiState.update { state ->
             state.copy(
                 query = "",
@@ -441,9 +464,179 @@ class SearchViewModel @Inject constructor(
                 artists = emptyList(),
                 playlists = emptyList(),
                 errorMessage = null,
-                isSearchSubmitted = false
+                isSearchSubmitted = false,
+                activePlaylistDetail = null,
+                isLoadingDetail = false
             )
         }
+    }
+
+    /**
+     * 打开搜索结果中的歌单详情页。
+     */
+    fun openPlaylistDetail(
+        playlistId: Long,
+        name: String,
+        trackCount: Int,
+        coverUrl: String?
+    ) {
+        if (playlistId <= 0L) return
+        detailJob?.cancel()
+        val requestId = ++detailRequestId
+
+        val cached = getPlaylistDetailUseCase.getCachedPreview(playlistId)
+        val instantPreview = cached ?: PlaylistDetail(
+            id = playlistId,
+            name = name,
+            coverUrl = coverUrl,
+            description = null,
+            trackCount = trackCount,
+            playCount = 0L,
+            creatorName = null,
+            tracks = emptyList()
+        )
+
+        _uiState.update {
+            it.copy(
+                activePlaylistDetail = instantPreview,
+                isLoadingDetail = instantPreview.tracks.isEmpty()
+            )
+        }
+
+        detailJob = viewModelScope.launch {
+            val result = getPlaylistDetailUseCase(playlistId)
+            if (!isActive || requestId != detailRequestId) return@launch
+            result.fold(
+                onSuccess = { detail ->
+                    if (requestId != detailRequestId) return@fold
+                    _uiState.update { current ->
+                        if (current.activePlaylistDetail?.id == playlistId) {
+                            current.copy(
+                                activePlaylistDetail = detail,
+                                isLoadingDetail = false
+                            )
+                        } else current
+                    }
+                },
+                onFailure = {
+                    if (requestId != detailRequestId) return@fold
+                    _uiState.update { current ->
+                        if (current.activePlaylistDetail?.id == playlistId) {
+                            current.copy(isLoadingDetail = false)
+                        } else current
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * 打开搜索结果中的专辑详情页（复用 PlaylistDetailScreen 展示）。
+     */
+    fun openAlbumDetail(
+        albumId: Long,
+        title: String,
+        artistName: String,
+        coverUrl: String?
+    ) {
+        detailJob?.cancel()
+        val requestId = ++detailRequestId
+
+        if (albumId <= 0L) {
+            val matchingTracks = uiState.value.tracks
+                .filter { it.album.title == title }
+                .distinctBy { it.id }
+            if (matchingTracks.isEmpty()) return
+            val syntheticId = -(title.hashCode().toLong() and 0x7FFFFFFFL) - SYNTHETIC_ALBUM_PLAYLIST_OFFSET
+            _uiState.update {
+                it.copy(
+                    activePlaylistDetail = PlaylistDetail(
+                        id = syntheticId,
+                        name = title,
+                        coverUrl = coverUrl ?: matchingTracks.firstOrNull()?.coverUrl,
+                        description = null,
+                        trackCount = matchingTracks.size,
+                        playCount = 0L,
+                        creatorName = artistName.takeIf { name -> name.isNotBlank() },
+                        tracks = matchingTracks
+                    ),
+                    isLoadingDetail = false
+                )
+            }
+            return
+        }
+
+        val syntheticAlbumId = -albumId - SYNTHETIC_ALBUM_PLAYLIST_OFFSET
+        _uiState.update {
+            it.copy(
+                activePlaylistDetail = PlaylistDetail(
+                    id = syntheticAlbumId,
+                    name = title,
+                    coverUrl = coverUrl,
+                    description = null,
+                    trackCount = 0,
+                    playCount = 0L,
+                    creatorName = artistName.takeIf { name -> name.isNotBlank() },
+                    tracks = emptyList()
+                ),
+                isLoadingDetail = true
+            )
+        }
+
+        detailJob = viewModelScope.launch {
+            val result = getAlbumDetailUseCase(albumId)
+            if (!isActive || requestId != detailRequestId) return@launch
+            result.fold(
+                onSuccess = { detail ->
+                    if (requestId != detailRequestId) return@fold
+                    _uiState.update { current ->
+                        if (current.activePlaylistDetail?.id == syntheticAlbumId) {
+                            current.copy(
+                                activePlaylistDetail = PlaylistDetail(
+                                    id = syntheticAlbumId,
+                                    name = detail.album.title.ifBlank { title },
+                                    coverUrl = detail.album.coverUrl ?: coverUrl,
+                                    description = detail.description,
+                                    trackCount = detail.tracks.size,
+                                    playCount = 0L,
+                                    creatorName = detail.artistName.ifBlank { artistName.ifBlank { null } },
+                                    tracks = detail.tracks
+                                ),
+                                isLoadingDetail = false
+                            )
+                        } else current
+                    }
+                },
+                onFailure = {
+                    if (requestId != detailRequestId) return@fold
+                    _uiState.update { current ->
+                        if (current.activePlaylistDetail?.id == syntheticAlbumId) {
+                            current.copy(isLoadingDetail = false)
+                        } else current
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * 关闭当前打开的歌单/专辑详情页。
+     */
+    fun closePlaylistDetail() {
+        detailJob?.cancel()
+        detailJob = null
+        detailRequestId += 1L
+        _uiState.update { it.copy(activePlaylistDetail = null, isLoadingDetail = false) }
+    }
+
+    /**
+     * 播放歌单或专辑详情中的曲目列表。
+     */
+    fun playTrackList(tracks: List<Track>, startIndex: Int = 0) {
+        val distinct = tracks.distinctBy { it.id }
+        if (distinct.isEmpty()) return
+        val safeIndex = startIndex.coerceIn(0, distinct.lastIndex)
+        musicPlayerController.replaceQueueAndPlay(distinct, safeIndex)
     }
 
     /**
@@ -546,6 +739,7 @@ class SearchViewModel @Inject constructor(
     override fun onCleared() {
         searchJob?.cancel()
         suggestionJob?.cancel()
+        detailJob?.cancel()
         super.onCleared()
     }
 }

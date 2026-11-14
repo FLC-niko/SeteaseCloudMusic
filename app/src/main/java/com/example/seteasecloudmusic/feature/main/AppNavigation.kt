@@ -310,6 +310,12 @@ fun AppNavigation(
             .distinctUntilChanged()
     }
     val activeArtworkUrl by activeArtworkUrlFlow.collectAsStateWithLifecycle(initialValue = null)
+    val hasSearchPlaylistDetailFlow = remember(searchViewModel) {
+        searchViewModel.uiState
+            .map { it.activePlaylistDetail != null }
+            .distinctUntilChanged()
+    }
+    val hasSearchPlaylistDetail by hasSearchPlaylistDetailFlow.collectAsStateWithLifecycle(initialValue = false)
     val effectiveArtworkUrl = activeArtworkUrl ?: nowPlayingArtworkUrl
     // 1200px 大图只在播放页打开时才开始加载：冷启动时它和海报墙抢带宽抢解码，
     // 是图片加载期卡顿、miniPlayer 手势掉帧的帮凶之一。关闭时 mini 条走 128px 缩略图。
@@ -536,7 +542,7 @@ fun AppNavigation(
         ) {
             if (useRail) {
                 ExpandedChromeBackground(atStart = window.sideControlsAtStart)
-                ExpandedPlaylistChromeBackground(selectedIndexState, homeViewModel, radioViewModel, mineViewModel)
+                ExpandedPlaylistChromeBackground(selectedIndexState, homeViewModel, radioViewModel, mineViewModel, searchViewModel)
             }
             Box(Modifier.fillMaxSize().padding(start = railStartPadding, end = railEndPadding).testTag("chrome_content")) {
             AppPageContent(
@@ -574,7 +580,7 @@ fun AppNavigation(
             )
             }
         }
-        if (useRail && isSearchExpanded && selectedArtist?.pageIndex != SEARCH_PAGE_INDEX) {
+        if (useRail && isSearchExpanded && selectedArtist?.pageIndex != SEARCH_PAGE_INDEX && !hasSearchPlaylistDetail) {
             Box(Modifier.fillMaxWidth().padding(start = railStartPadding + 20.dp, end = railEndPadding + 20.dp)
                 .statusBarsPadding().padding(top = 68.dp), contentAlignment = Alignment.TopCenter) {
                 LiquidGlassPanel(Modifier.widthIn(max = 680.dp).fillMaxWidth().height(54.dp), cornerRadius = 27.dp) {
@@ -1270,6 +1276,7 @@ private fun AppPageContent(
                     0 -> homeViewModel.closePlaylistDetail()
                     1 -> radioViewModel.closePlaylistDetail()
                     2 -> mineViewModel.closePlaylistDetail()
+                    3 -> searchViewModel.closePlaylistDetail()
                 }
                 onCloseArtist(from)
             }
@@ -1366,21 +1373,22 @@ private fun AppPageContent(
                             isForeground = isPageForeground
                         )
 
-                        3 -> Box(modifier = Modifier.fillMaxSize()) {
-                            SearchRoute(
-                                viewModel = searchViewModel,
-                                topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 60.dp else 0.dp),
-                                bottomContentPadding = bottomContentPadding,
-                                onArtistClick = { artistId, artistName, artistCoverUrl ->
-                                    onArtistClick(3, artistId, artistName, artistCoverUrl)
-                                }
-                            )
-                            SearchPageTopHeader(
-                                avatarUrl = avatarUrl,
-                                displayName = displayName,
-                                onAvatarClick = onSearchAvatarClick
-                            )
-                        }
+                        3 -> SearchRoute(
+                            viewModel = searchViewModel,
+                            topContentPadding = topContentPadding + (if (LocalAdaptiveWindow.current.useNavigationRail) 60.dp else 0.dp),
+                            bottomContentPadding = bottomContentPadding,
+                            onArtistClick = { artistId, artistName, artistCoverUrl ->
+                                onArtistClick(3, artistId, artistName, artistCoverUrl)
+                            },
+                            isForeground = isPageForeground,
+                            topHeader = {
+                                SearchPageTopHeader(
+                                    avatarUrl = avatarUrl,
+                                    displayName = displayName,
+                                    onAvatarClick = onSearchAvatarClick
+                                )
+                            }
+                        )
 
                         else -> AppPageBackground()
                     }

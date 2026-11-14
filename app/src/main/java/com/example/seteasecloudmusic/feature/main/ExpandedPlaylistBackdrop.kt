@@ -16,6 +16,7 @@ import com.example.seteasecloudmusic.feature.mine.presentation.MineViewModel
 import com.example.seteasecloudmusic.feature.mine.presentation.rememberCoverDominantDarkColor
 import com.example.seteasecloudmusic.feature.mine.presentation.rememberPlaylistColorBackgroundEnabled
 import com.example.seteasecloudmusic.feature.radio.presentation.RadioViewModel
+import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
@@ -29,17 +30,18 @@ internal fun ExpandedPlaylistBackdrop(coverUrl: String?, modifier: Modifier = Mo
 
 @Composable
 internal fun ExpandedPlaylistChromeBackground(
-    selectedIndex: State<Int>, home: HomeViewModel, radio: RadioViewModel, mine: MineViewModel
+    selectedIndex: State<Int>, home: HomeViewModel, radio: RadioViewModel, mine: MineViewModel, search: SearchViewModel
 ) {
     val index = selectedIndex.value
     val window = LocalAdaptiveWindow.current
     key(index) {
         // 只订阅详情身份和封面，歌曲列表、加载进度等更新不会重组导航外壳。
-        val flow = remember(index, home, radio, mine) {
+        val flow = remember(index, home, radio, mine, search) {
             when (index) {
                 0 -> home.uiState.map { it.activePlaylistDetail }
                 1 -> radio.uiState.map { it.activePlaylistDetail }
                 2 -> mine.uiState.map { it.activePlaylistDetail }
+                3 -> search.uiState.map { it.activePlaylistDetail }
                 else -> kotlinx.coroutines.flow.flowOf(null)
             }.map { detail -> detail?.let { it.id to it.coverUrl } }.distinctUntilChanged()
         }

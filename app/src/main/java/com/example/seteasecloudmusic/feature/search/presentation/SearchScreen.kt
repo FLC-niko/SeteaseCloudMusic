@@ -1,10 +1,13 @@
 package com.example.seteasecloudmusic.feature.search.presentation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -57,6 +60,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,16 +88,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
 import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.kyant.backdrop.Backdrop
@@ -163,7 +172,9 @@ fun SearchRoute(
     viewModel: SearchViewModel,
     topContentPadding: Dp = 18.dp,
     bottomContentPadding: Dp = 180.dp,
-    onArtistClick: (Long, String, String?) -> Unit = { _, _, _ -> }
+    onArtistClick: (Long, String, String?) -> Unit = { _, _, _ -> },
+    isForeground: Boolean = true,
+    topHeader: @Composable () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     SearchScreenContent(
@@ -178,7 +189,22 @@ fun SearchRoute(
         onRemoveHistory = { viewModel.onRemoveHistory(it) },
         onArtistClick = onArtistClick,
         onTrackClick = { viewModel.onTrackClick(it) },
-        onRetryClick = { viewModel.onRetryClick() }
+        onRetryClick = { viewModel.onRetryClick() },
+        onAlbumClick = { id, title, artistName, coverUrl ->
+            viewModel.openAlbumDetail(id, title, artistName, coverUrl)
+        },
+        onPlaylistClick = { id, name, trackCount, coverUrl ->
+            viewModel.openPlaylistDetail(id, name, trackCount, coverUrl)
+        },
+        onClosePlaylistDetail = { viewModel.closePlaylistDetail() },
+        onPlayPlaylistTrack = { track, tracks ->
+            val idx = tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+            viewModel.playTrackList(tracks, idx)
+        },
+        onPlayPlaylistAll = { tracks -> viewModel.playTrackList(tracks, 0) },
+        onShufflePlaylist = { tracks -> viewModel.playTrackList(tracks.shuffled(), 0) },
+        isForeground = isForeground,
+        topHeader = topHeader
     )
 }
 
@@ -195,7 +221,15 @@ fun SearchScreenContent(
     onRemoveHistory: (String) -> Unit = {},
     onArtistClick: (Long, String, String?) -> Unit = { _, _, _ -> },
     onTrackClick: (Track) -> Unit = {},
-    onRetryClick: () -> Unit = {}
+    onRetryClick: () -> Unit = {},
+    onAlbumClick: (Long, String, String, String?) -> Unit = { _, _, _, _ -> },
+    onPlaylistClick: (Long, String, Int, String?) -> Unit = { _, _, _, _ -> },
+    onClosePlaylistDetail: () -> Unit = {},
+    onPlayPlaylistTrack: (Track, List<Track>) -> Unit = { _, _ -> },
+    onPlayPlaylistAll: (List<Track>) -> Unit = {},
+    onShufflePlaylist: (List<Track>) -> Unit = {},
+    isForeground: Boolean = true,
+    topHeader: @Composable () -> Unit = {}
 ) {
     val searchBackdrop = rememberLayerBackdrop {
         drawRect(PageBackground)
@@ -219,116 +253,219 @@ fun SearchScreenContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val resultsTopPadding = topContentPadding + 58.dp
 
-    Box(
+    val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
+    val lastOpenedPlaylistId = remember { mutableStateOf<Long?>(null) }
+    val playlistOpenCounter = remember { mutableIntStateOf(0) }
+    LaunchedEffect(uiState.activePlaylistDetail) {
+        val current = uiState.activePlaylistDetail
+        if (current != null) {
+            if (lastOpenedPlaylistId.value != current.id) {
+                playlistOpenCounter.intValue++
+                lastOpenedPlaylistId.value = current.id
+            }
+            lastPlaylistDetail.value = current
+        } else {
+            lastOpenedPlaylistId.value = null
+        }
+    }
+    LaunchedEffect(isForeground) {
+        if (!isForeground) {
+            lastPlaylistDetail.value = null
+        }
+    }
+    val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
+        androidx.compose.foundation.lazy.LazyListState()
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(PageBackground)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(searchBackdrop)
-        ) {
-            when {
-                // 1. 用户尚未输入：展示空白状态（顶部搜索历史 + 底部热搜列表）
-                uiState.query.isEmpty() -> {
-                    InitialSearchPage(
-                        history = uiState.searchHistory,
-                        hotSearches = uiState.hotSearches,
-                        isHotSearchLoading = uiState.isHotSearchLoading,
-                        topContentPadding = topContentPadding,
-                        bottomContentPadding = bottomContentPadding,
-                        onHistoryClick = { handleSelect { onHistoryClick(it) } },
-                        onClearHistory = onClearHistory,
-                        onRemoveHistory = onRemoveHistory,
-                        onHotSearchClick = { handleSelect { onHotSearchClick(it) } },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+        val window = LocalAdaptiveWindow.current
+        val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
 
-                // 2. 用户开始输入但尚未提交正式搜索：即时展示联想搜索建议
-                !uiState.isSearchSubmitted -> {
-                    SearchSuggestionsSection(
-                        query = uiState.query,
-                        suggestions = uiState.suggestions,
-                        isLoading = uiState.isSuggestionLoading,
-                        topContentPadding = topContentPadding,
-                        bottomContentPadding = bottomContentPadding,
-                        onSearchSubmit = { handleSelect { onSearchSubmit() } },
-                        onSuggestionClick = { handleSelect { onSuggestionClick(it) } },
-                        onTrackClick = onTrackClick,
-                        onArtistClick = onArtistClick,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                // 3. 用户提交搜索后：展示搜索结果（顶部分类标签浮于模糊区之上）
-                else -> {
+        val feedContent: @Composable () -> Unit = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(PageBackground)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .layerBackdrop(searchBackdrop)
+                ) {
                     when {
-                        uiState.isLoading -> {
-                            ResultLoadingSection(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = resultsTopPadding, bottom = bottomContentPadding)
-                            )
-                        }
-
-                        shouldShowResultError(uiState) -> {
-                            ResultErrorSection(
-                                errorMessage = uiState.errorMessage ?: "搜索失败",
-                                onRetryClick = onRetryClick,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = resultsTopPadding, bottom = bottomContentPadding)
-                            )
-                        }
-
-                        items.isEmpty() -> {
-                            EmptyResultsSection(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = resultsTopPadding, bottom = bottomContentPadding)
-                            )
-                        }
-
-                        else -> {
-                            SearchResultsList(
-                                items = items,
-                                artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
-                                topContentPadding = resultsTopPadding,
+                        // 1. 用户尚未输入：展示空白状态（顶部搜索历史 + 底部热搜列表）
+                        uiState.query.isEmpty() -> {
+                            InitialSearchPage(
+                                history = uiState.searchHistory,
+                                hotSearches = uiState.hotSearches,
+                                isHotSearchLoading = uiState.isHotSearchLoading,
+                                topContentPadding = topContentPadding,
                                 bottomContentPadding = bottomContentPadding,
-                                onRowClick = onSuggestionClick,
-                                onArtistClick = onArtistClick,
-                                onTrackClick = onTrackClick,
+                                onHistoryClick = { handleSelect { onHistoryClick(it) } },
+                                onClearHistory = onClearHistory,
+                                onRemoveHistory = onRemoveHistory,
+                                onHotSearchClick = { handleSelect { onHotSearchClick(it) } },
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
+
+                        // 2. 用户开始输入但尚未提交正式搜索：即时展示联想搜索建议
+                        !uiState.isSearchSubmitted -> {
+                            SearchSuggestionsSection(
+                                query = uiState.query,
+                                suggestions = uiState.suggestions,
+                                isLoading = uiState.isSuggestionLoading,
+                                topContentPadding = topContentPadding,
+                                bottomContentPadding = bottomContentPadding,
+                                onSearchSubmit = { handleSelect { onSearchSubmit() } },
+                                onSuggestionClick = { handleSelect { onSuggestionClick(it) } },
+                                onTrackClick = onTrackClick,
+                                onArtistClick = { id, name, cover -> handleSelect { onArtistClick(id, name, cover) } },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // 3. 用户提交搜索后：展示搜索结果（顶部分类标签浮于模糊区之上）
+                        else -> {
+                            when {
+                                uiState.isLoading -> {
+                                    ResultLoadingSection(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = resultsTopPadding, bottom = bottomContentPadding)
+                                    )
+                                }
+
+                                shouldShowResultError(uiState) -> {
+                                    ResultErrorSection(
+                                        errorMessage = uiState.errorMessage ?: "搜索失败",
+                                        onRetryClick = onRetryClick,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = resultsTopPadding, bottom = bottomContentPadding)
+                                    )
+                                }
+
+                                items.isEmpty() -> {
+                                    EmptyResultsSection(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = resultsTopPadding, bottom = bottomContentPadding)
+                                    )
+                                }
+
+                                else -> {
+                                    SearchResultsList(
+                                        items = items,
+                                        artworkGrid = selectedTab == SearchTab.ARTIST || selectedTab == SearchTab.ALBUM || selectedTab == SearchTab.PLAYLIST,
+                                        topContentPadding = resultsTopPadding,
+                                        bottomContentPadding = bottomContentPadding,
+                                        onRowClick = onSuggestionClick,
+                                        onArtistClick = { id, name, cover -> handleSelect { onArtistClick(id, name, cover) } },
+                                        onTrackClick = onTrackClick,
+                                        onAlbumClick = { album ->
+                                            handleSelect {
+                                                onAlbumClick(album.id, album.title, album.artistName, album.coverUrl)
+                                            }
+                                        },
+                                        onPlaylistClick = { playlist ->
+                                            handleSelect {
+                                                onPlaylistClick(playlist.id, playlist.name, playlist.trackCount, playlist.coverUrl)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
+
+                // 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无状态栏白色遮罩）
+                ProgressiveTopBlur(
+                    backdrop = searchBackdrop,
+                    totalHeight = if (uiState.isSearchSubmitted) topContentPadding + 64.dp else topContentPadding + 18.dp,
+                    statusBarHeight = statusBarHeight,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    deepBlurRadius = 26.dp,
+                    mediumBlurRadius = 13.dp,
+                    shallowBlurRadius = 4.5.dp
+                )
+
+                if (uiState.isSearchSubmitted) {
+                    SearchTabsRow(
+                        backdrop = searchBackdrop,
+                        selectedTab = selectedTab,
+                        onSelect = { selectedTab = it },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(top = topContentPadding + 4.dp, start = 16.dp, end = 16.dp)
+                    )
+                }
+
+                topHeader()
             }
         }
 
-        // 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无状态栏白色遮罩）
-        ProgressiveTopBlur(
-            backdrop = searchBackdrop,
-            totalHeight = if (uiState.isSearchSubmitted) topContentPadding + 64.dp else topContentPadding + 18.dp,
-            statusBarHeight = statusBarHeight,
-            modifier = Modifier.align(Alignment.TopCenter),
-            deepBlurRadius = 26.dp,
-            mediumBlurRadius = 13.dp,
-            shallowBlurRadius = 4.5.dp
-        )
+        RetainedMusicFeed(!split) { feedContent() }
 
-        if (uiState.isSearchSubmitted) {
-            SearchTabsRow(
-                backdrop = searchBackdrop,
-                selectedTab = selectedTab,
-                onSelect = { selectedTab = it },
+        if (split) {
+            uiState.activePlaylistDetail?.let { detail ->
+                val glassBackdrop = LocalGlassBackdrop.current ?: searchBackdrop
+                PlaylistDetailScreen(
+                    detail = detail,
+                    backdrop = glassBackdrop,
+                    onClose = onClosePlaylistDetail,
+                    onPlayTrack = { track -> onPlayPlaylistTrack(track, detail.tracks) },
+                    onPlayAll = { onPlayPlaylistAll(detail.tracks) },
+                    onShufflePlay = { onShufflePlaylist(detail.tracks) },
+                    isLoading = uiState.isLoadingDetail,
+                    listState = detailListState,
+                    filterByCurrentUserLikes = false
+                )
+            }
+        } else {
+            AnimatedVisibility(
+                visible = uiState.activePlaylistDetail != null,
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+                ),
+                exit = if (isForeground) {
+                    slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> fullWidth },
+                        animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                    )
+                } else {
+                    ExitTransition.None
+                },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(top = topContentPadding + 4.dp, start = 16.dp, end = 16.dp)
-            )
+                    .fillMaxSize()
+                    .zIndex(20f)
+            ) {
+                val displayDetail = uiState.activePlaylistDetail ?: lastPlaylistDetail.value
+                displayDetail?.let { detail ->
+                    key(playlistOpenCounter.intValue) {
+                        val glassBackdrop = LocalGlassBackdrop.current ?: searchBackdrop
+                        PlaylistDetailScreen(
+                            detail = detail,
+                            backdrop = glassBackdrop,
+                            onClose = onClosePlaylistDetail,
+                            onPlayTrack = { track -> onPlayPlaylistTrack(track, detail.tracks) },
+                            onPlayAll = { onPlayPlaylistAll(detail.tracks) },
+                            onShufflePlay = { onShufflePlaylist(detail.tracks) },
+                            isLoading = uiState.isLoadingDetail,
+                            listState = detailListState,
+                            filterByCurrentUserLikes = false
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -449,6 +586,8 @@ private fun SearchResultsList(
     onRowClick: (String) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     onTrackClick: (Track) -> Unit,
+    onAlbumClick: (SearchRowItem.Album) -> Unit,
+    onPlaylistClick: (SearchRowItem.Playlist) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -465,7 +604,7 @@ private fun SearchResultsList(
                     title = item.title,
                     artistName = item.artistName,
                     coverUrl = item.coverUrl,
-                    onClick = { onRowClick(item.title) }
+                    onClick = { onAlbumClick(item) }
                 )
 
                 is SearchRowItem.Artist -> ArtistRow(
@@ -480,7 +619,7 @@ private fun SearchResultsList(
                     name = item.name,
                     trackCount = item.trackCount,
                     coverUrl = item.coverUrl,
-                    onClick = { onRowClick(item.name) }
+                    onClick = { onPlaylistClick(item) }
                 )
 
                 is SearchRowItem.Suggestion -> SuggestionRow(
@@ -522,7 +661,9 @@ private fun SearchResultsList(
                         contentPadding = PaddingValues(start = 16.dp, top = topContentPadding + 16.dp, end = 16.dp, bottom = bottomContentPadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        items(leading, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
+                        items(leading, key = { it.key }) { item ->
+                            SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick, onAlbumClick, onPlaylistClick)
+                        }
                     }
                 },
                 secondary = { resultsList(trailing) })
@@ -535,7 +676,9 @@ private fun SearchResultsList(
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                items(items, key = { it.key }) { item -> SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick) }
+                items(items, key = { it.key }) { item ->
+                    SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick, onAlbumClick, onPlaylistClick)
+                }
             }
         } else {
             AdaptiveContent(maxWidth = 900.dp) { resultsList(items) }
@@ -545,15 +688,22 @@ private fun SearchResultsList(
 }
 
 @Composable
-private fun SearchArtworkCard(item: SearchRowItem, onQuery: (String) -> Unit, onArtist: (Long, String, String?) -> Unit, onTrack: (Track) -> Unit) {
+private fun SearchArtworkCard(
+    item: SearchRowItem,
+    onQuery: (String) -> Unit,
+    onArtist: (Long, String, String?) -> Unit,
+    onTrack: (Track) -> Unit,
+    onAlbum: (SearchRowItem.Album) -> Unit,
+    onPlaylist: (SearchRowItem.Playlist) -> Unit
+) {
     val image: String?
     val title: String
     val subtitle: String
     val action: () -> Unit
     when (item) {
         is SearchRowItem.Artist -> { image = item.coverUrl; title = item.name; subtitle = "艺人"; action = { onArtist(item.id, item.name, image) } }
-        is SearchRowItem.Album -> { image = item.coverUrl; title = item.title; subtitle = item.artistName; action = { onQuery(title) } }
-        is SearchRowItem.Playlist -> { image = item.coverUrl; title = item.name; subtitle = "${item.trackCount} 首歌曲"; action = { onQuery(title) } }
+        is SearchRowItem.Album -> { image = item.coverUrl; title = item.title; subtitle = item.artistName; action = { onAlbum(item) } }
+        is SearchRowItem.Playlist -> { image = item.coverUrl; title = item.name; subtitle = "${item.trackCount} 首歌曲"; action = { onPlaylist(item) } }
         is SearchRowItem.Song -> { image = item.track.coverUrl; title = item.track.title; subtitle = item.track.artists.joinToString(" / ") { it.name }; action = { onTrack(item.track) } }
         is SearchRowItem.Suggestion -> { image = null; title = item.keyword; subtitle = "搜索建议"; action = { onQuery(title) } }
     }
@@ -1347,7 +1497,7 @@ private fun buildSearchItems(
                 coverUrl = it.album.coverUrl ?: it.coverUrl
             )
         }
-        .distinctBy { it.id }
+        .distinctBy { if (it.id > 0L) it.id else it.title }
 
     val playlists = (if (uiState.playlists.isNotEmpty()) {
         uiState.playlists.map {
