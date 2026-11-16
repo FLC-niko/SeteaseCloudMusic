@@ -169,10 +169,17 @@ class NetworkModule {
             .addInterceptor(commonHeadersInterceptor)
             // 自动管理 Cookie（登录态）。
             .addInterceptor(AuthInterceptor(context))
-            // 调试阶段输出请求信息，便于定位网络问题。
-            .addInterceptor(loggingInterceptor)
-            // 最后统一兜底处理服务端错误响应。
+            // 统一兜底处理非 2xx 响应，位于故障切换之外以便先针对 5xx/IO 异常切备用线路。
             .addInterceptor(errorInterceptor)
+            // 主节点超时/网络异常或返回 5xx 时自动切换至备用服务器。
+            .addInterceptor(
+                ApiEndpointFailoverInterceptor(
+                    primaryBaseUrl = BuildConfig.BASE_URL,
+                    backupBaseUrl = BuildConfig.BACKUP_BASE_URL
+                )
+            )
+            // 调试阶段输出最终发往节点的请求 URL、状态码与耗时，便于对比主备线路表现。
+            .addInterceptor(loggingInterceptor)
             .build()
     }
 
