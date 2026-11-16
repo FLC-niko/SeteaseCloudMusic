@@ -15,11 +15,23 @@ import retrofit2.http.Query
 interface NeteaseMusicService {
     /**
      * 根据歌曲 id 获取可播放 URL。
+     *
+     * 默认使用 weapi 加密方式请求 /song/url/v1，规避部分节点默认 eapi 指纹触发 -460 风控的问题。
      */
     @GET("song/url/v1")
     suspend fun getSongUrl(
         @Query("id") id: Long,
-        @Query("level") level: String = "hires"
+        @Query("level") level: String = "hires",
+        @Query("crypto") crypto: String? = DEFAULT_SONG_URL_CRYPTO
+    ): SongResponse
+
+    /**
+     * 兜底获取标准/高品可播放 URL（当 v1 接口遭遇上游风控或不可用时降级使用）。
+     */
+    @GET("song/url")
+    suspend fun getLegacySongUrl(
+        @Query("id") id: Long,
+        @Query("br") br: Int = DEFAULT_LEGACY_BITRATE
     ): SongResponse
 
     /**
@@ -87,6 +99,11 @@ interface NeteaseMusicService {
         @Query("time") time: Int,
         @Query("timestamp") timestamp: Long = System.currentTimeMillis()
     ): ScrobbleResponse
+
+    companion object {
+        const val DEFAULT_SONG_URL_CRYPTO = "weapi"
+        const val DEFAULT_LEGACY_BITRATE = 999000
+    }
 }
 
 data class ScrobbleResponse(

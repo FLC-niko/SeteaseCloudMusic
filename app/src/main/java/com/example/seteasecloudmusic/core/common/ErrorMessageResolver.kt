@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.core.common
 
+import com.example.seteasecloudmusic.core.network.ApiHttpException
 import java.io.EOFException
 import java.io.FileNotFoundException
 import java.net.ConnectException
@@ -28,6 +29,10 @@ data class FriendlyError(
  */
 fun Throwable?.toUserFriendlyMessage(actionDescription: String = "操作"): String {
     if (this == null) return "$actionDescription 失败，请稍后重试"
+
+    if (this is ApiHttpException) {
+        return resolveApiHttpExceptionMessage(this, actionDescription)
+    }
 
     val rawMessage = this.message.orEmpty()
     val fullText = "${this::class.java.simpleName}: $rawMessage".lowercase()
@@ -104,14 +109,7 @@ fun Throwable?.toUserFriendlyMessage(actionDescription: String = "操作"): Stri
     }
 
     // 12. 如果原始异常信息中含有中文，且不包含技术性的异常栈类名，则优先使用原生的中文业务提示
-    val containsChinese = rawMessage.any { it in '\u4e00'..'\u9fa5' }
-    val containsTechnicalNoise = rawMessage.contains("Exception") ||
-            rawMessage.contains("http") ||
-            rawMessage.contains("/") ||
-            rawMessage.contains("failed to", ignoreCase = true) ||
-            rawMessage.contains("error code", ignoreCase = true)
-
-    if (containsChinese && !containsTechnicalNoise) {
+    if (rawMessage.isReadableChineseMessage(allowSlashAndHttp = false)) {
         return rawMessage
     }
 
@@ -140,6 +138,15 @@ fun String?.toUserFriendlyMessage(fallbackAction: String = "操作"): String {
     }
     if (lower.contains("http 401") || lower.contains("http 403")) {
         return "登录状态已失效，请重新登录"
+    }
+    if (lower.contains("code=-460") || lower.contains("code: -460") ||
+        lower.contains("code=-462") || lower.contains("code: -462") ||
+        contains("网络环境存在风险")
+    ) {
+        return "当前网络或账号触发风控验证，请稍后再试"
+    }
+    if (lower.contains("http 400")) {
+        return "$fallbackAction 失败，请稍后重试"
     }
     if (lower.contains("http 404")) {
         return "请求的内容未找到"
@@ -173,7 +180,8 @@ fun String?.toUserFriendlyMessage(fallbackAction: String = "操作"): String {
  */
 fun Throwable?.toFriendlyError(actionDescription: String = "加载内容"): FriendlyError {
     val userMsg = this.toUserFriendlyMessage(actionDescription)
-    val isNetworkIssue = this is UnknownHostException ||
+    val isNetworkIssue = this !is ApiHttpException && (
+        this is UnknownHostException ||
             this is ConnectException ||
             this is SocketTimeoutException ||
             this is NoRouteToHostException ||
@@ -181,6 +189,7 @@ fun Throwable?.toFriendlyError(actionDescription: String = "加载内容"): Frie
             (this?.message.orEmpty().lowercase().let {
                 it.contains("connect") || it.contains("host") || it.contains("timeout") || it.contains("network")
             })
+        )
 
     return if (isNetworkIssue) {
         FriendlyError(
@@ -195,4 +204,42 @@ fun Throwable?.toFriendlyError(actionDescription: String = "加载内容"): Frie
             suggestion = "请稍后点击下方按钮重试"
         )
     }
+}
+
+private fun resolveApiHttpExceptionMessage(
+    error: ApiHttpException,
+    actionDescription: String
+): String {
+    return when {
+        error.httpStatusCode == 404 -> "请求的内容未找到或已被下线"
+        error.httpStatusCode == 401 || error.httpStatusCode == 403 ->
+            "登录状态已失效或暂无权限，请重新登录"
+        error.httpStatusCode in 500..599 -> "服务器开小差了，请稍后再试"
+        error.apiErrorCode == -460 || error.apiErrorCode == -462 -> {
+            val clean = error.apiMessage?.takeIf { it.isReadableChineseMessage(allowSlashAndHttp = false) }
+            clean ?: "当前网络或账号触发风控验证，请稍后再试"
+        }
+        else -> {
+            val clean = error.apiMessage?.takeIf { it.isReadableChineseMessage(allowSlashAndHttp = false) }
+            if (clean != null) {
+                clean
+            } else if (error.httpStatusCode in 400..499) {
+                "$actionDescription 失败，请稍后重试"
+            } else {
+                "服务响应异常，请稍后重试"
+            }
+        }
+    }
+}
+
+private fun String.isReadableChineseMessage(allowSlashAndHttp: Boolean = true): Boolean {
+    val hasChinese = any { it in '\u4e00'..'\u9fa5' }
+    if (!hasChinese) return false
+    val hasTechnicalNoise = contains("Exception") ||
+        contains("failed to", ignoreCase = true) ||
+        contains("error code", ignoreCase = true) ||
+        contains("http://", ignoreCase = true) ||
+        contains("https://", ignoreCase = true) ||
+        (!allowSlashAndHttp && (contains("http", ignoreCase = true) || contains("/")))
+    return !hasTechnicalNoise
 }

@@ -5,6 +5,7 @@ import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.AudioQuality
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.local.LocalMusicRepository
+import com.example.seteasecloudmusic.core.network.ApiHttpException
 import com.example.seteasecloudmusic.core.player.TrackPlaybackPreparer
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
@@ -15,11 +16,16 @@ import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import javax.net.ssl.SSLException
 
 /**
  * `data.repository` 模块说明：
@@ -208,7 +214,14 @@ class SearchRepositoryImpl @Inject constructor(
         }
 
         try {
-            val response = musicService.getSongUrl(id = trackId, level = level)
+            val response = resolveSongUrlWithFallback(
+                fetchSongUrlV1 = { crypto ->
+                    musicService.getSongUrl(id = trackId, level = level, crypto = crypto)
+                },
+                fetchLegacySongUrl = {
+                    musicService.getLegacySongUrl(id = trackId)
+                }
+            )
             val songData = response.data.firstOrNull()
             val url = songData?.url
 
@@ -585,5 +598,65 @@ class SearchRepositoryImpl @Inject constructor(
         private val SUPPORTED_AUDIO_FORMAT_EXTS = setOf(
             "flac", "mp3", "m4a", "aac", "wav", "ogg", "opus", "ape", "dff", "dsf", "wma", "alac"
         )
+        private val SONG_URL_CRYPTO_FALLBACK_ORDER = listOf("weapi", "api", null)
+
+        internal suspend fun resolveSongUrlWithFallback(
+            fetchSongUrlV1: suspend (crypto: String?) -> SongResponse,
+            fetchLegacySongUrl: suspend () -> SongResponse
+        ): SongResponse {
+            var firstApiFailure: ApiHttpException? = null
+            var lastFailure: Throwable? = null
+
+            for (crypto in SONG_URL_CRYPTO_FALLBACK_ORDER) {
+                try {
+                    val response = fetchSongUrlV1(crypto)
+                    if (response.code == 200) {
+                        return response
+                    }
+                    val apiFailure = ApiHttpException(
+                        httpStatusCode = 200,
+                        apiErrorCode = response.code,
+                        apiMessage = response.data.firstOrNull()?.message,
+                        message = "API error code: ${response.code}"
+                    )
+                    if (firstApiFailure == null) firstApiFailure = apiFailure
+                    lastFailure = apiFailure
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ApiHttpException) {
+                    if (firstApiFailure == null) firstApiFailure = e
+                    lastFailure = e
+                } catch (t: Throwable) {
+                    if (t.isConnectivityFailure()) {
+                        throw t
+                    }
+                    lastFailure = t
+                }
+            }
+
+            try {
+                val legacy = fetchLegacySongUrl()
+                if (legacy.code == 200 && !legacy.data.firstOrNull()?.url.isNullOrBlank()) {
+                    return legacy
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                if (lastFailure == null) {
+                    lastFailure = t
+                }
+            }
+
+            throw (firstApiFailure ?: lastFailure ?: IllegalStateException("Failed to resolve song url"))
+        }
+
+        private fun Throwable.isConnectivityFailure(): Boolean = when (this) {
+            is UnknownHostException,
+            is ConnectException,
+            is SocketTimeoutException,
+            is NoRouteToHostException,
+            is SSLException -> true
+            else -> false
+        }
     }
 }

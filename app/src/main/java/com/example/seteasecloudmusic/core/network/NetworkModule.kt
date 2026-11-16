@@ -125,10 +125,17 @@ class NetworkModule {
         val errorInterceptor = Interceptor { chain ->
             val response = chain.proceed(chain.request())
             if (!response.isSuccessful) {
-                val message =
-                    "HTTP ${response.code} ${response.message.ifBlank { "Unknown error" }}"
+                val rawBody = runCatching { response.peekBody(8192L).string() }.getOrNull()
+                val exception = HttpErrorParser.parse(
+                    httpStatusCode = response.code,
+                    httpMessage = response.message,
+                    responseBody = rawBody
+                )
+                if (BuildConfig.DEBUG) {
+                    Log.w("NetworkModule", "HTTP error response: ${exception.message}")
+                }
                 response.close()
-                throw IOException(message)
+                throw exception
             }
             response
         }

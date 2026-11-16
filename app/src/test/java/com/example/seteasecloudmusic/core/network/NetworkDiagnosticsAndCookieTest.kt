@@ -227,6 +227,41 @@ class NetworkDiagnosticsAndCookieTest {
         )
     }
 
+    @Test
+    fun httpErrorParser_extractsCodeAndMessageFromNetease400Json() {
+        val err = HttpErrorParser.parse(
+            httpStatusCode = 400,
+            httpMessage = "Bad Request",
+            responseBody = """{"code":-460,"message":"检测到您的网络环境存在风险，请稍后再试"}"""
+        )
+
+        assertEquals(400, err.httpStatusCode)
+        assertEquals(-460, err.apiErrorCode)
+        assertEquals("检测到您的网络环境存在风险，请稍后再试", err.apiMessage)
+        assertEquals("HTTP 400 (code=-460): 检测到您的网络环境存在风险，请稍后再试", err.message)
+    }
+
+    @Test
+    fun httpErrorParser_fallsBackToMsgOrStatusWhenBodyPartialOrNonJson() {
+        val msgOnly = HttpErrorParser.parse(
+            httpStatusCode = 502,
+            httpMessage = "Bad Gateway",
+            responseBody = """{"msg":"上游响应超时"}"""
+        )
+        assertEquals(502, msgOnly.httpStatusCode)
+        assertEquals(null, msgOnly.apiErrorCode)
+        assertEquals("上游响应超时", msgOnly.apiMessage)
+
+        val nonJson = HttpErrorParser.parse(
+            httpStatusCode = 403,
+            httpMessage = "",
+            responseBody = "<html>Forbidden</html>"
+        )
+        assertEquals(403, nonJson.httpStatusCode)
+        assertEquals(null, nonJson.apiErrorCode)
+        assertEquals("HTTP 403 Unknown error", nonJson.message)
+    }
+
     private fun buildJsonResponse(
         request: Request,
         code: Int,
