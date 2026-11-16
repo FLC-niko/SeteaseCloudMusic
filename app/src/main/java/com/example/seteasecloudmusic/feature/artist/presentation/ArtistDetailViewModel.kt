@@ -53,6 +53,7 @@ data class ArtistDetailUiState(
     val similarAllLoaded: Boolean = false,
     val isSimilarLoadingMore: Boolean = false,
     val activePlaylistDetail: PlaylistDetail? = null,
+    val isPlaylistDetailAlbum: Boolean = false,
     val isPlaylistDetailLoading: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
@@ -285,6 +286,7 @@ class ArtistDetailViewModel @Inject constructor(
                     creatorName = state.artistName.ifBlank { null },
                     tracks = hotTracks
                 ),
+                isPlaylistDetailAlbum = false,
                 isPlaylistDetailLoading = false
             )
         }
@@ -397,6 +399,7 @@ class ArtistDetailViewModel @Inject constructor(
                     creatorName = fallbackArtist.ifBlank { null },
                     tracks = emptyList()
                 ),
+                isPlaylistDetailAlbum = true,
                 isPlaylistDetailLoading = true
             )
         }
@@ -462,6 +465,7 @@ class ArtistDetailViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 activePlaylistDetail = preview,
+                isPlaylistDetailAlbum = false,
                 isPlaylistDetailLoading = preview.tracks.isEmpty()
             )
         }
@@ -494,7 +498,13 @@ class ArtistDetailViewModel @Inject constructor(
     fun onClosePlaylistDetail() {
         albumDetailJob?.cancel()
         playlistDetailJob?.cancel()
-        _uiState.update { it.copy(activePlaylistDetail = null, isPlaylistDetailLoading = false) }
+        _uiState.update {
+            it.copy(
+                activePlaylistDetail = null,
+                isPlaylistDetailAlbum = false,
+                isPlaylistDetailLoading = false
+            )
+        }
     }
 
     /**

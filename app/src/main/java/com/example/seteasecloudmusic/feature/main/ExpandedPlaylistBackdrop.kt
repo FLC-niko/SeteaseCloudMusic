@@ -23,8 +23,12 @@ import kotlinx.coroutines.flow.map
 
 /** 与详情同一取色底座延伸到侧边操作区，玻璃仍由原导航组件统一采样。 */
 @Composable
-internal fun ExpandedPlaylistBackdrop(coverUrl: String?, modifier: Modifier = Modifier) {
-    val enabled = rememberPlaylistColorBackgroundEnabled()
+internal fun ExpandedPlaylistBackdrop(
+    coverUrl: String?,
+    modifier: Modifier = Modifier,
+    playlistId: Long? = null
+) {
+    val enabled = rememberPlaylistColorBackgroundEnabled(playlistId)
     val color by rememberCoverDominantDarkColor(coverUrl)
     Canvas(modifier.fillMaxSize()) { drawRect(if (enabled) color else Color.White) }
 }
@@ -60,7 +64,8 @@ internal fun ExpandedPlaylistChromeBackground(
         }
         val detail by flow.collectAsStateWithLifecycle(initialValue = null)
         if (window.showDetailAlongside(detail != null, window.width - window.sideControlWidth, window.height)) {
-            ExpandedPlaylistBackdrop(requireNotNull(detail).second)
+            val active = requireNotNull(detail)
+            ExpandedPlaylistBackdrop(coverUrl = active.second, playlistId = active.first)
         }
     }
 }

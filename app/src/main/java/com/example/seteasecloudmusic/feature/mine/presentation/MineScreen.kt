@@ -491,6 +491,7 @@ fun MineScreen(
                 detail.id == uiState.likedPlaylist?.id ||
                     uiState.createdPlaylists.any { it.id == detail.id }
             )
+            val defaultStyle = mineDetailDefaultStyle(detail, uiState)
             androidx.compose.runtime.key(playlistOpenCounter.intValue) {
                 PlaylistDetailScreen(
                     detail = detail,
@@ -513,7 +514,8 @@ fun MineScreen(
                         { ids -> onDeleteTracks(detail.id, ids) }
                     } else {
                         null
-                    }
+                    },
+                    defaultStyle = defaultStyle
                 )
             }
         }
@@ -527,6 +529,7 @@ fun MineScreen(
                 detail.id == uiState.likedPlaylist?.id ||
                     uiState.createdPlaylists.any { it.id == detail.id }
             )
+            val defaultStyle = mineDetailDefaultStyle(detail, uiState)
             PlaylistDetailScreen(
                 detail = detail,
                 backdrop = mineBackdrop,
@@ -548,12 +551,24 @@ fun MineScreen(
                     { ids -> onDeleteTracks(detail.id, ids) }
                 } else {
                     null
-                }
+                },
+                defaultStyle = defaultStyle
             )
         }
     }
     }
 
+}
+
+internal fun mineDetailDefaultStyle(
+    detail: PlaylistDetail,
+    uiState: MineUiState
+): PlaylistDetailStyle = when {
+    detail.id == LOCAL_PLAYLIST_ID ||
+        detail.id == uiState.likedPlaylist?.id ||
+        uiState.createdPlaylists.any { it.id == detail.id } -> PlaylistDetailStyle.POSTER_WALL
+    uiState.favoritedPlaylists.any { it.id == detail.id } -> PlaylistDetailStyle.FULL_COVER
+    else -> PlaylistDetailStyle.APPLE_MUSIC
 }
 
 /**
