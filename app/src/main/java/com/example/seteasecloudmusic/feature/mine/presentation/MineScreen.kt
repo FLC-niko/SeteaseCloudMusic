@@ -107,7 +107,6 @@ import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSurface
 import com.example.seteasecloudmusic.core.ui.components.GlassThumb
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
-import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
@@ -427,9 +426,6 @@ fun MineScreen(
             collapseFractionProvider = { if (isLoggedIn) collapseFractionState.value else 0f },
             statusBarHeight = statusBarHeight,
             backdrop = topBarBackdrop,
-            avatarUrl = if (isLoggedIn) session.avatarUrl else null,
-            displayName = if (isLoggedIn) session.nickname else null,
-            onAvatarClick = onLoginClick,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .zIndex(4f)
@@ -584,24 +580,14 @@ private fun MineCollapsedTopBar(
     collapseFractionProvider: () -> Float,
     statusBarHeight: Dp,
     backdrop: Backdrop,
-    avatarUrl: String?,
-    displayName: String?,
-    onAvatarClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 顶部栏不渲染右上角头像，避免与下方用户信息卡片中的头像重复出现；点击下方资料卡片即可打开账户与设置页。
     AppleMusicMorphingTopBar(
         title = "我的",
         collapseFractionProvider = collapseFractionProvider,
         statusBarHeight = statusBarHeight,
         backdrop = backdrop,
-        trailingContent = {
-            UserAvatarButton(
-                avatarUrl = avatarUrl,
-                displayName = displayName,
-                size = 46.dp,
-                onClick = onAvatarClick
-            )
-        },
         modifier = modifier
     )
 }
