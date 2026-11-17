@@ -87,6 +87,8 @@ dependencies {
     implementation(libs.retrofit)
     // Retrofit 的 GSON 转换器，用于 JSON 数据的序列化和反序列化
     implementation(libs.retrofit.converter.gson)
+    // 本地二维码登录矩阵生成（纯 Java 轻量库）
+    implementation(libs.zxing.core)
     
     // 实现协程相关依赖
     implementation(libs.kotlinx.coroutines.core)
