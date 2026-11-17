@@ -46,6 +46,9 @@ class PlayerSettingsManager @Inject constructor(
     private val _predictiveBackEnabled = MutableStateFlow(loadSavedPredictiveBack())
     val predictiveBackEnabled: StateFlow<Boolean> = _predictiveBackEnabled.asStateFlow()
 
+    private val _localDirectApiEnabled = MutableStateFlow(loadSavedLocalDirectApi())
+    val localDirectApiEnabled: StateFlow<Boolean> = _localDirectApiEnabled.asStateFlow()
+
     fun setAudioQuality(quality: OnlineAudioQuality) {
         _audioQuality.value = quality
         prefs.edit().putString(KEY_AUDIO_QUALITY, quality.name).apply()
@@ -69,6 +72,11 @@ class PlayerSettingsManager @Inject constructor(
     fun setPredictiveBackEnabled(enabled: Boolean) {
         _predictiveBackEnabled.value = enabled
         prefs.edit().putBoolean(KEY_PREDICTIVE_BACK, enabled).apply()
+    }
+
+    fun setLocalDirectApiEnabled(enabled: Boolean) {
+        _localDirectApiEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_LOCAL_DIRECT_API, enabled).apply()
     }
 
     private fun loadSavedAudioQuality(): OnlineAudioQuality {
@@ -96,6 +104,10 @@ class PlayerSettingsManager @Inject constructor(
         return prefs.getBoolean(KEY_PREDICTIVE_BACK, true)
     }
 
+    private fun loadSavedLocalDirectApi(): Boolean {
+        return prefs.getBoolean(KEY_LOCAL_DIRECT_API, true)
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
@@ -103,6 +115,7 @@ class PlayerSettingsManager @Inject constructor(
         private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"
         private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
         private const val KEY_PREDICTIVE_BACK = "predictive_back_enabled"
+        private const val KEY_LOCAL_DIRECT_API = "local_direct_api_enabled"
 
         @Volatile
         private var INSTANCE: PlayerSettingsManager? = null

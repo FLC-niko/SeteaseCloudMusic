@@ -4,6 +4,12 @@ import android.content.Context
 import android.util.Log
 import com.example.seteasecloudmusic.BuildConfig
 import com.example.seteasecloudmusic.core.network.interceptor.AuthInterceptor
+import com.example.seteasecloudmusic.core.network.local.LocalNeteaseApiInterceptor
+import com.example.seteasecloudmusic.core.network.local.LocalNeteaseClient
+import com.example.seteasecloudmusic.core.network.local.NeteaseEndpointRegistry
+import com.example.seteasecloudmusic.core.network.local.OkHttpNeteaseUpstreamTransport
+import com.example.seteasecloudmusic.core.network.local.SharedPreferencesNeteaseTokenStore
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -46,7 +52,10 @@ class NetworkModule {
      */
     @Provides
     @Singleton
-    fun provideHttpClient(@ApplicationContext context: Context): OkHttpClient {
+    fun provideHttpClient(
+        @ApplicationContext context: Context,
+        settingsManager: PlayerSettingsManager
+    ): OkHttpClient {
         /**
          * 随机中国 IP 参数拦截器：
          * 为所有请求统一附加 randomCNIP=true，规避部分环境下的 460 限制。
@@ -164,8 +173,61 @@ class NetworkModule {
             }
         }
 
+        val apiDispatcher = createApiDispatcher()
+
+        val upstreamLoggingInterceptor = Interceptor { chain ->
+            val req = chain.request()
+            if (BuildConfig.DEBUG) {
+                Log.d("NetworkModule", "LOCAL-UPSTREAM --> ${req.method} ${req.url}")
+            }
+            val startNs = System.nanoTime()
+            try {
+                val res = chain.proceed(req)
+                if (BuildConfig.DEBUG) {
+                    val elapsedMs = (System.nanoTime() - startNs) / 1_000_000L
+                    Log.d("NetworkModule", "LOCAL-UPSTREAM <-- ${res.code} ${req.method} ${req.url} (${elapsedMs}ms)")
+                }
+                res
+            } catch (t: Throwable) {
+                if (BuildConfig.DEBUG) {
+                    val elapsedMs = (System.nanoTime() - startNs) / 1_000_000L
+                    Log.w(
+                        "NetworkModule",
+                        "LOCAL-UPSTREAM ERR ${req.method} ${req.url} (${elapsedMs}ms): ${t::class.java.simpleName}: ${t.message}"
+                    )
+                }
+                throw t
+            }
+        }
+
+        val upstreamClient = OkHttpClient.Builder()
+            .dispatcher(apiDispatcher)
+            .dns(smartDns)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(upstreamLoggingInterceptor)
+            .build()
+
+        val localNeteaseApiInterceptor = LocalNeteaseApiInterceptor(
+            primaryBaseUrl = BuildConfig.BASE_URL,
+            backupBaseUrl = BuildConfig.BACKUP_BASE_URL,
+            registry = NeteaseEndpointRegistry(
+                client = LocalNeteaseClient(
+                    transport = OkHttpNeteaseUpstreamTransport(upstreamClient),
+                    tokenStore = SharedPreferencesNeteaseTokenStore(context)
+                )
+            ),
+            isLocalModeEnabled = { settingsManager.localDirectApiEnabled.value },
+            logDebug = { msg ->
+                if (BuildConfig.DEBUG) {
+                    Log.d("NetworkModule", msg)
+                }
+            }
+        )
+
         return OkHttpClient.Builder()
-            .dispatcher(createApiDispatcher())
+            .dispatcher(apiDispatcher)
             .dns(smartDns)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
@@ -176,8 +238,10 @@ class NetworkModule {
             .addInterceptor(commonHeadersInterceptor)
             // 自动管理 Cookie（登录态）。
             .addInterceptor(AuthInterceptor(context))
-            // 统一兜底处理非 2xx 响应，位于故障切换之外以便先针对 5xx/IO 异常切备用线路。
+            // 统一兜底处理非 2xx 响应，位于本地协议与故障切换之外以便统一处理业务错误码。
             .addInterceptor(errorInterceptor)
+            // 默认在应用内本地加密直连网易云官方，不经外部代理服务器；关闭时自动回退主备节点。
+            .addInterceptor(localNeteaseApiInterceptor)
             // 主节点超时/网络异常或返回 5xx 时自动切换至备用服务器。
             .addInterceptor(
                 ApiEndpointFailoverInterceptor(

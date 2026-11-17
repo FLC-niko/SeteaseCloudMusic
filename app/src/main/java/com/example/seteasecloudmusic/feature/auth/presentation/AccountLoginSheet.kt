@@ -106,6 +106,7 @@ fun AccountLoginSheetContent(
     val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
     val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
     val predictiveBackEnabled by viewModel.playerSettingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
+    val localDirectApiEnabled by viewModel.playerSettingsManager.localDirectApiEnabled.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel.snackbarMessage) {
         viewModel.snackbarMessage.collectLatest { message ->
@@ -250,6 +251,8 @@ fun AccountLoginSheetContent(
                             onSuperLyricApiChange = { viewModel.playerSettingsManager.setSuperLyricApiEnabled(it) },
                             predictiveBackEnabled = predictiveBackEnabled,
                             onPredictiveBackChange = { viewModel.playerSettingsManager.setPredictiveBackEnabled(it) },
+                            localDirectApiEnabled = localDirectApiEnabled,
+                            onLocalDirectApiChange = { viewModel.playerSettingsManager.setLocalDirectApiEnabled(it) },
                             onLogoutClick = { viewModel.onRequestLogout() }
                         )
                     }
@@ -426,6 +429,8 @@ private fun AccountDetailsPanel(
     onSuperLyricApiChange: (Boolean) -> Unit,
     predictiveBackEnabled: Boolean,
     onPredictiveBackChange: (Boolean) -> Unit,
+    localDirectApiEnabled: Boolean,
+    onLocalDirectApiChange: (Boolean) -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val secondary = Color(0xFF8D8D93)
@@ -504,6 +509,13 @@ private fun AccountDetailsPanel(
                 title = "预测性返回手势",
                 checked = predictiveBackEnabled,
                 onCheckedChange = onPredictiveBackChange,
+                backdrop = backdrop
+            )
+            SettingsDivider(dividerColor)
+            SettingsToggleRow(
+                title = "本地直连接口（免服务器）",
+                checked = localDirectApiEnabled,
+                onCheckedChange = onLocalDirectApiChange,
                 backdrop = backdrop
             )
         }
