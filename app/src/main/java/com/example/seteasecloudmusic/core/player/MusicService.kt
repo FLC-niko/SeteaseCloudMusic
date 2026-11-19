@@ -154,6 +154,7 @@ class MusicService : MediaSessionService() {
     private var musicForwardingPlayer: MusicForwardingPlayer? = null
     private var currentArtworkBitmap: Bitmap? = null
     private var cachedSessionCompat: androidx.media3.session.legacy.MediaSessionCompat? = null
+    private var sessionCompatReflectionFailed: Boolean = false
 
     // 服务级持久唤醒锁与网络锁：跨越单曲 STATE_ENDED 到下一首 URL 解析起播的空窗期，防止切歌瞬间被系统挂起或断网
     private var serviceWakeLock: android.os.PowerManager.WakeLock? = null
@@ -496,6 +497,7 @@ class MusicService : MediaSessionService() {
 
     private fun getMediaSessionCompat(): androidx.media3.session.legacy.MediaSessionCompat? {
         if (cachedSessionCompat != null) return cachedSessionCompat
+        if (sessionCompatReflectionFailed) return null
         return try {
             val session = mediaSession ?: return null
             val implField = session.javaClass.getDeclaredField("impl").apply { isAccessible = true }
@@ -507,6 +509,7 @@ class MusicService : MediaSessionService() {
             cachedSessionCompat = result
             result
         } catch (e: Throwable) {
+            sessionCompatReflectionFailed = true
             android.util.Log.w("MusicService", "Failed to retrieve MediaSessionCompat via reflection", e)
             null
         }

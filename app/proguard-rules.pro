@@ -40,3 +40,13 @@
 -keepclasseswithmembernames class * { native <methods>; }
 # Retrofit Service 接口方法名参与动态代理，保留签名
 -keepclasseswithmembers class * { @retrofit2.http.* <methods>; }
+# MusicService 反射同步 Media3 内部 MediaSessionCompat（蓝牙/车机/系统媒体歌词元数据）
+-keepclassmembers class androidx.media3.session.MediaSession {
+    *** impl;
+}
+-keepclassmembers class androidx.media3.session.MediaSessionImpl {
+    *** sessionLegacyStub;
+}
+-keepclassmembers class androidx.media3.session.MediaSessionLegacyStub {
+    public *** getSessionCompat();
+}
