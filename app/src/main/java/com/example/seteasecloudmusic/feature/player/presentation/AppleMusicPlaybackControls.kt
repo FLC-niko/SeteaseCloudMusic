@@ -37,7 +37,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -169,14 +171,14 @@ fun AppleMusicProgressSlider(
     val haptics = LocalHapticFeedback.current
     val onSeekUpdated by rememberUpdatedState(onSeekTo)
 
-    val smoothPositionMs = rememberInterpolatedPlaybackTimeMs(
+    val smoothPositionState = rememberSmoothPlaybackTimeState(
         positionMs = currentPositionMs,
         durationMs = durationMs,
         isPlaying = isPlaying
     )
 
     var isPressed by remember { mutableStateOf(false) }
-    var dragFraction by remember { mutableFloatStateOf(0f) }
+    val dragFractionState = remember { mutableFloatStateOf(0f) }
     var pendingSeekMs by remember(durationMs) { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(pendingSeekMs) {
@@ -189,38 +191,27 @@ fun AppleMusicProgressSlider(
     val validDuration = hasTrack && durationMs > 0
     val activePressed = validDuration && isPressed
 
-    val liveMs = pendingSeekMs?.takeIf { abs(smoothPositionMs - it) > 900 } ?: smoothPositionMs
-    val normalFraction = if (validDuration) {
-        (liveMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
-    val displayFraction = if (activePressed) dragFraction else normalFraction
-    val displayCurrentMs = if (activePressed) {
-        (dragFraction * durationMs).roundToInt().coerceIn(0, durationMs)
-    } else {
-        liveMs.coerceAtLeast(0)
-    }
-
-    val scale by animateFloatAsState(
+    val scaleState = animateFloatAsState(
         targetValue = if (activePressed) 1.035f else 1f,
         animationSpec = spring(dampingRatio = 0.62f, stiffness = 210f),
         label = "progressScale"
     )
-    val thickness by animateDpAsState(
+    val thicknessState = animateDpAsState(
         targetValue = if (activePressed) 12.dp else 7.dp,
         animationSpec = spring(dampingRatio = 0.62f, stiffness = 210f),
         label = "progressThickness"
     )
-    val trackAlpha by animateFloatAsState(
+    val trackAlphaState = animateFloatAsState(
         targetValue = if (activePressed) 0.85f else 0.62f,
         animationSpec = spring(dampingRatio = 0.65f, stiffness = 220f),
         label = "trackAlpha"
     )
-    val timeAlpha by animateFloatAsState(
+    val timeAlphaState = animateFloatAsState(
         targetValue = if (activePressed) 0.72f else 0.46f,
         animationSpec = spring(dampingRatio = 0.65f, stiffness = 220f),
         label = "timeAlpha"
     )
+    val trackOutlinePath = remember { Path() }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Box(
@@ -235,7 +226,7 @@ fun AppleMusicProgressSlider(
                         isPressed = true
                         pendingSeekMs = null
                         val width = size.width.toFloat().coerceAtLeast(1f)
-                        dragFraction = (down.position.x / width).coerceIn(0f, 1f)
+                        dragFractionState.floatValue = (down.position.x / width).coerceIn(0f, 1f)
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
 
                         var committed = true
@@ -244,13 +235,13 @@ fun AppleMusicProgressSlider(
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val current = event.changes.firstOrNull() ?: break
                                 current.consume()
-                                dragFraction = (current.position.x / width).coerceIn(0f, 1f)
+                                dragFractionState.floatValue = (current.position.x / width).coerceIn(0f, 1f)
                             } while (event.changes.any { it.pressed })
                         } catch (_: Exception) {
                             committed = false
                         } finally {
                             if (committed && validDuration) {
-                                val target = (dragFraction * durationMs).roundToInt().coerceIn(0, durationMs)
+                                val target = (dragFractionState.floatValue * durationMs).roundToInt().coerceIn(0, durationMs)
                                 pendingSeekMs = target
                                 onSeekUpdated(target)
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -266,22 +257,30 @@ fun AppleMusicProgressSlider(
                     .fillMaxWidth()
                     .height(14.dp)
                     .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        alpha = trackAlpha
+                        val s = scaleState.value
+                        scaleX = s
+                        scaleY = s
+                        alpha = trackAlphaState.value
                     }
             ) {
-                val trackH = thickness.toPx().coerceIn(0f, size.height)
+                val smoothPos = smoothPositionState.floatValue
+                val liveMs = pendingSeekMs?.takeIf { abs(smoothPos - it) > 900f }?.toFloat() ?: smoothPos
+                val displayFraction = if (activePressed) {
+                    dragFractionState.floatValue
+                } else if (validDuration) {
+                    (liveMs / durationMs.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+
+                val trackH = thicknessState.value.toPx().coerceIn(0f, size.height)
                 val top = (size.height - trackH) * 0.5f
-                val outline = Path().apply {
-                    addRoundRect(
-                        RoundRect(
-                            rect = Rect(0f, top, size.width, top + trackH),
-                            cornerRadius = CornerRadius(trackH * 0.5f, trackH * 0.5f)
-                        )
+                trackOutlinePath.reset()
+                trackOutlinePath.addRoundRect(
+                    RoundRect(
+                        rect = Rect(0f, top, size.width, top + trackH),
+                        cornerRadius = CornerRadius(trackH * 0.5f, trackH * 0.5f)
                     )
-                }
-                clipPath(outline) {
+                )
+                clipPath(trackOutlinePath) {
                     drawRect(
                         color = Color.White.copy(alpha = 0.34f),
                         topLeft = Offset(0f, top),
@@ -307,37 +306,17 @@ fun AppleMusicProgressSlider(
                 .padding(horizontal = 1.dp),
             contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        alpha = timeAlpha
-                    },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (hasTrack) formatAppleMusicTime(displayCurrentMs) else "0:00",
-                    color = Color.White,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-
-                Text(
-                    text = if (validDuration) {
-                        val remaining = (durationMs - displayCurrentMs).coerceAtLeast(0)
-                        "-${formatAppleMusicTime(remaining)}"
-                    } else "-0:00",
-                    color = Color.White,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.End,
-                    maxLines = 1
-                )
-            }
+            AppleMusicProgressTimeRow(
+                smoothPositionState = smoothPositionState,
+                dragFractionState = dragFractionState,
+                pendingSeekMs = pendingSeekMs,
+                durationMs = durationMs,
+                hasTrack = hasTrack,
+                validDuration = validDuration,
+                activePressed = activePressed,
+                scaleState = scaleState,
+                timeAlphaState = timeAlphaState
+            )
 
             if (hasTrack) {
                 val badgeTint = Color.White.copy(alpha = 0.52f)
@@ -365,6 +344,76 @@ fun AppleMusicProgressSlider(
                 }
             }
         }
+    }
+}
+
+/**
+ * 进度条下方左右时间标签独立封装，按“整秒”派发重组（1Hz），
+ * 避免 60/120/144Hz 的进度动画驱动两个 Text 逐帧重组。
+ */
+@Composable
+private fun AppleMusicProgressTimeRow(
+    smoothPositionState: FloatState,
+    dragFractionState: FloatState,
+    pendingSeekMs: Int?,
+    durationMs: Int,
+    hasTrack: Boolean,
+    validDuration: Boolean,
+    activePressed: Boolean,
+    scaleState: State<Float>,
+    timeAlphaState: State<Float>
+) {
+    val displaySecond by remember(
+        smoothPositionState,
+        dragFractionState,
+        pendingSeekMs,
+        durationMs,
+        activePressed
+    ) {
+        derivedStateOf {
+            val ms = if (activePressed) {
+                (dragFractionState.floatValue * durationMs).roundToInt().coerceIn(0, durationMs)
+            } else {
+                val smooth = smoothPositionState.floatValue
+                val live = pendingSeekMs?.takeIf { abs(smooth - it) > 900f } ?: smooth.roundToInt()
+                live.coerceAtLeast(0)
+            }
+            ms / 1000
+        }
+    }
+    val displayMs = displaySecond * 1000
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                val s = scaleState.value
+                scaleX = s
+                scaleY = s
+                alpha = timeAlphaState.value
+            },
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (hasTrack) formatAppleMusicTime(displayMs) else "0:00",
+            color = Color.White,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+
+        Text(
+            text = if (validDuration) {
+                val remaining = (durationMs - displayMs).coerceAtLeast(0)
+                "-${formatAppleMusicTime(remaining)}"
+            } else "-0:00",
+            color = Color.White,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+            maxLines = 1
+        )
     }
 }
 

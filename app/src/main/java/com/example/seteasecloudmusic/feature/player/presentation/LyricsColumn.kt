@@ -34,8 +34,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -97,13 +100,17 @@ import kotlin.math.sqrt
  * - 正常播放时通过 0.90x~1.10x 连续微调速率平滑追赶真实硬件时钟，严格单调递增；
  * - 仅在用户拖动进度条 / 切歌 (>380ms 跳变) 时瞬时对齐。
  */
+/**
+ * 返回 [FloatState] 本身而不解包读取，便于调用方把每帧时钟读取延迟到 Canvas/Draw 或 derivedStateOf 中，
+ * 避免整个播放控制栏或歌词树在 60/120/144Hz 下逐帧重组。
+ */
 @Composable
-internal fun rememberSmoothPlaybackTimeMs(
+internal fun rememberSmoothPlaybackTimeState(
     positionMs: Int,
     durationMs: Int,
     isPlaying: Boolean
-): Float {
-    var smoothMs by remember { mutableFloatStateOf(positionMs.toFloat()) }
+): FloatState {
+    val smoothMsState = remember { mutableFloatStateOf(positionMs.toFloat()) }
     val anchorPosRef = remember { intArrayOf(positionMs) }
     val anchorNanoRef = remember { longArrayOf(System.nanoTime()) }
 
@@ -112,13 +119,16 @@ internal fun rememberSmoothPlaybackTimeMs(
             anchorPosRef[0] = positionMs
             anchorNanoRef[0] = System.nanoTime()
         }
+        if (!isPlaying && smoothMsState.floatValue != positionMs.toFloat()) {
+            smoothMsState.floatValue = positionMs.toFloat()
+        }
     }
 
     LaunchedEffect(positionMs, isPlaying) {
         if (!isPlaying) {
-            smoothMs = positionMs.toFloat()
-        } else if (abs(positionMs.toFloat() - smoothMs) > 380f) {
-            smoothMs = positionMs.toFloat()
+            smoothMsState.floatValue = positionMs.toFloat()
+        } else if (abs(positionMs.toFloat() - smoothMsState.floatValue) > 380f) {
+            smoothMsState.floatValue = positionMs.toFloat()
             anchorPosRef[0] = positionMs
             anchorNanoRef[0] = System.nanoTime()
         }
@@ -139,28 +149,36 @@ internal fun rememberSmoothPlaybackTimeMs(
                 val elapsedSinceAnchorMs =
                     ((System.nanoTime() - anchorNanoRef[0]) / 1_000_000.0).toFloat().coerceAtLeast(0f)
                 val targetMs = anchorPosRef[0].toFloat() + elapsedSinceAnchorMs
-                val errorMs = targetMs - smoothMs
+                val current = smoothMsState.floatValue
+                val errorMs = targetMs - current
 
                 if (abs(errorMs) > 420f) {
-                    smoothMs = targetMs
+                    smoothMsState.floatValue = targetMs
                 } else {
                     val rate = (1f + errorMs * 0.0032f).coerceIn(0.90f, 1.10f)
-                    val next = smoothMs + dtMs * rate
-                    smoothMs = if (durationMs > 0) next.coerceAtMost(durationMs.toFloat()) else next
+                    val next = current + dtMs * rate
+                    smoothMsState.floatValue = if (durationMs > 0) next.coerceAtMost(durationMs.toFloat()) else next
                 }
             }
         }
     }
 
-    return if (isPlaying) smoothMs else positionMs.toFloat()
+    return smoothMsState
 }
+
+@Composable
+internal fun rememberSmoothPlaybackTimeMs(
+    positionMs: Int,
+    durationMs: Int,
+    isPlaying: Boolean
+): Float = rememberSmoothPlaybackTimeState(positionMs, durationMs, isPlaying).floatValue
 
 @Composable
 internal fun rememberInterpolatedPlaybackTimeMs(
     positionMs: Int,
     durationMs: Int,
     isPlaying: Boolean
-): Int = rememberSmoothPlaybackTimeMs(positionMs, durationMs, isPlaying).roundToInt()
+): Int = rememberSmoothPlaybackTimeState(positionMs, durationMs, isPlaying).floatValue.roundToInt()
 
 internal fun containsCjkChar(text: String): Boolean = text.any { ch ->
     val code = ch.code
@@ -421,7 +439,7 @@ fun LyricsColumn(
     onUserActivity: (() -> Unit)? = null,
     entryTranslationY: () -> Float = { 0f }
 ) {
-    val smoothTimeMs = rememberSmoothPlaybackTimeMs(
+    val smoothTimeState = rememberSmoothPlaybackTimeState(
         positionMs = currentTimeMs,
         durationMs = 0,
         isPlaying = isPlaying
@@ -429,26 +447,30 @@ fun LyricsColumn(
 
     val displayItems = remember(lyrics) { buildLyricDisplayItems(lyrics.lines) }
 
-    val activeItemIndex = remember(displayItems, smoothTimeMs.toInt() / 16, activeLineIndex) {
-        if (displayItems.isEmpty()) {
-            -1
-        } else {
-            val nowMs = smoothTimeMs.roundToInt()
-            val bySmoothTime = displayItems.indexOfLast { item ->
-                when (item) {
-                    is LyricDisplayItem.VocalGroup -> item.mainLine.startTime <= nowMs
-                    is LyricDisplayItem.Interlude -> nowMs in item.startTime until item.endTime
-                }
-            }
-            if (bySmoothTime >= 0) {
-                bySmoothTime
+    // 仅在激活歌词行索引真正变化时驱动重组，消除原先每 16ms 整页重组
+    val activeItemIndex by remember(displayItems, activeLineIndex, smoothTimeState) {
+        derivedStateOf {
+            if (displayItems.isEmpty()) {
+                -1
             } else {
-                displayItems.indexOfFirst {
-                    it is LyricDisplayItem.VocalGroup && it.mainLineIndex >= activeLineIndex.coerceAtLeast(0)
-                }.coerceAtLeast(0)
+                val nowMs = smoothTimeState.floatValue.roundToInt()
+                val bySmoothTime = displayItems.indexOfLast { item ->
+                    when (item) {
+                        is LyricDisplayItem.VocalGroup -> item.mainLine.startTime <= nowMs
+                        is LyricDisplayItem.Interlude -> nowMs in item.startTime until item.endTime
+                    }
+                }
+                if (bySmoothTime >= 0) {
+                    bySmoothTime
+                } else {
+                    displayItems.indexOfFirst {
+                        it is LyricDisplayItem.VocalGroup && it.mainLineIndex >= activeLineIndex.coerceAtLeast(0)
+                    }.coerceAtLeast(0)
+                }
             }
         }
     }
+    val smoothTimeProvider = remember(smoothTimeState) { { smoothTimeState.floatValue } }
 
     BoxWithConstraints(
         modifier = modifier.pointerInput(onToggleControls, onUserActivity) {
@@ -635,8 +657,12 @@ fun LyricsColumn(
                 ) { itemIdx, item ->
                     when (item) {
                         is LyricDisplayItem.Interlude -> {
-                            val nowInt = smoothTimeMs.roundToInt()
-                            val showDots = nowInt in (item.startTime - 250)..(item.endTime + 200)
+                            val showDots by remember(item, smoothTimeState) {
+                                derivedStateOf {
+                                    val nowInt = smoothTimeState.floatValue.roundToInt()
+                                    nowInt in (item.startTime - 250)..(item.endTime + 200)
+                                }
+                            }
                             AnimatedVisibility(
                                 visible = showDots,
                                 enter = fadeIn(tween(260)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
@@ -645,7 +671,7 @@ fun LyricsColumn(
                                 AmllInterludeDots(
                                     startTimeMs = item.startTime,
                                     endTimeMs = item.endTime,
-                                    currentTimeMs = smoothTimeMs,
+                                    smoothTimeProvider = smoothTimeProvider,
                                     onMeasured = { h -> measuredItemHeights[itemIdx] = h }
                                 )
                             }
@@ -656,7 +682,7 @@ fun LyricsColumn(
                                 group = item,
                                 itemIndex = itemIdx,
                                 activeItemIndex = activeItemIndex,
-                                smoothTimeMs = smoothTimeMs,
+                                smoothTimeProvider = smoothTimeProvider,
                                 hasWordTiming = lyrics.hasWordTiming,
                                 manualBrowseActive = manualBrowseActive,
                                 measurer = measurer,
@@ -686,14 +712,13 @@ fun LyricsColumn(
 private fun AmllInterludeDots(
     startTimeMs: Int,
     endTimeMs: Int,
-    currentTimeMs: Float,
+    smoothTimeProvider: () -> Float,
     onMeasured: (Int) -> Unit
 ) {
     val duration = (endTimeMs - startTimeMs).coerceAtLeast(1).toFloat()
-    val progress = ((currentTimeMs - startTimeMs) / duration).coerceIn(0f, 1f)
 
     val infiniteTransition = rememberInfiniteTransition(label = "interludeBreath")
-    val breath by infiniteTransition.animateFloat(
+    val breathState = infiniteTransition.animateFloat(
         initialValue = 0.92f,
         targetValue = 1.16f,
         animationSpec = infiniteRepeatable(
@@ -725,11 +750,13 @@ private fun AmllInterludeDots(
             modifier = Modifier
                 .size(width = 52.dp, height = 22.dp)
                 .graphicsLayer {
+                    val breath = breathState.value
                     scaleX = breath
                     scaleY = breath
                     transformOrigin = TransformOrigin(0f, 0.5f)
                 }
         ) {
+            val progress = ((smoothTimeProvider() - startTimeMs) / duration).coerceIn(0f, 1f)
             val r = 5.2.dp.toPx()
             val cy = size.height * 0.5f
             val spacing = 16.dp.toPx()
@@ -973,7 +1000,7 @@ private fun AmllVocalGroupItem(
     group: LyricDisplayItem.VocalGroup,
     itemIndex: Int,
     activeItemIndex: Int,
-    smoothTimeMs: Float,
+    smoothTimeProvider: () -> Float,
     hasWordTiming: Boolean,
     manualBrowseActive: Boolean,
     measurer: TextMeasurer,
@@ -1020,18 +1047,18 @@ private fun AmllVocalGroupItem(
         animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
         label = "lyricGroupBlur"
     )
-    val animatedAlpha by animateFloatAsState(
+    val animatedAlphaState = animateFloatAsState(
         targetValue = targetLineAlpha,
         animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
         label = "lyricGroupAlpha"
     )
-    val animatedScale by animateFloatAsState(
+    val animatedScaleState = animateFloatAsState(
         targetValue = if (isActive) 1.0f else 0.975f,
         animationSpec = spring(dampingRatio = 0.88f, stiffness = 175f),
         label = "lyricGroupScale"
     )
     // 激活态平滑混合系数：换行退出高亮时让行尾词的上浮与辉光在 520ms 内丝滑回落，绝不一帧生硬截断
-    val activeBlend by animateFloatAsState(
+    val activeBlendState = animateFloatAsState(
         targetValue = if (isActive) 1f else 0f,
         animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
         label = "lyricActiveBlend"
@@ -1069,9 +1096,10 @@ private fun AmllVocalGroupItem(
             }
             .padding(horizontal = 28.dp, vertical = 13.dp)
             .graphicsLayer {
-                alpha = animatedAlpha
-                scaleX = animatedScale
-                scaleY = animatedScale
+                alpha = animatedAlphaState.value
+                val scaleVal = animatedScaleState.value
+                scaleX = scaleVal
+                scaleY = scaleVal
                 transformOrigin = if (line.isDuet) TransformOrigin(1f, 0.5f) else TransformOrigin(0f, 0.5f)
             }
             .then(
@@ -1090,8 +1118,8 @@ private fun AmllVocalGroupItem(
     ) {
         AmllRenderedLyricLine(
             prepared = preparedMain,
-            activeBlend = activeBlend,
-            smoothTimeMs = smoothTimeMs,
+            activeBlendState = activeBlendState,
+            smoothTimeProvider = smoothTimeProvider,
             floatMaxPx = mainFloatMaxPx,
             unplayedAlpha = 0.34f,
             playedAlpha = 1.0f
@@ -1121,8 +1149,8 @@ private fun AmllVocalGroupItem(
                         }
                         AmllRenderedLyricLine(
                             prepared = preparedBg,
-                            activeBlend = activeBlend,
-                            smoothTimeMs = smoothTimeMs,
+                            activeBlendState = activeBlendState,
+                            smoothTimeProvider = smoothTimeProvider,
                             floatMaxPx = bgFloatMaxPx,
                             unplayedAlpha = 0.32f,
                             playedAlpha = 0.82f
@@ -1137,8 +1165,8 @@ private fun AmllVocalGroupItem(
 @Composable
 private fun AmllRenderedLyricLine(
     prepared: PreparedLyricLineLayout,
-    activeBlend: Float,
-    smoothTimeMs: Float,
+    activeBlendState: State<Float>,
+    smoothTimeProvider: () -> Float,
     floatMaxPx: Float,
     unplayedAlpha: Float,
     playedAlpha: Float
@@ -1152,7 +1180,9 @@ private fun AmllRenderedLyricLine(
             .fillMaxWidth()
             .height(heightDp)
     ) {
-        // 非激活行或非逐字整行歌词（如 LRC）：仅渲染纯净锐利白色文字，绝不附加任何辉光阴影
+        val activeBlend = activeBlendState.value
+        // 非激活行或非逐字整行歌词（如 LRC）：直接返回，不读取 smoothTimeProvider()，
+        // 让 Compose 快照系统完全不订阅每帧时钟，避免非激活模糊行随逐帧进度空重绘。
         if (!prepared.isWordTimed || prepared.segments.isEmpty() || activeBlend <= 0.004f) {
             val alpha = if (!prepared.isWordTimed && activeBlend > 0.5f) playedAlpha else 1f
             drawText(
@@ -1162,6 +1192,8 @@ private fun AmllRenderedLyricLine(
             )
             return@Canvas
         }
+
+        val smoothTimeMs = smoothTimeProvider()
 
         // 当行刚进入/退出激活态时，未唱部分平滑向整行纯色收敛，过渡自然不跳变
         val effectiveUnplayedAlpha = unplayedAlpha + (1f - unplayedAlpha) * (1f - activeBlend)
