@@ -102,6 +102,7 @@ import com.example.seteasecloudmusic.feature.player.presentation.NowPlayingScree
 import com.example.seteasecloudmusic.feature.player.presentation.PlayerViewModel
 import com.example.seteasecloudmusic.core.ui.components.Ios26NetworkOfflineDialog
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.example.seteasecloudmusic.core.ui.components.LocalPageVisible
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import com.example.seteasecloudmusic.core.ui.components.liquidGlassPanel
 import com.example.seteasecloudmusic.core.ui.components.GlassDefaults
@@ -166,6 +167,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -539,6 +541,9 @@ fun AppNavigation(
     )
     val hintProgress = navigationScroll.scrollHintProgress.value
     val hintScale = 1f - 0.05f * hintProgress
+    val isPlayerOpaque by remember {
+        derivedStateOf { showNowPlaying && nowPlayingProgress.value >= 0.999f }
+    }
 
     // 2. 【舞台】：整个屏幕的根容器，使用 Box 以支持 Z 轴方向的层叠排列
     CompositionLocalProvider(
@@ -552,6 +557,8 @@ fun AppNavigation(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // 全屏播放页完全覆盖时跳过整棵底层页面树与全局毛玻璃取景层绘制，避免后台白烧 RenderThread
+                .drawWithContent { if (!isPlayerOpaque) drawContent() }
                 // 监听列表滚动驱动底栏与迷你播放器变动
                 .nestedScroll(navigationScroll.nestedScrollConnection)
                 // 这里是毛玻璃的“取景层”。
@@ -565,6 +572,7 @@ fun AppNavigation(
             Box(Modifier.fillMaxSize().padding(start = railStartPadding, end = railEndPadding).testTag("chrome_content")) {
             AppPageContent(
                 selectedIndex = selectedIndexState,
+                isHostForeground = !isPlayerOpaque && !showAccountSheet,
                 topContentPadding = searchContentTopPadding,
                 imeOffset = animatedImeOffset,
                 avatarUrl = authUiState.authSession?.avatarUrl,
@@ -623,6 +631,7 @@ fun AppNavigation(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .zIndex(2f)
+                .drawWithContent { if (!isPlayerOpaque) drawContent() }
                 // 先避开系统导航栏（小白条）
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 // 手动添加上下左右的间距，左右缩进，底部悬浮
@@ -1013,6 +1022,7 @@ fun AppNavigation(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .zIndex(1f)
+                    .drawWithContent { if (!isPlayerOpaque) drawContent() }
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(
                         start = railStartPadding,
@@ -1228,6 +1238,7 @@ private data class PageSlideTransition(
 @Composable
 private fun AppPageContent(
     selectedIndex: State<Int>,
+    isHostForeground: Boolean,
     topContentPadding: Dp,
     imeOffset: Dp,
     avatarUrl: String?,
@@ -1355,7 +1366,10 @@ private fun AppPageContent(
                             }
                         }
                 ) {
-                    val isPageForeground = displayedIndex == pageIndex && transitionState == null
+                    val pageArtist = selectedArtist?.takeIf { it.pageIndex == pageIndex }
+                    val isPageForeground = isHostForeground && displayedIndex == pageIndex && transitionState == null
+                    val isPageContentVisible = isHostForeground && isVisible && pageArtist == null
+                    CompositionLocalProvider(LocalPageVisible provides isPageContentVisible) {
                     when (pageIndex) {
                         0 -> HomeRoute(
                             topContentPadding = topContentPadding,
@@ -1410,8 +1424,8 @@ private fun AppPageContent(
 
                         else -> AppPageBackground()
                     }
+                    }
 
-                    val pageArtist = selectedArtist?.takeIf { it.pageIndex == pageIndex }
                     val lastArtist = remember { mutableStateOf<SelectedArtist?>(null) }
                     val artistOpenCounter = remember { mutableIntStateOf(0) }
                     LaunchedEffect(pageArtist) {
@@ -1989,6 +2003,12 @@ private fun MovingPlayerArtwork(
     }
 }
 
+private data class MiniPlayerDisplayState(
+    val currentTrack: Track?,
+    val status: PlayerStatus,
+    val canSwitch: Boolean
+)
+
 @Composable
 internal fun SearchMiniPlayerBar(
     backdrop: Backdrop,
@@ -2007,18 +2027,37 @@ internal fun SearchMiniPlayerBar(
     hideArtwork: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val playbackState by playbackStateFlow.collectAsStateWithLifecycle()
-    val hasTrack = playbackState.currentTrack != null
-    val isPlaying = playbackState.status == PlayerStatus.PLAYING
-    val isBuffering = playbackState.status == PlayerStatus.BUFFERING
-    val duration = playbackState.durationMs
-    val currentPosition = playbackState.currentPositionMs
+    // 仅订阅曲目、播放状态与切歌能力，彻底屏蔽每 500ms 一次的 currentPositionMs 推送，
+    // 避免整个液态玻璃迷你播放条在播放期间持续重组。
+    val displayState by remember(playbackStateFlow) {
+        playbackStateFlow
+            .map { state ->
+                MiniPlayerDisplayState(
+                    currentTrack = state.currentTrack,
+                    status = state.status,
+                    canSwitch = state.currentTrack != null && state.queueTracks.size > 1
+                )
+            }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(
+        initialValue = playbackStateFlow.value.let { state ->
+            MiniPlayerDisplayState(
+                currentTrack = state.currentTrack,
+                status = state.status,
+                canSwitch = state.currentTrack != null && state.queueTracks.size > 1
+            )
+        }
+    )
+    val currentTrack = displayState.currentTrack
+    val hasTrack = currentTrack != null
+    val isPlaying = displayState.status == PlayerStatus.PLAYING
+    val isBuffering = displayState.status == PlayerStatus.BUFFERING
 
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
 
     // 当前展示的曲目信息（滑动切歌动画期间保持旧歌曲滑出，新歌曲就绪后滑入）
-    var displayedTrack by remember { mutableStateOf(playbackState.currentTrack) }
+    var displayedTrack by remember { mutableStateOf(currentTrack) }
     var isTransitioning by remember { mutableStateOf(false) }
     var transitionJob by remember { mutableStateOf<Job?>(null) }
 
@@ -2029,11 +2068,11 @@ internal fun SearchMiniPlayerBar(
     val animAlpha = remember { Animatable(1f) }
 
     // 是否允许切歌（有曲目且待播列表大于 1 首）
-    val canSwitch = hasTrack && playbackState.queueTracks.size > 1
+    val canSwitch = displayState.canSwitch
 
     // 外部切歌或播放列表切换时，自动同步 displayedTrack
-    LaunchedEffect(playbackState.currentTrack?.id) {
-        val newTrack = playbackState.currentTrack
+    LaunchedEffect(currentTrack?.id) {
+        val newTrack = currentTrack
         if (!isTransitioning && !isDragging && displayedTrack?.id != newTrack?.id) {
             if (displayedTrack == null || newTrack == null) {
                 displayedTrack = newTrack
@@ -2050,21 +2089,6 @@ internal fun SearchMiniPlayerBar(
     val currentArtworkUrl = displayedTrack?.coverUrl
         ?: displayedTrack?.album?.coverUrl
     val title = displayedTrack?.title ?: "未在播放"
-
-    val targetProgress = remember(playbackState.currentTrack?.id, currentPosition, duration) {
-        if (duration > 0) {
-            (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-        } else 0f
-    }
-    val animatedProgress by animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = if (isPlaying && targetProgress > 0f) {
-            tween(durationMillis = 500, easing = LinearEasing)
-        } else {
-            spring(stiffness = 500f)
-        },
-        label = "miniPlayerProgress"
-    )
 
     val swipeThreshold = with(density) { 36.dp.toPx() }
     val exitDistance = with(density) { 220.dp.toPx() }
@@ -2120,7 +2144,8 @@ internal fun SearchMiniPlayerBar(
 
                 // 6. 等待新歌曲就绪（超时放宽至 600ms，确保异步分发时不因超时退化）
                 val newTrack = withTimeoutOrNull(600) {
-                    snapshotFlow { playbackState.currentTrack }
+                    playbackStateFlow
+                        .map { it.currentTrack }
                         .filter { it != null && it.id != oldTrackId }
                         .first()
                 }
@@ -2148,7 +2173,7 @@ internal fun SearchMiniPlayerBar(
                     joinAll(enterMove, enterFade)
                 } else {
                     // 超时未就绪兜底：在原位渐入当前曲目，绝不把旧歌曲在对侧滑入
-                    displayedTrack = playbackState.currentTrack
+                    displayedTrack = playbackStateFlow.value.currentTrack
                     animOffsetX.snapTo(0f)
                     animAlpha.animateTo(1f, tween(durationMillis = 150))
                 }
@@ -2388,10 +2413,11 @@ internal fun SearchMiniPlayerBar(
 
             // 播放暂停在最靠右，外面加上一个圈，显示播放进度，与组件的圆角和大小对齐
             MiniPlayerProgressPlayButton(
+                playbackStateFlow = playbackStateFlow,
                 isPlaying = isPlaying,
                 isBuffering = isBuffering,
                 hasTrack = hasTrack && enabled,
-                progress = animatedProgress,
+                isProgressActive = hasTrack && enabled,
                 onClick = onPlayPauseClick
             )
         }
@@ -2400,20 +2426,54 @@ internal fun SearchMiniPlayerBar(
 
 /**
  * 迷你播放条右侧的播放/暂停按钮：
- * 外层包裹播放进度指示圆环，与组件的大小与圆角对齐
+ * 外层包裹播放进度指示圆环，与组件的大小与圆角对齐。
+ * 进度订阅与动画下沉到此组件，并在独立的 graphicsLayer Canvas 绘制阶段读取进度值，
+ * 避免连带外层 SearchMiniPlayerBar 及整块 liquidGlass(backdrop) 逐帧重组与重录。
  */
 @Composable
 private fun MiniPlayerProgressPlayButton(
+    playbackStateFlow: StateFlow<PlaybackState>,
     isPlaying: Boolean,
     isBuffering: Boolean = false,
     hasTrack: Boolean,
-    progress: Float,
+    isProgressActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val ringColor = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8)
     val trackColor = if (hasTrack) Color(0x1F000000) else Color(0x0F000000)
     val strokeWidth = 1.6.dp
+
+    val targetProgress by remember(playbackStateFlow, isProgressActive) {
+        if (!isProgressActive) {
+            flowOf(0f)
+        } else {
+            playbackStateFlow
+                .map { state ->
+                    if (state.durationMs > 0) {
+                        (state.currentPositionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+                }
+                .distinctUntilChanged()
+        }
+    }.collectAsStateWithLifecycle(
+        initialValue = if (isProgressActive) {
+            playbackStateFlow.value.let { state ->
+                if (state.durationMs > 0) {
+                    (state.currentPositionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+            }
+        } else 0f
+    )
+    val animatedProgressState = animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = if (isPlaying && targetProgress > 0f) {
+            tween(durationMillis = 500, easing = LinearEasing)
+        } else {
+            spring(stiffness = 500f)
+        },
+        label = "miniPlayerProgress"
+    )
 
     Box(
         modifier = modifier
@@ -2427,7 +2487,13 @@ private fun MiniPlayerProgressPlayButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                // 独立 28dp RenderNode：圆环动画每帧推进只重绘此小图层，不脏化外层液态玻璃 Backdrop
+                .graphicsLayer {}
+        ) {
+            val progress = animatedProgressState.value
             val strokePx = strokeWidth.toPx()
             val radius = (size.minDimension - strokePx) / 2f
             val centerOffset = Offset(size.width / 2f, size.height / 2f)
