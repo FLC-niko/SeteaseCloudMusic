@@ -235,6 +235,7 @@ fun PlaylistHeroDynamicPosterWallSection(
     isDark: Boolean = true,
     showControls: Boolean = true,
     artworkHeight: Dp? = null,
+    isAnimating: Boolean = true,
     titleAlphaProvider: () -> Float = { 1f },
     onTitlePositioned: ((LayoutCoordinates) -> Unit)? = null,
     onTitleLineCount: ((Int) -> Unit)? = null
@@ -274,6 +275,7 @@ fun PlaylistHeroDynamicPosterWallSection(
             ) {
                 ScrollingPosterWall(
                     covers = wallCovers,
+                    isAnimating = isAnimating,
                     modifier = Modifier
                         .fillMaxSize()
                         .layerBackdrop(wallBackdrop)

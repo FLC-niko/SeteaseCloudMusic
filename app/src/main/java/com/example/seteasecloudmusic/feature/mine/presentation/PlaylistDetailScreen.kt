@@ -1341,6 +1341,12 @@ private fun CompactPlaylistDetailScreen(
         }
     }
 
+    val isHeroInViewport by remember(lazyListState) {
+        derivedStateOf {
+            lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "playlist_hero" }
+        }
+    }
+
     // 整页统一纯色沉浸背景，没有任何黑色断层和过渡色阶，彻底消除透光
     Box(
         modifier = modifier
@@ -1374,6 +1380,7 @@ private fun CompactPlaylistDetailScreen(
                     onPlayAll = onPlayAll,
                     topInset = if (isEdgeToEdgeHero) statusBarHeight else 0.dp,
                     isDark = isDark,
+                    isHeroAnimating = isHeroInViewport,
                     titleAlphaProvider = {
                         val currentY = heroTitleCenterY
                         val startY = dockCenterY + morphBandPx
@@ -1792,6 +1799,7 @@ private fun RenderPlaylistHero(
     expanded: Boolean = false,
     mediaOnly: Boolean = false,
     artworkHeight: androidx.compose.ui.unit.Dp? = null,
+    isHeroAnimating: Boolean = true,
     titleAlphaProvider: () -> Float = { 1f },
     onHeroTitleMetricsChanged: ((centerOffsetFromTopPx: Float) -> Unit)? = null,
     onTitleLineCount: ((Int) -> Unit)? = null
@@ -1865,6 +1873,7 @@ private fun RenderPlaylistHero(
                     topInset = topInset,
                     showControls = !mediaOnly,
                     artworkHeight = artworkHeight,
+                    isAnimating = isHeroAnimating,
                     titleAlphaProvider = titleAlphaProvider,
                     onTitlePositioned = onTitlePositioned,
                     onTitleLineCount = onTitleLineCount

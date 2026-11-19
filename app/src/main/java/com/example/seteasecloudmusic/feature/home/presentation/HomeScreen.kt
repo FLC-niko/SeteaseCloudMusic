@@ -70,8 +70,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
@@ -94,6 +98,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -103,9 +109,12 @@ import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
+import com.example.seteasecloudmusic.core.ui.components.LocalPageVisible
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 
 private val HomeBackground = Color.White
 private val HomePrimary = Color(0xFF111111)
@@ -212,6 +221,16 @@ internal fun HomeScreenContent(
         val window = LocalAdaptiveWindow.current
         val split = window.showDetailAlongside(uiState.activePlaylistDetail != null, maxWidth, maxHeight)
 
+        val isPosterWallInViewport by remember(lazyListState) {
+            derivedStateOf {
+                lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "daily_recommend_wall" }
+            }
+        }
+        val isPosterWallAnimating = LocalPageVisible.current &&
+            isForeground &&
+            (split || uiState.activePlaylistDetail == null) &&
+            isPosterWallInViewport
+
         val feedContent: @Composable () -> Unit = {
             val homeBackdrop = rememberLayerBackdrop {
                 drawRect(HomeBackground)
@@ -297,6 +316,7 @@ internal fun HomeScreenContent(
                 DailyRecommendPosterWall(
                     tracks = uiState.tracks,
                     onClick = { onPosterWallClick(uiState.tracks, "每日推荐", uiState.tracks.firstOrNull()?.coverUrl) },
+                    isAnimating = isPosterWallAnimating,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 10.dp)
@@ -454,6 +474,7 @@ private fun HomeCollapsedTopBar(
 private fun DailyRecommendPosterWall(
     tracks: List<Track>,
     onClick: () -> Unit,
+    isAnimating: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val wallCovers = remember(tracks) {
@@ -470,6 +491,7 @@ private fun DailyRecommendPosterWall(
     ) {
         ScrollingPosterWall(
             covers = wallCovers,
+            isAnimating = isAnimating,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -511,20 +533,35 @@ private fun DailyRecommendPosterWall(
 @Composable
 internal fun ScrollingPosterWall(
     covers: List<String>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isAnimating: Boolean = true
 ) {
     if (covers.isEmpty()) return
 
-    val transition = rememberInfiniteTransition(label = "posterWallScroll")
-    val scrollProgress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 64000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "posterWallOffset"
-    )
+    // 可挂起、断点续播的进度状态：当页面切走、滑出视口、被全屏播放器/详情页遮挡或退到后台时
+    // 彻底停止 Choreographer 帧回调，恢复可见时从原位置无缝继续，既保零跳变又彻底消除空载重绘。
+    val scrollProgressState = remember { mutableFloatStateOf(0f) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val isLifecycleResumed by remember(lifecycleOwner) {
+        lifecycleOwner.lifecycle.currentStateFlow.map { it.isAtLeast(Lifecycle.State.RESUMED) }
+    }.collectAsState(initial = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+
+    val shouldAnimate = isAnimating && LocalPageVisible.current && isLifecycleResumed
+    LaunchedEffect(shouldAnimate) {
+        if (!shouldAnimate) return@LaunchedEffect
+        var lastFrameNanos = 0L
+        val cycleDurationNanos = 64_000_000_000.0
+        while (isActive) {
+            withFrameNanos { frameNanos ->
+                if (lastFrameNanos != 0L) {
+                    val dtNanos = (frameNanos - lastFrameNanos).coerceIn(0L, 100_000_000L)
+                    scrollProgressState.floatValue =
+                        (scrollProgressState.floatValue + (dtNanos / cycleDurationNanos).toFloat()) % 1f
+                }
+                lastFrameNanos = frameNanos
+            }
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier.clipToBounds()
@@ -599,6 +636,7 @@ internal fun ScrollingPosterWall(
                                 .requiredWidth(colWidth)
                                 .requiredHeight(canvasHeight)
                                 .graphicsLayer {
+                                    val scrollProgress = scrollProgressState.floatValue
                                     translationY = if (isScrollingDown) {
                                         (scrollProgress - 1f) * cycleHeightPx
                                     } else {
