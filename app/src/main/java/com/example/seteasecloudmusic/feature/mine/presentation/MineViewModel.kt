@@ -365,17 +365,23 @@ class MineViewModel @Inject constructor(
 
         // 2. 在线歌单逻辑
         val isLikedPlaylist = playlist.isLikedHero || playlist.name.contains("喜欢") || playlist.id == _uiState.value.likedPlaylist?.id
+        val hasLikedIds = FavoriteTracksManager.likedTrackIds.value.isNotEmpty()
 
-        val cached = playlistDetailCache[playlist.id]
+        val inMemoryCached = playlistDetailCache[playlist.id]
+        val cached = inMemoryCached
             ?: getPlaylistDetailUseCase.getCachedPreview(playlist.id)
 
         val instantPreview = cached?.let {
-            val validTracks = if (isLikedPlaylist) {
+            val validTracks = if (isLikedPlaylist && hasLikedIds) {
                 it.tracks.filter { t -> FavoriteTracksManager.isLiked(t.id) }
             } else {
                 it.tracks
             }
-            val count = if (isLikedPlaylist) validTracks.size else (if (playlist.trackCount > 0) playlist.trackCount else it.trackCount)
+            val count = when {
+                isLikedPlaylist && inMemoryCached != null -> validTracks.size
+                playlist.trackCount > 0 -> playlist.trackCount
+                else -> it.trackCount.coerceAtLeast(validTracks.size)
+            }
             it.copy(tracks = validTracks, trackCount = count)
         } ?: PlaylistDetail(
             id = playlist.id,
@@ -397,8 +403,39 @@ class MineViewModel @Inject constructor(
             )
         }
 
-        // 异步请求/刷新完整曲目列表
+        // 异步加载本地完整缓存并刷新服务端完整曲目列表
         playlistDetailJob = viewModelScope.launch {
+            val queueSource = MusicPlayerController.playlistQueueSource(playlist.id)
+
+            if (inMemoryCached == null) {
+                val fullDiskCached = getPlaylistDetailUseCase.getCachedFull(playlist.id)
+                if (!isActive || requestId != playlistDetailRequestId) return@launch
+                if (fullDiskCached != null && fullDiskCached.tracks.size > instantPreview.tracks.size) {
+                    val likedIdsReady = FavoriteTracksManager.likedTrackIds.value.isNotEmpty()
+                    val fullCachedTracks = if (isLikedPlaylist && likedIdsReady) {
+                        fullDiskCached.tracks.filter { t -> FavoriteTracksManager.isLiked(t.id) }
+                    } else {
+                        fullDiskCached.tracks
+                    }
+                    val fullCachedDetail = fullDiskCached.copy(
+                        tracks = fullCachedTracks,
+                        trackCount = if (isLikedPlaylist) fullCachedTracks.size else fullDiskCached.trackCount.coerceAtLeast(fullCachedTracks.size)
+                    )
+                    playlistDetailCache[playlist.id] = fullCachedDetail
+                    _uiState.update { current ->
+                        if (requestId == playlistDetailRequestId && current.activePlaylistDetail?.id == playlist.id) {
+                            current.copy(
+                                activePlaylistDetail = fullCachedDetail,
+                                isLoadingDetail = false
+                            )
+                        } else {
+                            current
+                        }
+                    }
+                    musicPlayerController.upgradeQueueIfMatchingSource(queueSource, fullCachedTracks)
+                }
+            }
+
             val result = getPlaylistDetailUseCase(playlist.id)
             if (!isActive || requestId != playlistDetailRequestId) return@launch
             result.fold(
@@ -406,17 +443,18 @@ class MineViewModel @Inject constructor(
                     if (requestId != playlistDetailRequestId) return@fold
                     // 若当前打开的是“我喜欢的音乐”，以本地 FavoriteTracksManager 的喜欢状态为准强校验过滤，
                     // 彻底阻断任何服务端内存旧缓存中已取消喜欢的曲目被带回复活。
-                    val finalTracks = if (isLikedPlaylist) {
+                    val likedIdsReady = FavoriteTracksManager.likedTrackIds.value.isNotEmpty()
+                    val finalTracks = if (isLikedPlaylist && likedIdsReady) {
                         detail.tracks.filter { t -> FavoriteTracksManager.isLiked(t.id) }
                     } else {
                         detail.tracks
                     }
                     val finalDetail = detail.copy(
                         tracks = finalTracks,
-                        trackCount = if (isLikedPlaylist) finalTracks.size else detail.trackCount
+                        trackCount = if (isLikedPlaylist) finalTracks.size else detail.trackCount.coerceAtLeast(finalTracks.size)
                     )
                     playlistDetailCache[playlist.id] = finalDetail
-                    mineRepository.savePlaylistDetailPreview(finalDetail)
+                    mineRepository.saveFullPlaylistDetail(finalDetail)
 
                     _uiState.update { current ->
                         if (requestId == playlistDetailRequestId && current.activePlaylistDetail?.id == playlist.id) {
@@ -428,6 +466,7 @@ class MineViewModel @Inject constructor(
                             current
                         }
                     }
+                    musicPlayerController.upgradeQueueIfMatchingSource(queueSource, finalTracks)
                 },
                 onFailure = { err ->
                     if (requestId != playlistDetailRequestId) return@fold
@@ -462,12 +501,18 @@ class MineViewModel @Inject constructor(
 
     fun playTrack(track: Track, trackList: List<Track>) {
         val index = trackList.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
-        musicPlayerController.replaceQueueAndPlay(trackList, index)
+        val queueSource = _uiState.value.activePlaylistDetail?.id
+            ?.takeIf { it > 0L }
+            ?.let(MusicPlayerController::playlistQueueSource)
+        musicPlayerController.replaceQueueAndPlay(trackList, index, queueSource = queueSource)
     }
 
     fun playAll(trackList: List<Track>) {
         if (trackList.isNotEmpty()) {
-            musicPlayerController.replaceQueueAndPlay(trackList, 0)
+            val queueSource = _uiState.value.activePlaylistDetail?.id
+                ?.takeIf { it > 0L }
+                ?.let(MusicPlayerController::playlistQueueSource)
+            musicPlayerController.replaceQueueAndPlay(trackList, 0, queueSource = queueSource)
         }
     }
 
@@ -520,17 +565,26 @@ class MineViewModel @Inject constructor(
                     playlistDetailCache[likedId] = updated
                     mineRepository.savePlaylistDetailPreview(updated)
                 } ?: run {
-                    mineRepository.getCachedPlaylistDetailPreview(likedId)?.let { cachedPreview ->
-                        val updatedTracks = if (willBeLiked) {
-                            listOf(track) + cachedPreview.tracks.filter { it.id != track.id }
-                        } else {
-                            cachedPreview.tracks.filter { it.id != track.id }
+                    viewModelScope.launch {
+                        mineRepository.getCachedFullPlaylistDetail(likedId)?.let { cachedFull ->
+                            val updatedTracks = if (willBeLiked) {
+                                listOf(track) + cachedFull.tracks.filter { it.id != track.id }
+                            } else {
+                                cachedFull.tracks.filter { it.id != track.id }
+                            }
+                            val nextCount = if (cachedFull.tracks.size >= cachedFull.trackCount) {
+                                updatedTracks.size
+                            } else {
+                                val delta = if (willBeLiked) 1 else -1
+                                (cachedFull.trackCount + delta).coerceAtLeast(updatedTracks.size)
+                            }
+                            val updated = cachedFull.copy(
+                                tracks = updatedTracks,
+                                trackCount = nextCount
+                            )
+                            playlistDetailCache[likedId] = updated
+                            mineRepository.saveFullPlaylistDetail(updated)
                         }
-                        val updated = cachedPreview.copy(
-                            tracks = updatedTracks,
-                            trackCount = updatedTracks.size
-                        )
-                        mineRepository.savePlaylistDetailPreview(updated)
                     }
                 }
             }
@@ -553,6 +607,9 @@ class MineViewModel @Inject constructor(
 
             if (updatedActive != null && active?.id == playlistId) {
                 playlistDetailCache[playlistId] = updatedActive
+                mineRepository.savePlaylistDetailPreview(updatedActive)
+            } else {
+                playlistDetailCache.remove(playlistId)
             }
 
             current.copy(
@@ -682,6 +739,9 @@ class MineViewModel @Inject constructor(
 
             if (updatedActive != null && active?.id == playlistId) {
                 playlistDetailCache[playlistId] = updatedActive
+                mineRepository.savePlaylistDetailPreview(updatedActive)
+            } else {
+                playlistDetailCache.remove(playlistId)
             }
 
             current.copy(

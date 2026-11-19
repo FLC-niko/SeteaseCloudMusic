@@ -35,9 +35,19 @@ interface MineRepository {
     fun getCachedPlaylistDetailPreview(playlistId: Long): PlaylistDetail?
 
     /**
+     * 读取本地完整持久化的歌单详情（含全部曲目）
+     */
+    suspend fun getCachedFullPlaylistDetail(playlistId: Long): PlaylistDetail?
+
+    /**
      * 保存本地轻量持久化的歌单详情首屏曲目
      */
     fun savePlaylistDetailPreview(detail: PlaylistDetail)
+
+    /**
+     * 保存完整歌单详情到本地缓存
+     */
+    suspend fun saveFullPlaylistDetail(detail: PlaylistDetail)
 
     /**
      * 清除本地轻量持久化的歌单详情首屏曲目缓存

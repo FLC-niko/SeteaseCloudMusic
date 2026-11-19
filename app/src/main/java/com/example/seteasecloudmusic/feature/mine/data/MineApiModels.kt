@@ -201,3 +201,13 @@ data class SongOrderUpdateResponse(
     @SerializedName("message")
     val message: String? = null
 )
+
+/**
+ * /song/detail 接口响应：根据歌曲 ID 批量补全歌单曲目详情
+ */
+data class SongDetailResponse(
+    @SerializedName("songs")
+    val songs: List<PlaylistTrackItemResponse>? = emptyList(),
+    @SerializedName("code")
+    val code: Int? = 0
+)

@@ -470,6 +470,23 @@ class ArtistDetailViewModel @Inject constructor(
             )
         }
         playlistDetailJob = viewModelScope.launch {
+            val queueSource = MusicPlayerController.playlistQueueSource(playlist.id)
+            val fullDiskCached = getPlaylistDetailUseCase.getCachedFull(playlist.id)
+            if (!isActive || requestId != artistRequestId) return@launch
+            if (fullDiskCached != null && fullDiskCached.tracks.size > preview.tracks.size) {
+                _uiState.update { prev ->
+                    if (prev.activePlaylistDetail?.id == playlist.id) {
+                        prev.copy(
+                            activePlaylistDetail = fullDiskCached.copy(name = normalizedName(fullDiskCached.name)),
+                            isPlaylistDetailLoading = false
+                        )
+                    } else {
+                        prev
+                    }
+                }
+                musicPlayerController.upgradeQueueIfMatchingSource(queueSource, fullDiskCached.tracks)
+            }
+
             val result = getPlaylistDetailUseCase(playlist.id)
             if (!isActive || requestId != artistRequestId) return@launch
             result.onSuccess { detail ->
@@ -483,6 +500,7 @@ class ArtistDetailViewModel @Inject constructor(
                         prev
                     }
                 }
+                musicPlayerController.upgradeQueueIfMatchingSource(queueSource, detail.tracks)
             }.onFailure {
                 _uiState.update { prev ->
                     if (prev.activePlaylistDetail?.id == playlist.id) {
@@ -536,6 +554,10 @@ class ArtistDetailViewModel @Inject constructor(
         val distinct = tracks.distinctBy { it.id }
         if (distinct.isEmpty()) return
         val safeIndex = startIndex.coerceIn(0, distinct.lastIndex)
-        musicPlayerController.replaceQueueAndPlay(distinct, safeIndex)
+        val activePlaylistId = _uiState.value.activePlaylistDetail
+            ?.takeIf { !_uiState.value.isPlaylistDetailAlbum && it.id > 0L }
+            ?.id
+        val queueSource = activePlaylistId?.let(MusicPlayerController::playlistQueueSource)
+        musicPlayerController.replaceQueueAndPlay(distinct, safeIndex, queueSource = queueSource)
     }
 }

@@ -6,6 +6,7 @@ import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylistsGrou
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,6 +16,7 @@ class MineCacheManager @Inject constructor(
     @ApplicationContext context: Context
 ) {
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val fullDetailDir = File(context.cacheDir, FULL_DETAIL_DIR_NAME)
     private val gson = Gson()
 
     fun saveUserPlaylists(userId: Long, group: UserPlaylistsGroup) {
@@ -37,13 +39,32 @@ class MineCacheManager @Inject constructor(
 
     fun savePlaylistDetailPreview(detail: PlaylistDetail) {
         runCatching {
-            val previewDetail = detail.copy(tracks = detail.tracks.take(20))
+            val previewDetail = detail.copy(tracks = detail.tracks.take(PREVIEW_TRACK_LIMIT))
             prefs.edit()
                 .putString(
                     "${KEY_PLAYLIST_DETAIL_PREVIEW}_${detail.id}",
                     gson.toJson(previewDetail)
                 )
                 .apply()
+            // 若调用方传入的已是完整曲目列表（多于预览上限或已覆盖全部曲目），同步更新完整磁盘缓存，避免新操作被旧缓存覆盖
+            if (detail.tracks.size > PREVIEW_TRACK_LIMIT ||
+                (detail.trackCount > 0 && detail.tracks.size >= detail.trackCount)
+            ) {
+                writeFullPlaylistDetailFile(detail)
+            }
+        }
+    }
+
+    fun saveFullPlaylistDetail(detail: PlaylistDetail) {
+        runCatching {
+            val previewDetail = detail.copy(tracks = detail.tracks.take(PREVIEW_TRACK_LIMIT))
+            prefs.edit()
+                .putString(
+                    "${KEY_PLAYLIST_DETAIL_PREVIEW}_${detail.id}",
+                    gson.toJson(previewDetail)
+                )
+                .apply()
+            writeFullPlaylistDetailFile(detail)
         }
     }
 
@@ -58,9 +79,37 @@ class MineCacheManager @Inject constructor(
         }.getOrNull()
     }
 
+    fun getFullPlaylistDetail(playlistId: Long): PlaylistDetail? {
+        val fullFile = File(fullDetailDir, "$playlistId.json")
+        if (fullFile.exists()) {
+            val parsed = runCatching {
+                gson.fromJson<PlaylistDetail>(
+                    fullFile.readText(),
+                    object : TypeToken<PlaylistDetail>() {}.type
+                )
+            }.getOrNull()
+            if (parsed != null) return parsed
+        }
+        return getPlaylistDetailPreview(playlistId)
+    }
+
     fun evictPlaylistDetail(playlistId: Long) {
         runCatching {
             prefs.edit().remove("${KEY_PLAYLIST_DETAIL_PREVIEW}_$playlistId").apply()
+            File(fullDetailDir, "$playlistId.json").delete()
+        }
+    }
+
+    private fun writeFullPlaylistDetailFile(detail: PlaylistDetail) {
+        if (!fullDetailDir.exists()) {
+            fullDetailDir.mkdirs()
+        }
+        val target = File(fullDetailDir, "${detail.id}.json")
+        val temp = File(fullDetailDir, "${detail.id}.json.tmp")
+        temp.writeText(gson.toJson(detail))
+        if (!temp.renameTo(target)) {
+            target.writeText(temp.readText())
+            temp.delete()
         }
     }
 
@@ -69,5 +118,7 @@ class MineCacheManager @Inject constructor(
         private const val PREF_NAME = "app_data_cache_prefs"
         private const val KEY_USER_PLAYLISTS = "key_user_playlists"
         private const val KEY_PLAYLIST_DETAIL_PREVIEW = "key_playlist_detail_preview"
+        private const val FULL_DETAIL_DIR_NAME = "playlist_detail_full"
+        private const val PREVIEW_TRACK_LIMIT = 20
     }
 }

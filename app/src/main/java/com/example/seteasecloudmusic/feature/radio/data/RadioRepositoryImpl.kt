@@ -675,6 +675,13 @@ class RadioRepositoryImpl @Inject constructor(
                 val tracks = (pl.tracks ?: emptyList()).map { item ->
                     mapPlaylistTrackToTrack(item, pl.coverImgUrl)
                 }.distinctBy { it.id }
+                val totalIdCount = pl.trackIds?.size ?: 0
+                if (totalIdCount > tracks.size) {
+                    val completeTracks = mineRepository.getPlaylistDetail(playlistId).getOrNull()?.tracks.orEmpty()
+                    if (completeTracks.size > tracks.size) {
+                        return@withContext Result.success(completeTracks)
+                    }
+                }
                 if (tracks.isNotEmpty()) {
                     return@withContext Result.success(tracks)
                 }

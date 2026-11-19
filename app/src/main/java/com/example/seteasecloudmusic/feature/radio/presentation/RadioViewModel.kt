@@ -219,6 +219,21 @@ class RadioViewModel @Inject constructor(
         }
 
         playlistDetailJob = viewModelScope.launch {
+            val queueSource = MusicPlayerController.playlistQueueSource(playlistId)
+            val fullDiskCached = getPlaylistDetailUseCase.getCachedFull(playlistId)
+            if (!isActive || requestId != playlistDetailRequestId) return@launch
+            if (fullDiskCached != null && fullDiskCached.tracks.size > instantPreview.tracks.size) {
+                _uiState.update { current ->
+                    if (current.activePlaylistDetail?.id == playlistId) {
+                        current.copy(
+                            activePlaylistDetail = fullDiskCached,
+                            isLoadingDetail = false
+                        )
+                    } else current
+                }
+                musicPlayerController.upgradeQueueIfMatchingSource(queueSource, fullDiskCached.tracks)
+            }
+
             val result = getPlaylistDetailUseCase(playlistId)
             if (!isActive || requestId != playlistDetailRequestId) return@launch
             result.fold(
@@ -232,6 +247,7 @@ class RadioViewModel @Inject constructor(
                             )
                         } else current
                     }
+                    musicPlayerController.upgradeQueueIfMatchingSource(queueSource, detail.tracks)
                 },
                 onFailure = {
                     if (requestId != playlistDetailRequestId) return@fold
@@ -254,12 +270,18 @@ class RadioViewModel @Inject constructor(
 
     fun playTrackInPlaylist(track: Track, trackList: List<Track>) {
         val index = trackList.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
-        musicPlayerController.replaceQueueAndPlay(trackList, index)
+        val queueSource = _uiState.value.activePlaylistDetail?.id
+            ?.takeIf { it > 0L }
+            ?.let(MusicPlayerController::playlistQueueSource)
+        musicPlayerController.replaceQueueAndPlay(trackList, index, queueSource = queueSource)
     }
 
     fun playAllTracks(trackList: List<Track>) {
         if (trackList.isNotEmpty()) {
-            musicPlayerController.replaceQueueAndPlay(trackList, 0)
+            val queueSource = _uiState.value.activePlaylistDetail?.id
+                ?.takeIf { it > 0L }
+                ?.let(MusicPlayerController::playlistQueueSource)
+            musicPlayerController.replaceQueueAndPlay(trackList, 0, queueSource = queueSource)
         }
     }
 

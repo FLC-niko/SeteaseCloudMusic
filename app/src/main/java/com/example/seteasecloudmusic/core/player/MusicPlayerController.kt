@@ -605,6 +605,44 @@ class MusicPlayerController @Inject constructor(
         persistCurrentState()
     }
 
+    /**
+     * 当从歌单首屏预览起播后，完整歌单曲目到达时无感补全播放队列（不打断当前播放曲目）。
+     */
+    fun upgradeQueueIfMatchingSource(expectedQueueSource: String, fullTracks: List<Track>) {
+        if (fullTracks.isEmpty()) return
+        val state = _playbackState.value
+        if (state.queueSource != expectedQueueSource || state.queueTracks.isEmpty()) return
+        val currentIdx = state.currentQueueIndex
+        val currentTrack = state.queueTracks.getOrNull(currentIdx) ?: return
+
+        val upgraded = mergeUpgradedQueue(
+            currentQueue = state.queueTracks,
+            currentIndex = currentIdx,
+            fullTracks = fullTracks
+        ) ?: return
+
+        val (newQueue, newIndex) = upgraded
+        var applied = false
+        _playbackState.update { current ->
+            if (current.queueSource == expectedQueueSource &&
+                current.currentQueueIndex in current.queueTracks.indices &&
+                current.queueTracks[current.currentQueueIndex].id == currentTrack.id
+            ) {
+                applied = true
+                current.copy(
+                    queueTracks = newQueue,
+                    currentQueueIndex = newIndex
+                )
+            } else {
+                current
+            }
+        }
+        if (applied) {
+            prefetchNeighbors(newIndex)
+            persistCurrentState()
+        }
+    }
+
     fun playNext() {
         playNextInternal()
     }
@@ -1280,9 +1318,41 @@ class MusicPlayerController @Inject constructor(
         const val QUEUE_SOURCE_PRIVATE_DJ = "PRIVATE_DJ"
         private const val SERVICE_RECONNECT_DELAY_MS = 500L
 
+        fun playlistQueueSource(playlistId: Long): String = "PLAYLIST:$playlistId"
+
         internal fun shouldReusePlayerMediaItem(activeMediaId: String?, currentTrackId: Long?): Boolean {
             if (activeMediaId.isNullOrBlank() || currentTrackId == null) return false
             return activeMediaId == currentTrackId.toString()
+        }
+
+        internal fun mergeUpgradedQueue(
+            currentQueue: List<Track>,
+            currentIndex: Int,
+            fullTracks: List<Track>
+        ): Pair<List<Track>, Int>? {
+            val currentTrack = currentQueue.getOrNull(currentIndex) ?: return null
+            val distinctFull = fullTracks.distinctBy { it.id }
+            val fullIndexById = HashMap<Long, Int>(distinctFull.size)
+            distinctFull.forEachIndexed { index, track ->
+                fullIndexById[track.id] = index
+            }
+            val currentInFullIndex = fullIndexById[currentTrack.id] ?: return null
+
+            val currentIdSet = currentQueue.map { it.id }.toHashSet()
+            val missingTracks = distinctFull.filter { it.id !in currentIdSet }
+            if (missingTracks.isEmpty() && currentQueue.size == distinctFull.size) {
+                return null
+            }
+
+            val mappedIndices = currentQueue.mapNotNull { fullIndexById[it.id] }
+            val isSequentialOrder = mappedIndices.size == currentQueue.size &&
+                mappedIndices.zipWithNext().all { (a, b) -> a < b }
+
+            return if (isSequentialOrder) {
+                distinctFull to currentInFullIndex
+            } else {
+                (currentQueue + missingTracks.shuffled()) to currentIndex
+            }
         }
     }
 }

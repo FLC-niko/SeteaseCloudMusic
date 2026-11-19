@@ -18,4 +18,9 @@ class GetPlaylistDetailUseCase @Inject constructor(
         if (playlistId <= 0L) return null
         return mineRepository.getCachedPlaylistDetailPreview(playlistId)
     }
+
+    suspend fun getCachedFull(playlistId: Long): PlaylistDetail? {
+        if (playlistId <= 0L) return null
+        return mineRepository.getCachedFullPlaylistDetail(playlistId)
+    }
 }

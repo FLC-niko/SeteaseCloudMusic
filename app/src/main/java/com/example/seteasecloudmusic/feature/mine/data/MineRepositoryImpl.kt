@@ -30,8 +30,18 @@ class MineRepositoryImpl @Inject constructor(
         return mineCacheManager.getPlaylistDetailPreview(playlistId)
     }
 
+    override suspend fun getCachedFullPlaylistDetail(playlistId: Long): PlaylistDetail? = withContext(Dispatchers.IO) {
+        mineCacheManager.getFullPlaylistDetail(playlistId)
+    }
+
     override fun savePlaylistDetailPreview(detail: PlaylistDetail) {
         mineCacheManager.savePlaylistDetailPreview(detail)
+    }
+
+    override suspend fun saveFullPlaylistDetail(detail: PlaylistDetail) {
+        withContext(Dispatchers.IO) {
+            mineCacheManager.saveFullPlaylistDetail(detail)
+        }
     }
 
     override fun evictPlaylistDetailPreview(playlistId: Long) {
@@ -118,60 +128,58 @@ class MineRepositoryImpl @Inject constructor(
         runCatchingCancellable {
             val response = mineService.getPlaylistDetail(id = playlistId, timestamp = System.currentTimeMillis())
             if ((response.code ?: 0) != 200) {
-                val cached = mineCacheManager.getPlaylistDetailPreview(playlistId)
+                val cached = mineCacheManager.getFullPlaylistDetail(playlistId)
                 if (cached != null) return@runCatchingCancellable cached
                 throw Exception("获取歌单详情失败: code=${response.code}")
             }
 
             val pl = response.playlist ?: throw Exception("歌单详情为空")
+            val initialTracks = (pl.tracks ?: emptyList()).map(::mapPlaylistTrack)
+            val allServerIds = (pl.trackIds ?: emptyList()).mapNotNull { it.id?.takeIf { id -> id > 0L } }
 
-            val tracks = (pl.tracks ?: emptyList()).map { track ->
-                Track(
-                    id = track.id ?: 0L,
-                    title = track.name?.takeIf { it.isNotBlank() } ?: "未知歌曲",
-                    artists = (track.ar ?: emptyList()).map { ar ->
-                        Artist(
-                            id = ar.id ?: 0L,
-                            name = ar.name?.takeIf { it.isNotBlank() } ?: "未知歌手",
-                            coverUrl = null
+            // 网易云 /playlist/detail 对部分歌单仅在 tracks 返回前 20/1000 首，完整 ID 列表在 trackIds；
+            // 若发现存在缺失曲目 ID，通过 /song/detail 分批补全为完整歌单。
+            val tracks = resolveCompletePlaylistTracks(
+                initialTracks = initialTracks,
+                allTrackIds = allServerIds,
+                fetchTracksByIds = { batchIds ->
+                    runCatchingCancellable {
+                        val detailResp = mineService.getSongDetails(
+                            ids = batchIds.joinToString(","),
+                            timestamp = System.currentTimeMillis()
                         )
-                    },
-                    album = Album(
-                        id = track.al?.id ?: 0L,
-                        title = track.al?.name?.takeIf { it.isNotBlank() } ?: "未知专辑",
-                        coverUrl = track.al?.picUrl
-                    ),
-                    coverUrl = track.al?.picUrl,
-                    durationMs = track.dt ?: 0L,
-                    playableUrl = null,
-                    isPlayable = (track.fee ?: 0) != 4
-                )
-            }
+                        if ((detailResp.code ?: 0) == 200) {
+                            (detailResp.songs ?: emptyList()).map(::mapPlaylistTrack)
+                        } else {
+                            emptyList()
+                        }
+                    }.getOrDefault(emptyList())
+                }
+            )
 
             val detail = PlaylistDetail(
                 id = pl.id ?: 0L,
                 name = pl.name ?: "歌单详情",
                 coverUrl = pl.coverImgUrl,
                 description = pl.description,
-                trackCount = pl.trackCount ?: tracks.size,
+                trackCount = (pl.trackCount ?: tracks.size).coerceAtLeast(tracks.size),
                 playCount = pl.playCount ?: 0L,
                 creatorName = pl.creator?.nickname,
                 tracks = tracks
             )
 
-            val allServerIds = (pl.trackIds ?: emptyList()).mapNotNull { it.id?.takeIf { id -> id > 0L } }
             if (allServerIds.isNotEmpty()) {
                 playlistServerTrackIds[playlistId] = allServerIds
             } else if (tracks.isNotEmpty()) {
                 playlistServerTrackIds[playlistId] = tracks.map { it.id }
             }
 
-            // 轻量持久化歌单首屏曲目（前20首）
-            mineCacheManager.savePlaylistDetailPreview(detail)
+            // 持久化完整歌单缓存与首屏 20 首轻量预览
+            mineCacheManager.saveFullPlaylistDetail(detail)
 
             detail
         }.recoverCatching { err ->
-            val cached = mineCacheManager.getPlaylistDetailPreview(playlistId)
+            val cached = mineCacheManager.getFullPlaylistDetail(playlistId)
             cached ?: throw err
         }
     }
@@ -314,6 +322,77 @@ class MineRepositoryImpl @Inject constructor(
             } else {
                 throw Exception(response.message ?: "同步歌曲排序失败: code=${response.code}")
             }
+        }
+    }
+
+    private fun mapPlaylistTrack(track: PlaylistTrackItemResponse): Track {
+        return Track(
+            id = track.id ?: 0L,
+            title = track.name?.takeIf { it.isNotBlank() } ?: "未知歌曲",
+            artists = (track.ar ?: emptyList()).map { ar ->
+                Artist(
+                    id = ar.id ?: 0L,
+                    name = ar.name?.takeIf { it.isNotBlank() } ?: "未知歌手",
+                    coverUrl = null
+                )
+            },
+            album = Album(
+                id = track.al?.id ?: 0L,
+                title = track.al?.name?.takeIf { it.isNotBlank() } ?: "未知专辑",
+                coverUrl = track.al?.picUrl
+            ),
+            coverUrl = track.al?.picUrl,
+            durationMs = track.dt ?: 0L,
+            playableUrl = null,
+            isPlayable = (track.fee ?: 0) != 4
+        )
+    }
+
+    companion object {
+        private const val SONG_DETAIL_BATCH_SIZE = 300
+
+        internal suspend fun resolveCompletePlaylistTracks(
+            initialTracks: List<Track>,
+            allTrackIds: List<Long>,
+            batchSize: Int = SONG_DETAIL_BATCH_SIZE,
+            fetchTracksByIds: suspend (List<Long>) -> List<Track>
+        ): List<Track> {
+            if (allTrackIds.isEmpty()) {
+                return initialTracks.distinctBy { it.id }
+            }
+
+            val trackMap = LinkedHashMap<Long, Track>(initialTracks.size.coerceAtLeast(allTrackIds.size))
+            initialTracks.forEach { track ->
+                if (track.id > 0L && track.id !in trackMap) {
+                    trackMap[track.id] = track
+                }
+            }
+
+            val missingIds = allTrackIds.distinct().filter { it > 0L && it !in trackMap }
+            if (missingIds.isNotEmpty()) {
+                missingIds.chunked(batchSize.coerceAtLeast(1)).forEach { batch ->
+                    val fetched = fetchTracksByIds(batch)
+                    fetched.forEach { track ->
+                        if (track.id > 0L && track.id !in trackMap) {
+                            trackMap[track.id] = track
+                        }
+                    }
+                }
+            }
+
+            val orderedTracks = ArrayList<Track>(allTrackIds.size)
+            val seenIds = HashSet<Long>(allTrackIds.size)
+            allTrackIds.forEach { id ->
+                if (seenIds.add(id)) {
+                    trackMap[id]?.let { orderedTracks.add(it) }
+                }
+            }
+            initialTracks.forEach { track ->
+                if (track.id > 0L && seenIds.add(track.id)) {
+                    orderedTracks.add(track)
+                }
+            }
+            return orderedTracks
         }
     }
 }

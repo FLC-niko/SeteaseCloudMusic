@@ -32,6 +32,15 @@ interface MineService {
     ): PlaylistDetailResponse
 
     /**
+     * 批量获取歌曲详情（用于补全 /playlist/detail 仅返回部分 tracks 时的剩余曲目）
+     */
+    @GET("song/detail")
+    suspend fun getSongDetails(
+        @Query("ids") ids: String,
+        @Query("timestamp") timestamp: Long = System.currentTimeMillis()
+    ): SongDetailResponse
+
+    /**
      * 获取用户喜欢的音乐 ID 列表
      */
     @GET("likelist")

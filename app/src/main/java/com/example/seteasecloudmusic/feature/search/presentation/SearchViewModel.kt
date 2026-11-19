@@ -506,6 +506,21 @@ class SearchViewModel @Inject constructor(
         }
 
         detailJob = viewModelScope.launch {
+            val queueSource = MusicPlayerController.playlistQueueSource(playlistId)
+            val fullDiskCached = getPlaylistDetailUseCase.getCachedFull(playlistId)
+            if (!isActive || requestId != detailRequestId) return@launch
+            if (fullDiskCached != null && fullDiskCached.tracks.size > instantPreview.tracks.size) {
+                _uiState.update { current ->
+                    if (current.activePlaylistDetail?.id == playlistId) {
+                        current.copy(
+                            activePlaylistDetail = fullDiskCached,
+                            isLoadingDetail = false
+                        )
+                    } else current
+                }
+                musicPlayerController.upgradeQueueIfMatchingSource(queueSource, fullDiskCached.tracks)
+            }
+
             val result = getPlaylistDetailUseCase(playlistId)
             if (!isActive || requestId != detailRequestId) return@launch
             result.fold(
@@ -519,6 +534,7 @@ class SearchViewModel @Inject constructor(
                             )
                         } else current
                     }
+                    musicPlayerController.upgradeQueueIfMatchingSource(queueSource, detail.tracks)
                 },
                 onFailure = {
                     if (requestId != detailRequestId) return@fold
@@ -646,7 +662,11 @@ class SearchViewModel @Inject constructor(
         val distinct = tracks.distinctBy { it.id }
         if (distinct.isEmpty()) return
         val safeIndex = startIndex.coerceIn(0, distinct.lastIndex)
-        musicPlayerController.replaceQueueAndPlay(distinct, safeIndex)
+        val activePlaylistId = _uiState.value.activePlaylistDetail
+            ?.takeIf { !_uiState.value.isActiveDetailAlbum && it.id > 0L }
+            ?.id
+        val queueSource = activePlaylistId?.let(MusicPlayerController::playlistQueueSource)
+        musicPlayerController.replaceQueueAndPlay(distinct, safeIndex, queueSource = queueSource)
     }
 
     /**
