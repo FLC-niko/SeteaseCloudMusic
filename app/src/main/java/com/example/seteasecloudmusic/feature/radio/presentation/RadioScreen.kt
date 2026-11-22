@@ -1,8 +1,10 @@
 package com.example.seteasecloudmusic.feature.radio.presentation
 
 import androidx.compose.runtime.saveable.rememberSaveable
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.util.LruCache
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -61,6 +63,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -109,6 +113,8 @@ import com.example.seteasecloudmusic.feature.radio.domain.model.RadioTrendItem
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -120,6 +126,26 @@ private val RadioCoverBorder = Color(0x12000000)
 private val RadioHorizontalCardWidth = 160.dp
 private val RadioHorizontalCardSpacing = 12.dp
 private val RadioCoverCornerRadius = 12.dp
+
+private val ToplistBarHeights = floatArrayOf(0.42f, 0.78f, 0.56f, 0.96f, 0.64f)
+private val RadarTopScrimBrush = Brush.verticalGradient(
+    0.0f to Color.Black.copy(alpha = 0.22f),
+    0.24f to Color.Transparent,
+    1.0f to Color.Transparent
+)
+private val ArtistHotBottomScrimBrush = Brush.verticalGradient(
+    0.0f to Color.Transparent,
+    0.68f to Color.Transparent,
+    1.0f to Color.Black.copy(alpha = 0.45f)
+)
+private val OverlayCardScrimBrush = Brush.verticalGradient(
+    0.0f to Color.Black.copy(alpha = 0.28f),
+    0.22f to Color.Transparent,
+    0.78f to Color.Transparent,
+    1.0f to Color.Black.copy(alpha = 0.48f)
+)
+private val RadioDominantColorCache = LruCache<String, Int>(256)
+private val RadioColorExtractSemaphore = Semaphore(2)
 
 @Composable
 fun RadioRoute(
@@ -606,7 +632,11 @@ private fun ToplistSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+            itemsIndexed(
+                items = items,
+                key = { _, item -> item.id },
+                contentType = { _, _ -> "toplist_card" }
+            ) { index, item ->
                 Column(
                     modifier = Modifier
                         .width(RadioHorizontalCardWidth)
@@ -753,133 +783,143 @@ private fun ToplistCoverArtwork(
     }
 
     Box(modifier = modifier) {
-        // 不规则多层次色彩流动底图 + 排行榜动态柱状/光弧几何元素
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
+        // 不规则多层次色彩流动底图 + 排行榜动态柱状/光弧几何元素（drawWithCache 预构建所有渐变与几何，绘制期零对象分配）
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
 
-            val (gradStart, gradEnd) = when (mode) {
-                0 -> Offset(0f, 0f) to Offset(w, h)
-                1 -> Offset(w * 0.85f, 0f) to Offset(w * 0.1f, h)
-                2 -> Offset(0f, h * 0.65f) to Offset(w, h * 0.15f)
-                else -> Offset(w * 0.25f, 0f) to Offset(w * 0.9f, h)
-            }
-            drawRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(baseStart, accentCool, baseEnd),
-                    start = gradStart,
-                    end = gradEnd
-                )
-            )
+                    val (gradStart, gradEnd) = when (mode) {
+                        0 -> Offset(0f, 0f) to Offset(w, h)
+                        1 -> Offset(w * 0.85f, 0f) to Offset(w * 0.1f, h)
+                        2 -> Offset(0f, h * 0.65f) to Offset(w, h * 0.15f)
+                        else -> Offset(w * 0.25f, 0f) to Offset(w * 0.9f, h)
+                    }
+                    val bgBrush = Brush.linearGradient(
+                        colors = listOf(baseStart, accentCool, baseEnd),
+                        start = gradStart,
+                        end = gradEnd
+                    )
 
-            // 三个错位有机色块，打破工整对称渐变
-            val blob1Center = when (mode) {
-                0 -> Offset(w * 0.86f, h * 0.16f)
-                1 -> Offset(w * 0.18f, h * 0.22f)
-                2 -> Offset(w * 0.78f, h * 0.78f)
-                else -> Offset(w * 0.14f, h * 0.74f)
-            }
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(accentWarm.copy(alpha = 0.78f), Color.Transparent),
-                    center = blob1Center,
-                    radius = w * 0.74f
-                ),
-                center = blob1Center,
-                radius = w * 0.74f
-            )
+                    val blob1Center = when (mode) {
+                        0 -> Offset(w * 0.86f, h * 0.16f)
+                        1 -> Offset(w * 0.18f, h * 0.22f)
+                        2 -> Offset(w * 0.78f, h * 0.78f)
+                        else -> Offset(w * 0.14f, h * 0.74f)
+                    }
+                    val blob1Radius = (w * 0.74f).coerceAtLeast(1f)
+                    val blob1Brush = Brush.radialGradient(
+                        colors = listOf(accentWarm.copy(alpha = 0.78f), Color.Transparent),
+                        center = blob1Center,
+                        radius = blob1Radius
+                    )
 
-            val blob2Center = when (mode) {
-                0 -> Offset(w * 0.16f, h * 0.88f)
-                1 -> Offset(w * 0.84f, h * 0.82f)
-                2 -> Offset(w * 0.20f, h * 0.14f)
-                else -> Offset(w * 0.82f, h * 0.20f)
-            }
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(accentDeep.copy(alpha = 0.74f), Color.Transparent),
-                    center = blob2Center,
-                    radius = w * 0.68f
-                ),
-                center = blob2Center,
-                radius = w * 0.68f
-            )
+                    val blob2Center = when (mode) {
+                        0 -> Offset(w * 0.16f, h * 0.88f)
+                        1 -> Offset(w * 0.84f, h * 0.82f)
+                        2 -> Offset(w * 0.20f, h * 0.14f)
+                        else -> Offset(w * 0.82f, h * 0.20f)
+                    }
+                    val blob2Radius = (w * 0.68f).coerceAtLeast(1f)
+                    val blob2Brush = Brush.radialGradient(
+                        colors = listOf(accentDeep.copy(alpha = 0.74f), Color.Transparent),
+                        center = blob2Center,
+                        radius = blob2Radius
+                    )
 
-            val blob3Center = when (mode) {
-                0 -> Offset(w * 0.44f, h * 0.48f)
-                1 -> Offset(w * 0.60f, h * 0.36f)
-                2 -> Offset(w * 0.42f, h * 0.60f)
-                else -> Offset(w * 0.56f, h * 0.52f)
-            }
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
-                    center = blob3Center,
-                    radius = w * 0.52f
-                ),
-                center = blob3Center,
-                radius = w * 0.52f
-            )
+                    val blob3Center = when (mode) {
+                        0 -> Offset(w * 0.44f, h * 0.48f)
+                        1 -> Offset(w * 0.60f, h * 0.36f)
+                        2 -> Offset(w * 0.42f, h * 0.60f)
+                        else -> Offset(w * 0.56f, h * 0.52f)
+                    }
+                    val blob3Radius = (w * 0.52f).coerceAtLeast(1f)
+                    val blob3Brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                        center = blob3Center,
+                        radius = blob3Radius
+                    )
 
-            // 斜向柔光色带（不规则倾角）
-            val ribbonAngle = when (mode) {
-                0 -> -22f
-                1 -> 18f
-                2 -> -14f
-                else -> 24f
-            }
-            rotate(degrees = ribbonAngle, pivot = Offset(w * 0.5f, h * 0.5f)) {
-                drawRoundRect(
-                    brush = Brush.horizontalGradient(
+                    val ribbonAngle = when (mode) {
+                        0 -> -22f
+                        1 -> 18f
+                        2 -> -14f
+                        else -> 24f
+                    }
+                    val ribbonPivot = Offset(w * 0.5f, h * 0.5f)
+                    val ribbonBrush = Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
                             Color.White.copy(alpha = 0.14f),
                             Color.Transparent
                         )
-                    ),
-                    topLeft = Offset(-w * 0.2f, h * 0.34f),
-                    size = Size(w * 1.4f, h * 0.28f),
-                    cornerRadius = CornerRadius(h * 0.14f, h * 0.14f)
-                )
-            }
-
-            // 排行榜视觉元素 1：斜切角标圆弧（暗喻榜单与唱片）
-            val arcCenter = when (mode % 2) {
-                0 -> Offset(w * 0.92f, h * 0.88f)
-                else -> Offset(w * 0.10f, h * 0.18f)
-            }
-            drawCircle(
-                color = Color.White.copy(alpha = 0.12f),
-                radius = w * 0.40f,
-                center = arcCenter,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.015f)
-            )
-            drawCircle(
-                color = Color.White.copy(alpha = 0.08f),
-                radius = w * 0.54f,
-                center = arcCenter,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.010f)
-            )
-
-            // 排行榜视觉元素 2：左下角错落律动排名柱状图（带轻微倾角）
-            val heights = listOf(0.42f, 0.78f, 0.56f, 0.96f, 0.64f)
-            val barWidth = w * 0.044f
-            val barGap = w * 0.026f
-            val maxBarHeight = h * 0.19f
-            val originX = w * 0.075f
-            val baseY = h * 0.92f
-            rotate(degrees = -5f, pivot = Offset(originX, baseY)) {
-                heights.forEachIndexed { i, ratio ->
-                    val bh = maxBarHeight * ratio
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.14f + ratio * 0.12f),
-                        topLeft = Offset(originX + i * (barWidth + barGap), baseY - bh),
-                        size = Size(barWidth, bh),
-                        cornerRadius = CornerRadius(barWidth * 0.5f, barWidth * 0.5f)
                     )
+                    val ribbonTopLeft = Offset(-w * 0.2f, h * 0.34f)
+                    val ribbonSize = Size(w * 1.4f, h * 0.28f)
+                    val ribbonCorner = CornerRadius(h * 0.14f, h * 0.14f)
+
+                    val arcCenter = when (mode % 2) {
+                        0 -> Offset(w * 0.92f, h * 0.88f)
+                        else -> Offset(w * 0.10f, h * 0.18f)
+                    }
+                    val arcStrokeInner = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.015f)
+                    val arcStrokeOuter = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.010f)
+                    val arcColorInner = Color.White.copy(alpha = 0.12f)
+                    val arcColorOuter = Color.White.copy(alpha = 0.08f)
+
+                    val barWidth = w * 0.044f
+                    val barGap = w * 0.026f
+                    val maxBarHeight = h * 0.19f
+                    val originX = w * 0.075f
+                    val baseY = h * 0.92f
+                    val barPivot = Offset(originX, baseY)
+                    val barCorner = CornerRadius(barWidth * 0.5f, barWidth * 0.5f)
+
+                    onDrawBehind {
+                        drawRect(brush = bgBrush)
+                        drawCircle(brush = blob1Brush, center = blob1Center, radius = blob1Radius)
+                        drawCircle(brush = blob2Brush, center = blob2Center, radius = blob2Radius)
+                        drawCircle(brush = blob3Brush, center = blob3Center, radius = blob3Radius)
+
+                        rotate(degrees = ribbonAngle, pivot = ribbonPivot) {
+                            drawRoundRect(
+                                brush = ribbonBrush,
+                                topLeft = ribbonTopLeft,
+                                size = ribbonSize,
+                                cornerRadius = ribbonCorner
+                            )
+                        }
+
+                        drawCircle(
+                            color = arcColorInner,
+                            radius = w * 0.40f,
+                            center = arcCenter,
+                            style = arcStrokeInner
+                        )
+                        drawCircle(
+                            color = arcColorOuter,
+                            radius = w * 0.54f,
+                            center = arcCenter,
+                            style = arcStrokeOuter
+                        )
+
+                        rotate(degrees = -5f, pivot = barPivot) {
+                            for (i in ToplistBarHeights.indices) {
+                                val ratio = ToplistBarHeights[i]
+                                val bh = maxBarHeight * ratio
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.14f + ratio * 0.12f),
+                                    topLeft = Offset(originX + i * (barWidth + barGap), baseY - bh),
+                                    size = Size(barWidth, bh),
+                                    cornerRadius = barCorner
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        }
+        )
 
         // 排行榜视觉元素 3：不规则倾斜水印数字（#1 / TOP）
         Text(
@@ -938,7 +978,7 @@ private fun RadarSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(items, key = { it.id }) { item ->
+            items(items, key = { it.id }, contentType = { "radar_card" }) { item ->
                 Column(
                     modifier = Modifier
                         .width(RadioHorizontalCardWidth)
@@ -960,13 +1000,7 @@ private fun RadarSection(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.0f to Color.Black.copy(alpha = 0.22f),
-                                        0.24f to Color.Transparent,
-                                        1.0f to Color.Transparent
-                                    )
-                                )
+                                .background(RadarTopScrimBrush)
                         )
 
                         // 播放量 (避开封面左上角网易云 Logo 并与其对齐)
@@ -1019,7 +1053,7 @@ private fun RoamSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(items, key = { it.id }) { item ->
+            items(items, key = { it.id }, contentType = { "roam_card" }) { item ->
                 RoamCardItem(item = item, onClick = { onItemClick(item) })
             }
         }
@@ -1032,31 +1066,22 @@ private fun RoamCardItem(
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var dominantColor by remember(item.id) {
-        mutableStateOf(deriveDarkHueFromId(item.id))
+    val coverUrl = item.coverUrl
+    val cachedArgb = remember(coverUrl) {
+        coverUrl?.takeIf(String::isNotBlank)?.let { RadioDominantColorCache.get(it) }
+    }
+    var dominantColor by remember(item.id, cachedArgb) {
+        mutableStateOf(cachedArgb?.let(::Color) ?: deriveDarkHueFromId(item.id))
     }
 
-    LaunchedEffect(item.coverUrl) {
-        val url = item.coverUrl
-        if (!url.isNullOrBlank()) {
-            withContext(Dispatchers.IO) {
-                try {
-                    val loader = context.imageLoader
-                    val req = ImageRequest.Builder(context)
-                        .data(url.toCoverThumbnailUrl(100))
-                        .allowHardware(false)
-                        .build()
-                    val res = loader.execute(req)
-                    val drawable = res.drawable
-                    if (drawable is BitmapDrawable) {
-                        dominantColor = extractDominantDarkColor(drawable.bitmap)
-                    }
-                } catch (_: Exception) {}
-            }
+    LaunchedEffect(coverUrl, cachedArgb) {
+        if (cachedArgb != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
+        extractCachedDominantDarkColor(context, coverUrl)?.let { extracted ->
+            dominantColor = extracted
         }
     }
 
-    val animatedBg by animateColorAsState(
+    val animatedBgState = animateColorAsState(
         targetValue = dominantColor,
         animationSpec = tween(durationMillis = 350),
         label = "roamCardBg"
@@ -1066,7 +1091,7 @@ private fun RoamCardItem(
         modifier = Modifier
             .size(width = RadioHorizontalCardWidth, height = 204.dp)
             .clip(RoundedCornerShape(RadioCoverCornerRadius))
-            .background(animatedBg)
+            .drawBehind { drawRect(animatedBgState.value) }
             .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
             .clickable { onClick() }
     ) {
@@ -1208,7 +1233,7 @@ private fun RecommendedSingersSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            items(singers, key = { it.id }) { artist ->
+            items(singers, key = { it.id }, contentType = { "singer_card" }) { artist ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
@@ -1258,7 +1283,7 @@ private fun RecommendedPlaylistsSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(items, key = { it.id }) { item ->
+            items(items, key = { it.id }, contentType = { "recommended_playlist_card" }) { item ->
                 Column(
                     modifier = Modifier
                         .width(RadioHorizontalCardWidth)
@@ -1347,7 +1372,7 @@ private fun ArtistHotSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(sectionData.items, key = { it.artistId }) { item ->
+            items(sectionData.items, key = { it.artistId }, contentType = { "artist_hot_card" }) { item ->
                 Column(
                     modifier = Modifier
                         .width(RadioHorizontalCardWidth)
@@ -1369,13 +1394,7 @@ private fun ArtistHotSection(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.0f to Color.Transparent,
-                                        0.68f to Color.Transparent,
-                                        1.0f to Color.Black.copy(alpha = 0.45f)
-                                    )
-                                )
+                                .background(ArtistHotBottomScrimBrush)
                         )
 
                         RadioPlayCountBadge(
@@ -1451,14 +1470,7 @@ private fun OverlayLabeledCoverCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0.0f to Color.Black.copy(alpha = 0.28f),
-                            0.22f to Color.Transparent,
-                            0.78f to Color.Transparent,
-                            1.0f to Color.Black.copy(alpha = 0.48f)
-                        )
-                    )
+                    .background(OverlayCardScrimBrush)
             )
 
             RadioPlayCountBadge(
@@ -1513,7 +1525,7 @@ private fun WeeklyTrendsSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(items, key = { it.id }) { item ->
+            items(items, key = { it.id }, contentType = { "trend_card" }) { item ->
                 OverlayLabeledCoverCard(
                     title = item.title,
                     overlayLabel = item.badge,
@@ -1545,7 +1557,7 @@ private fun MoodSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(items, key = { it.id }) { item ->
+            items(items, key = { it.id }, contentType = { "mood_card" }) { item ->
                 OverlayLabeledCoverCard(
                     title = item.title,
                     overlayLabel = item.moodTag,
@@ -1601,7 +1613,7 @@ private fun FollowedArtistSection(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(RadioHorizontalCardSpacing)
         ) {
-            items(sectionData.items, key = { it.songId }) { item ->
+            items(sectionData.items, key = { it.songId }, contentType = { "followed_card" }) { item ->
                 FollowedArtistCardItem(item = item, onClick = { onItemClick(item) })
             }
         }
@@ -1614,31 +1626,22 @@ private fun FollowedArtistCardItem(
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var dominantColor by remember(item.songId) {
-        mutableStateOf(Color(0xFF8B5E3C))
+    val coverUrl = item.coverUrl
+    val cachedArgb = remember(coverUrl) {
+        coverUrl?.takeIf(String::isNotBlank)?.let { RadioDominantColorCache.get(it) }
+    }
+    var dominantColor by remember(item.songId, cachedArgb) {
+        mutableStateOf(cachedArgb?.let(::Color) ?: Color(0xFF8B5E3C))
     }
 
-    LaunchedEffect(item.coverUrl) {
-        val url = item.coverUrl
-        if (!url.isNullOrBlank()) {
-            withContext(Dispatchers.IO) {
-                try {
-                    val loader = context.imageLoader
-                    val req = ImageRequest.Builder(context)
-                        .data(url.toCoverThumbnailUrl(100))
-                        .allowHardware(false)
-                        .build()
-                    val res = loader.execute(req)
-                    val drawable = res.drawable
-                    if (drawable is BitmapDrawable) {
-                        dominantColor = extractDominantDarkColor(drawable.bitmap)
-                    }
-                } catch (_: Exception) {}
-            }
+    LaunchedEffect(coverUrl, cachedArgb) {
+        if (cachedArgb != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
+        extractCachedDominantDarkColor(context, coverUrl)?.let { extracted ->
+            dominantColor = extracted
         }
     }
 
-    val animatedBg by animateColorAsState(
+    val animatedBgState = animateColorAsState(
         targetValue = dominantColor,
         animationSpec = tween(durationMillis = 350),
         label = "followedCardBg"
@@ -1648,7 +1651,7 @@ private fun FollowedArtistCardItem(
         modifier = Modifier
             .size(width = 296.dp, height = 112.dp)
             .clip(RoundedCornerShape(RadioCoverCornerRadius))
-            .background(animatedBg)
+            .drawBehind { drawRect(animatedBgState.value) }
             .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
             .clickable { onClick() }
             .padding(12.dp)
@@ -1765,11 +1768,42 @@ private fun deriveDarkHueFromId(id: Long): Color {
     return hues[index]
 }
 
+private suspend fun extractCachedDominantDarkColor(context: Context, coverUrl: String): Color? {
+    RadioDominantColorCache.get(coverUrl)?.let { return Color(it) }
+    return RadioColorExtractSemaphore.withPermit {
+        RadioDominantColorCache.get(coverUrl)?.let { return@withPermit Color(it) }
+        val bitmap = withContext(Dispatchers.IO) {
+            try {
+                val req = ImageRequest.Builder(context)
+                    .data(coverUrl.toCoverThumbnailUrl(100))
+                    .size(24, 24)
+                    .allowHardware(false)
+                    .build()
+                (context.imageLoader.execute(req).drawable as? BitmapDrawable)?.bitmap
+            } catch (_: Exception) {
+                null
+            }
+        } ?: return@withPermit null
+        val extracted = withContext(Dispatchers.Default) {
+            extractDominantDarkColor(bitmap)
+        }
+        RadioDominantColorCache.put(coverUrl, extracted.toArgb())
+        extracted
+    }
+}
+
 private fun extractDominantDarkColor(bitmap: Bitmap): Color {
-    val scaled = Bitmap.createScaledBitmap(bitmap, 24, 24, false)
+    val needsScale = bitmap.width != 24 || bitmap.height != 24
+    val scaled = if (needsScale) Bitmap.createScaledBitmap(bitmap, 24, 24, false) else bitmap
     val count = 24 * 24
     val pixels = IntArray(count)
-    scaled.getPixels(pixels, 0, 24, 0, 0, 24, 24)
+    try {
+        scaled.getPixels(pixels, 0, 24, 0, 0, 24, 24)
+    } finally {
+        if (needsScale && scaled !== bitmap) {
+            scaled.recycle()
+        }
+    }
 
     val hsv = FloatArray(3)
     val hueBuckets = IntArray(12)
