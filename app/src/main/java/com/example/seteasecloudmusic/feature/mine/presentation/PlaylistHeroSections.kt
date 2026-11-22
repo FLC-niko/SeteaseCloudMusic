@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,6 +71,15 @@ private val BottomEdgeBlurMask = Brush.verticalGradient(
     0.80f to Color.Black.copy(alpha = 0.65f),
     0.88f to Color.Black,
     1.00f to Color.Black
+)
+
+// 将原 0.68..1.00 区间精确重映射到仅占底部 32% 高度的局部坐标系，像素完全等价，离屏模糊面积减少 68%
+private const val BottomEdgeBlurHeightFraction = 0.32f
+private val BottomEdgeBlurMaskLocal = Brush.verticalGradient(
+    0.000f to Color.Transparent,
+    0.375f to Color.Black.copy(alpha = 0.65f),
+    0.625f to Color.Black,
+    1.000f to Color.Black
 )
 
 val PlaylistDetail.displayTitle: String
@@ -281,7 +291,10 @@ fun PlaylistHeroDynamicPosterWallSection(
                         .layerBackdrop(wallBackdrop)
                 )
 
-                BottomBackdropBlurOverlay(backdrop = wallBackdrop)
+                BottomBackdropBlurOverlay(
+                    backdrop = wallBackdrop,
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
                 TopProtectionScrim(topInset = topInset)
             }
 
@@ -491,15 +504,19 @@ private fun PlaylistHeroTitleAndPlayButton(
 }
 
 @Composable
-private fun BottomBackdropBlurOverlay(backdrop: Backdrop) {
+private fun BottomBackdropBlurOverlay(
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier
+) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     Box(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight(BottomEdgeBlurHeightFraction)
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
-                drawRect(brush = BottomEdgeBlurMask, blendMode = BlendMode.DstIn)
+                drawRect(brush = BottomEdgeBlurMaskLocal, blendMode = BlendMode.DstIn)
             }
             .drawPlainBackdrop(
                 backdrop = backdrop,

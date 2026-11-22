@@ -311,6 +311,12 @@ fun ProgressiveTopBlur(
         modifier = modifier
             .fillMaxWidth()
             .height(totalHeight)
+            // alpha 归零时跳过整棵模糊子树绘制，避免未触发模糊或已被全量模糊接管时白跑 3 层离屏模糊
+            .drawWithContent {
+                if (alphaProvider() > 0.001f) {
+                    drawContent()
+                }
+            }
             .graphicsLayer {
                 alpha = alphaProvider().coerceIn(0f, 1f)
             }

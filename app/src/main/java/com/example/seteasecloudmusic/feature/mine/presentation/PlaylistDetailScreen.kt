@@ -1333,7 +1333,7 @@ private fun CompactPlaylistDetailScreen(
         drawRect(pageBaseColor)
         drawContent()
     }
-    val topBlurAlpha by remember(lazyListState, density) {
+    val topBlurAlphaState = remember(lazyListState, density) {
         val fadeDistancePx = with(density) { 44.dp.toPx().coerceAtLeast(1f) }
         derivedStateOf {
             if (lazyListState.firstVisibleItemIndex > 0) 1f
@@ -1502,7 +1502,7 @@ private fun CompactPlaylistDetailScreen(
                         totalHeight = statusBarHeight + 24.dp,
                         statusBarHeight = statusBarHeight,
                         modifier = Modifier.align(Alignment.TopCenter),
-                        alphaProvider = { 1f - topBlurAlpha },
+                        alphaProvider = { 1f - topBlurAlphaState.value },
                         deepBlurRadius = 16.dp,
                         mediumBlurRadius = 8.dp,
                         shallowBlurRadius = 3.dp
@@ -1513,7 +1513,7 @@ private fun CompactPlaylistDetailScreen(
                     totalHeight = statusBarHeight + 82.dp,
                     statusBarHeight = statusBarHeight,
                     modifier = Modifier.align(Alignment.TopCenter),
-                    alphaProvider = { topBlurAlpha }
+                    alphaProvider = { topBlurAlphaState.value }
                 )
 
                 // 2. 连续一体式歌单标题：封面下方歌单名进入顶部区域后随手指上滑缩小并固定到顶栏中央
