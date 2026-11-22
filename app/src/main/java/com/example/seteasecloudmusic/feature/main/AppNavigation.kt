@@ -2465,15 +2465,21 @@ private fun MiniPlayerProgressPlayButton(
             }
         } else 0f
     )
-    val animatedProgressState = animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = if (isPlaying && targetProgress > 0f) {
-            tween(durationMillis = 500, easing = LinearEasing)
+    // 28dp 迷你圆环周长约 83dp，正常播放每 500ms 仅推进约 0.5px，无需跑 60/144fps 连续插值：
+    // 常规推进直接 snapTo（2Hz 重绘、视觉完全连贯），仅在切歌或拖动大幅跳变时做弹簧过渡，
+    // 可彻底消除非首页播放态静止时的 RenderThread 持续空耗。
+    val progressAnim = remember { Animatable(targetProgress) }
+    LaunchedEffect(targetProgress, isPlaying) {
+        val delta = abs(targetProgress - progressAnim.value)
+        if (isPlaying && targetProgress > 0f && delta <= 0.025f) {
+            progressAnim.snapTo(targetProgress)
         } else {
-            spring(stiffness = 500f)
-        },
-        label = "miniPlayerProgress"
-    )
+            progressAnim.animateTo(
+                targetValue = targetProgress,
+                animationSpec = spring(stiffness = 500f)
+            )
+        }
+    }
 
     Box(
         modifier = modifier
@@ -2490,10 +2496,10 @@ private fun MiniPlayerProgressPlayButton(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                // 独立 28dp RenderNode：圆环动画每帧推进只重绘此小图层，不脏化外层液态玻璃 Backdrop
+                // 独立 28dp RenderNode：圆环更新只重绘此小图层，不脏化外层液态玻璃 Backdrop
                 .graphicsLayer {}
         ) {
-            val progress = animatedProgressState.value
+            val progress = progressAnim.value
             val strokePx = strokeWidth.toPx()
             val radius = (size.minDimension - strokePx) / 2f
             val centerOffset = Offset(size.width / 2f, size.height / 2f)
