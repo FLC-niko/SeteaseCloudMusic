@@ -68,6 +68,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -998,15 +999,21 @@ private fun FavoriteRecommendedSongsSection(
         ) { page ->
             val columnTracks = songColumns[page]
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
-                columnTracks.forEach { track ->
+                columnTracks.forEachIndexed { index, track ->
                     SongRecommendRowItem(
                         track = track,
                         onClick = { onTrackClick(track) },
                         onPlayClick = { onTrackClick(track) }
                     )
+                    if (index < columnTracks.lastIndex) {
+                        HorizontalDivider(
+                            color = Color(0x14000000),
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(start = 66.dp, end = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1020,12 +1027,12 @@ private fun SongRecommendRowItem(
     onPlayClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val coverUrl = (track.coverUrl ?: track.album.coverUrl)?.takeIf { it.isNotBlank() }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -1035,9 +1042,9 @@ private fun SongRecommendRowItem(
                 .background(Color(0xFFE8E8EC)),
             contentAlignment = Alignment.Center
         ) {
-            if (!track.coverUrl.isNullOrBlank()) {
+            if (coverUrl != null) {
                 AsyncImage(
-                    model = track.coverUrl.toCoverThumbnailUrl(140),
+                    model = coverUrl.toCoverThumbnailUrl(180),
                     contentDescription = "歌曲封面",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -1049,13 +1056,13 @@ private fun SongRecommendRowItem(
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = track.title,
                 color = HomePrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1070,7 +1077,7 @@ private fun SongRecommendRowItem(
                 Text(
                     text = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
                     color = HomeSecondary,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1086,8 +1093,8 @@ private fun SongRecommendRowItem(
             Icon(
                 painter = painterResource(id = R.drawable.ic_mini_play),
                 contentDescription = "播放",
-                tint = Color(0xFF555555),
-                modifier = Modifier.size(20.dp)
+                tint = HomeSecondary,
+                modifier = Modifier.size(18.dp)
             )
         }
     }

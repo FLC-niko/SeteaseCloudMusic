@@ -636,10 +636,11 @@ fun PlaylistDetailScreen(
                                         if (!isElevated) {
                                             HorizontalDivider(
                                                 modifier = Modifier.padding(
-                                                    start = if (isAlbum) 52.dp else 88.dp,
+                                                    start = if (isAlbum) 50.dp else 104.dp,
                                                     end = 20.dp
                                                 ),
-                                                color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor
+                                                thickness = 0.5.dp,
+                                                color = if (paneDark) Color(0x14FFFFFF) else PlaylistDividerColor
                                             )
                                         }
                                     }
@@ -1470,14 +1471,15 @@ private fun CompactPlaylistDetailScreen(
                         }
                         if (index < detail.tracks.lastIndex && !isElevated) {
                             HorizontalDivider(
-                                color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
+                                thickness = 0.5.dp,
+                                color = if (isDark) Color(0x14FFFFFF) else PlaylistDividerColor,
                                 modifier = Modifier.padding(
                                     start = if (isAlbum) {
-                                        if (isEdgeToEdgeHero) 56.dp else 40.dp
+                                        if (isEdgeToEdgeHero) 54.dp else 38.dp
                                     } else {
-                                        if (isEdgeToEdgeHero) 92.dp else 76.dp
+                                        if (isEdgeToEdgeHero) 108.dp else 92.dp
                                     },
-                                    end = if (isEdgeToEdgeHero) 16.dp else 0.dp
+                                    end = if (isEdgeToEdgeHero) 20.dp else 4.dp
                                 )
                             )
                         }
@@ -1924,7 +1926,7 @@ private fun PlaylistDetailTrackRow(
                     )
                 }
             )
-            .padding(vertical = 10.dp, horizontal = 6.dp),
+            .padding(start = 4.dp, end = 0.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 1. 左侧区域：正常模式下展示序号，编辑模式下平滑切换为勾选圆圈
@@ -1958,17 +1960,18 @@ private fun PlaylistDetailTrackRow(
 
         // 2. 封面缩略方块（专辑页所有歌曲共享同一张封面，隐藏每行前面的封面）
         if (showTrackCover) {
+            val coverUrl = (track.coverUrl ?: track.album.coverUrl)?.takeIf { it.isNotBlank() }
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .testTag("playlist_track_cover")
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFFF0F0F3)),
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF0F0F3)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!track.coverUrl.isNullOrBlank()) {
+                if (coverUrl != null) {
                     AsyncImage(
-                        model = track.coverUrl.toCoverThumbnailUrl(140),
+                        model = coverUrl.toCoverThumbnailUrl(180),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -1983,25 +1986,26 @@ private fun PlaylistDetailTrackRow(
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(12.dp))
         } else {
             Spacer(modifier = Modifier.width(6.dp))
         }
 
         // 3. 歌曲标题与歌手专辑
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(
                 text = track.title,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     color = if (isDark) Color.White else PlaylistTextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-
-            Spacer(modifier = Modifier.height(3.dp))
 
             val artistText = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
             val albumText = track.album.title
@@ -2014,8 +2018,8 @@ private fun PlaylistDetailTrackRow(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = if (isDark) Color.White.copy(alpha = 0.60f) else PlaylistTextSecondary,
-                    fontSize = 12.sp
+                    color = if (isDark) Color(0x9EFFFFFF) else PlaylistTextSecondary,
+                    fontSize = 13.sp
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2033,13 +2037,13 @@ private fun PlaylistDetailTrackRow(
         } else {
             IconButton(
                 onClick = onMoreClick,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "更多操作",
-                    tint = if (isDark) Color.White.copy(alpha = 0.60f) else PlaylistTextSecondary,
-                    modifier = Modifier.size(20.dp)
+                    tint = if (isDark) Color(0x9EFFFFFF) else PlaylistTextSecondary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

@@ -41,7 +41,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +57,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -120,6 +121,7 @@ import kotlinx.coroutines.launch
 
 private val MineTextPrimary = Color(0xFF111111)
 private val MineTextSecondary = Color(0xFF767680)
+private val MineDividerColor = Color(0x14000000)
 private val MineAccentRed = Color(0xFFFA233B)
 private val MinePageBase = Color(0xFFF7F7FA)
 
@@ -341,9 +343,14 @@ fun MineScreen(
                             }
                         }
                     } else {
-                        items(uiState.createdPlaylists, key = { it.id }) { playlist ->
-                            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
+                        itemsIndexed(uiState.createdPlaylists, key = { _, playlist -> playlist.id }) { index, playlist ->
+                            PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
+                            if (index < uiState.createdPlaylists.lastIndex) {
+                                HorizontalDivider(
+                                    color = MineDividerColor,
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(start = 90.dp, end = 20.dp)
+                                )
                             }
                         }
                     }
@@ -368,9 +375,14 @@ fun MineScreen(
                             }
                         }
                     } else {
-                        items(uiState.favoritedPlaylists, key = { it.id }) { playlist ->
-                            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
+                        itemsIndexed(uiState.favoritedPlaylists, key = { _, playlist -> playlist.id }) { index, playlist ->
+                            PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
+                            if (index < uiState.favoritedPlaylists.lastIndex) {
+                                HorizontalDivider(
+                                    color = MineDividerColor,
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(start = 90.dp, end = 20.dp)
+                                )
                             }
                         }
                     }
@@ -378,12 +390,10 @@ fun MineScreen(
 
                 MinePlaylistTab.LOCAL -> {
                     item(key = "local_playlist_entry") {
-                        Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                            PlaylistRowItem(
-                                playlist = uiState.localPlaylist,
-                                onClick = { handlePlaylistClick(uiState.localPlaylist) }
-                            )
-                        }
+                        PlaylistRowItem(
+                            playlist = uiState.localPlaylist,
+                            onClick = { handlePlaylistClick(uiState.localPlaylist) }
+                        )
                     }
                     item(key = "local_dir_control_bar") {
                         Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
@@ -1207,15 +1217,14 @@ private fun PlaylistRowItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(56.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color.White.copy(alpha = 0.42f)),
             contentAlignment = Alignment.Center
         ) {
