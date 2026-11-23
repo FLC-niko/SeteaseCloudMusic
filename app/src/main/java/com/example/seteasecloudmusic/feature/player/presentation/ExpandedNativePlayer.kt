@@ -110,7 +110,8 @@ internal fun ExpandedNativePlayerContent(
     modifier: Modifier = Modifier,
     isLyricsPage: Boolean = false,
     onToggleLyrics: () -> Unit = {},
-    onMore: () -> Unit = onQuality
+    onMore: () -> Unit = onQuality,
+    onQualityBadgeBoundsChanged: ((Rect) -> Unit)? = null
 ) {
     val sharedBackground = LocalPlayerBackdrop.current
     val background = sharedBackground ?: rememberLayerBackdrop { drawContent() }
@@ -147,7 +148,8 @@ internal fun ExpandedNativePlayerContent(
             onPrevious = onPrevious,
             onSeekTo = onSeek,
             onToggleLyrics = onToggleLyrics,
-            onQueueClick = onQueue
+            onQueueClick = onQueue,
+            onQualityBadgeBoundsChanged = onQualityBadgeBoundsChanged
         )
     }
 
@@ -326,7 +328,8 @@ internal fun ExpandedNativePlayerContent(
                     ExpandedPlaybackBar(state, quality, background, onPlayPause, onPrevious, onNext, onSeek,
                         onQuality, onToggleMode, onToggleLyrics, onQueue, onMore,
                         Modifier.align(Alignment.BottomCenter).widthIn(max = 960.dp).fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        onQualityBadgeBoundsChanged = onQualityBadgeBoundsChanged)
                 }
             }
         }

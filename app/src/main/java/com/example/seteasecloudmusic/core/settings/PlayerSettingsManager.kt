@@ -12,13 +12,23 @@ enum class OnlineAudioQuality(
     val title: String,
     val levelKey: String,
     val desc: String,
-    val badgeText: String
+    val badgeText: String,
+    val playerBadgeText: String = badgeText,
+    val playerMenuLabel: String = title
 ) {
-    STANDARD("标准", "standard", "标准音质 · 128Kbps", "标准音质"),
-    HIGH("极高", "exhigh", "极高音质 · 320Kbps", "极高音质"),
-    LOSSLESS("无损", "lossless", "SQ 无损音质 · FLAC", "Lossless"),
-    HIRES("Hi-Res", "hires", "Hi-Res 超清母带 · 24bit/96kHz", "Hi-Res Lossless"),
-    DOLBY("杜比全景声", "sky", "沉浸环绕声 · Dolby Atmos", "Dolby Atmos")
+    STANDARD("标准", "standard", "标准音质 · 128Kbps", "标准音质", "标准", "标准 MP3"),
+    HIGH("极高", "exhigh", "极高音质 · 320Kbps", "极高音质", "极高", "极高 HQ"),
+    LOSSLESS("无损", "lossless", "SQ 无损音质 · FLAC", "无损音质", "无损", "无损 SQ"),
+    HIRES("Hi-Res", "hires", "Hi-Res 超清母带 · 24bit/96kHz", "Hi-Res", "Hi-Res", "高解析度无损 Hi-Res");
+
+    companion object {
+        val PlayerSelectableQualities: List<OnlineAudioQuality> = listOf(
+            STANDARD,
+            HIGH,
+            LOSSLESS,
+            HIRES
+        )
+    }
 }
 
 @Singleton

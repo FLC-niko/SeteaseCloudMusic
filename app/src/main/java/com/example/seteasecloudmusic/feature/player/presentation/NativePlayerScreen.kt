@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -125,8 +126,12 @@ import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.shapes.RoundedRectangle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -326,50 +331,52 @@ internal fun NativePlayerContent(
         }
     }
 
-    val adaptiveWindow = LocalAdaptiveWindow.current
-    if (adaptiveWindow.useExpandedPlayer) {
-        ExpandedNativePlayerContent(
-            state = playbackState,
-            lyrics = parsedLyrics,
-            quality = currentAudioQuality,
-            onClose = onClose,
-            artworkAlpha = artworkAlpha,
-            onArtworkBoundsChanged = onArtworkBoundsChanged,
-            onPlayPause = onPlayPause,
-            onNext = onNext,
-            onPrevious = onPrevious,
-            onSeek = onSeek,
-            onQuality = { if (hasTrack) showQualitySheet = true },
-            onQueue = { showQueueSheet = true },
-            isLyricsLoading = isLyricsLoading,
-            likedTrackIds = likedTrackIds,
-            onToggleStar = onToggleStar,
-            onToggleMode = onToggleMode,
-            modifier = modifier,
-            isLyricsPage = currentPage == NativePlayerPage.LYRIC,
-            onToggleLyrics = { currentPage = if (currentPage == NativePlayerPage.LYRIC) NativePlayerPage.ALBUM else NativePlayerPage.LYRIC },
-            onMore = { showMoreSheet = true }
-        )
-        if (showQueueSheet) {
-            PlaylistQueueSheet(
-                playbackState = playbackState,
-                onTrackClick = onQueueTrack,
-                onRemoveTrack = onRemoveTrack,
-                onClearQueue = onClearQueue,
-                onTogglePlaybackMode = onToggleMode,
-                onDismiss = { showQueueSheet = false }
-            )
-        }
-        if (showQualitySheet) {
-            AudioQualitySelectionSheet(
-                currentQuality = currentAudioQuality,
-                onSelectQuality = onQuality,
-                onDismiss = { showQualitySheet = false }
-            )
-        }
-        moreSheet()
-        return
+    val sharedPlayerBackdrop = LocalPlayerBackdrop.current
+    val foregroundBackdrop = rememberLayerBackdrop { drawContent() }
+    val qualityPopupBackdrop = if (sharedPlayerBackdrop != null) {
+        rememberCombinedBackdrop(sharedPlayerBackdrop, foregroundBackdrop)
+    } else {
+        foregroundBackdrop
     }
+    var qualityBadgeBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
+    val qualityPopupVisibleState = remember { MutableTransitionState(false) }
+    LaunchedEffect(showQualitySheet) {
+        qualityPopupVisibleState.targetState = showQualitySheet
+    }
+    val isQualityPopupMounted = qualityPopupVisibleState.currentState || qualityPopupVisibleState.targetState
+
+    val adaptiveWindow = LocalAdaptiveWindow.current
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (isQualityPopupMounted) Modifier.layerBackdrop(foregroundBackdrop) else Modifier)
+        ) {
+            if (adaptiveWindow.useExpandedPlayer) {
+                ExpandedNativePlayerContent(
+                    state = playbackState,
+                    lyrics = parsedLyrics,
+                    quality = currentAudioQuality,
+                    onClose = onClose,
+                    artworkAlpha = artworkAlpha,
+                    onArtworkBoundsChanged = onArtworkBoundsChanged,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onSeek = onSeek,
+                    onQuality = { if (hasTrack) showQualitySheet = true },
+                    onQueue = { showQueueSheet = true },
+                    isLyricsLoading = isLyricsLoading,
+                    likedTrackIds = likedTrackIds,
+                    onToggleStar = onToggleStar,
+                    onToggleMode = onToggleMode,
+                    modifier = Modifier.fillMaxSize(),
+                    isLyricsPage = currentPage == NativePlayerPage.LYRIC,
+                    onToggleLyrics = { currentPage = if (currentPage == NativePlayerPage.LYRIC) NativePlayerPage.ALBUM else NativePlayerPage.LYRIC },
+                    onMore = { showMoreSheet = true },
+                    onQualityBadgeBoundsChanged = { qualityBadgeBoundsInRoot = it }
+                )
+            } else {
 
     val activeLineIndex = remember(parsedLyrics, currentPosition) {
         if (parsedLyrics.lines.isEmpty()) {
@@ -403,7 +410,7 @@ internal fun NativePlayerContent(
     var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
 
     BoxWithConstraints(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize().testTag("player_stacked")
             .semantics { stateDescription = if (currentPage == NativePlayerPage.LYRIC) "\u6b4c\u8bcd" else "\u4e13\u8f91" }
             .onGloballyPositioned { coords ->
@@ -955,7 +962,8 @@ internal fun NativePlayerContent(
                             onQueueClick = {
                                 notifyUserActivity()
                                 showQueueSheet = true
-                            }
+                            },
+                            onQualityBadgeBoundsChanged = { qualityBadgeBoundsInRoot = it }
                         )
                     }
                 }
@@ -1115,6 +1123,21 @@ internal fun NativePlayerContent(
                 }
             }
         }
+        }
+        }
+        }
+
+        // 音质切换液态玻璃悬浮小弹窗（采样底层流光与前景封面/进度条）
+        if (isQualityPopupMounted) {
+            AudioQualityLiquidGlassPopup(
+                visibleState = qualityPopupVisibleState,
+                currentQuality = currentAudioQuality,
+                backdrop = qualityPopupBackdrop,
+                anchorBoundsInRoot = qualityBadgeBoundsInRoot,
+                onSelectQuality = onQuality,
+                onDismiss = { showQualitySheet = false }
+            )
+        }
 
         // 待播清单弹窗
         if (showQueueSheet) {
@@ -1125,15 +1148,6 @@ internal fun NativePlayerContent(
                 onClearQueue = { onClearQueue() },
                 onTogglePlaybackMode = { onToggleMode() },
                 onDismiss = { showQueueSheet = false }
-            )
-        }
-
-        // 音质切换弹窗（从进度条下方中间 Dolby Atmos 槽位触发）
-        if (showQualitySheet) {
-            AudioQualitySelectionSheet(
-                currentQuality = currentAudioQuality,
-                onSelectQuality = { quality -> onQuality(quality) },
-                onDismiss = { showQualitySheet = false }
             )
         }
 
@@ -1939,119 +1953,21 @@ private suspend fun probeLocalAudioMetadata(
 }
 
 /**
- * 音质选择底栏（从进度条正下方 Dolby Atmos 槽位点击弹出）
+ * 音质选择弹窗入口（兼容独立渲染/测试调用，默认复用液态玻璃悬浮小弹窗）
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AudioQualitySelectionSheet(
     currentQuality: OnlineAudioQuality,
     onSelectQuality: (OnlineAudioQuality) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AdaptiveModalSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C22)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 8.dp)
-                .padding(bottom = 32.dp)
-        ) {
-            Text(
-                text = "选择播放音质",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "点击进度条下方音质徽章可随时切换音频格式",
-                fontSize = 12.sp,
-                color = Color.White.copy(alpha = 0.55f)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OnlineAudioQuality.entries.forEach { quality ->
-                val isSelected = quality == currentQuality
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isSelected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-                        .clickable {
-                            onSelectQuality(quality)
-                            onDismiss()
-                        }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (quality == OnlineAudioQuality.DOLBY) quality.title else quality.title + "音质",
-                                fontSize = 15.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isSelected) Color(0xFFFA233B) else Color.White
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            when (quality) {
-                                OnlineAudioQuality.DOLBY -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color.White.copy(alpha = 0.14f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Dolby Atmos",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White.copy(alpha = 0.9f)
-                                        )
-                                    }
-                                }
-                                OnlineAudioQuality.LOSSLESS, OnlineAudioQuality.HIRES -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFFFA233B).copy(alpha = 0.2f))
-                                            .padding(horizontal = 5.dp, vertical = 1.5.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (quality == OnlineAudioQuality.HIRES) "Hi-Res" else "Lossless",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFFA233B)
-                                        )
-                                    }
-                                }
-                                else -> Unit
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = quality.desc,
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.6f)
-                        )
-                    }
-
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = "已选中",
-                            tint = Color(0xFFFA233B),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
+    val visibleState = remember { MutableTransitionState(true) }
+    AudioQualityLiquidGlassPopup(
+        visibleState = visibleState,
+        currentQuality = currentQuality,
+        backdrop = LocalGlassBackdrop.current,
+        anchorBoundsInRoot = null,
+        onSelectQuality = onSelectQuality,
+        onDismiss = onDismiss
+    )
 }

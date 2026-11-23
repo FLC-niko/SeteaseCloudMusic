@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -44,7 +45,8 @@ internal fun ExpandedPlaybackBar(
     onToggleLyrics: () -> Unit,
     onQueue: () -> Unit,
     onMore: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onQualityBadgeBoundsChanged: ((Rect) -> Unit)? = null
 ) {
     val track = state.currentTrack
     val hasTrack = track != null
@@ -77,8 +79,17 @@ internal fun ExpandedPlaybackBar(
             }
             Column {
                 if (!wide) trackLabel(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 8.dp))
-                AppleMusicProgressSlider(state.currentPositionMs, state.durationMs, playing, hasTrack, quality,
-                    local, onQuality, onSeek)
+                AppleMusicProgressSlider(
+                    currentPositionMs = state.currentPositionMs,
+                    durationMs = state.durationMs,
+                    isPlaying = playing,
+                    hasTrack = hasTrack,
+                    currentAudioQuality = quality,
+                    isLocalTrack = local,
+                    onAudioQualityClick = onQuality,
+                    onSeekTo = onSeek,
+                    onQualityBadgeBoundsChanged = onQualityBadgeBoundsChanged
+                )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (wide) BarAction("切换播放模式", hasTrack, onToggleMode) {
                         AppleMusicPlaybackModeIcon(state.playbackMode, size = 22.dp, tint = Color.White)

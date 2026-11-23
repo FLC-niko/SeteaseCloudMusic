@@ -386,5 +386,29 @@ class PlayerMotionAndLyricsTest {
         assertEquals("未知专辑", djDetails.albumText)
         assertEquals("暂无歌词", djDetails.lyricSourceText)
     }
+
+    @Test
+    fun playerSelectableQualities_haveExpectedOrderLabelsAndChineseExceptHiResBadges() {
+        val expected = listOf(
+            OnlineAudioQuality.STANDARD,
+            OnlineAudioQuality.HIGH,
+            OnlineAudioQuality.LOSSLESS,
+            OnlineAudioQuality.HIRES
+        )
+        assertEquals(expected, OnlineAudioQuality.entries)
+        assertEquals(expected, OnlineAudioQuality.PlayerSelectableQualities)
+        assertEquals(
+            listOf("标准 MP3", "极高 HQ", "无损 SQ", "高解析度无损 Hi-Res"),
+            OnlineAudioQuality.PlayerSelectableQualities.map { it.playerMenuLabel }
+        )
+        assertEquals(
+            listOf("标准", "极高", "无损", "Hi-Res"),
+            OnlineAudioQuality.PlayerSelectableQualities.map { it.playerBadgeText }
+        )
+        assertEquals(
+            listOf("标准音质", "极高音质", "无损音质", "Hi-Res"),
+            OnlineAudioQuality.PlayerSelectableQualities.map { it.badgeText }
+        )
+    }
 }
 

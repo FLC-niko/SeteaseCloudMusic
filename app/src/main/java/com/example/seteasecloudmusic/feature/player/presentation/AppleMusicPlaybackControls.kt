@@ -64,6 +64,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
@@ -97,7 +99,7 @@ fun AppleMusicPlaybackControls(
     isBuffering: Boolean = false,
     isLyricsPage: Boolean = false,
     hasTrack: Boolean = true,
-    currentAudioQuality: OnlineAudioQuality = OnlineAudioQuality.DOLBY,
+    currentAudioQuality: OnlineAudioQuality = OnlineAudioQuality.STANDARD,
     isLocalTrack: Boolean = false,
     playbackMode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     onAudioQualityClick: () -> Unit = {},
@@ -108,6 +110,7 @@ fun AppleMusicPlaybackControls(
     onToggleLyrics: () -> Unit = {},
     onTogglePlaybackMode: () -> Unit = {},
     onQueueClick: () -> Unit = {},
+    onQualityBadgeBoundsChanged: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -123,7 +126,8 @@ fun AppleMusicPlaybackControls(
             currentAudioQuality = currentAudioQuality,
             isLocalTrack = isLocalTrack,
             onAudioQualityClick = onAudioQualityClick,
-            onSeekTo = onSeekTo
+            onSeekTo = onSeekTo,
+            onQualityBadgeBoundsChanged = onQualityBadgeBoundsChanged
         )
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -166,7 +170,8 @@ fun AppleMusicProgressSlider(
     isLocalTrack: Boolean,
     onAudioQualityClick: () -> Unit,
     onSeekTo: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onQualityBadgeBoundsChanged: ((Rect) -> Unit)? = null
 ) {
     val haptics = LocalHapticFeedback.current
     val onSeekUpdated by rememberUpdatedState(onSeekTo)
@@ -320,9 +325,20 @@ fun AppleMusicProgressSlider(
 
             if (hasTrack) {
                 val badgeTint = Color.White.copy(alpha = 0.52f)
-                val badgeLabel = if (isLocalTrack) "本地无损" else currentAudioQuality.badgeText
+                val badgeLabel = if (isLocalTrack) "本地" else currentAudioQuality.playerBadgeText
                 Box(
                     modifier = Modifier
+                        .then(
+                            if (onQualityBadgeBoundsChanged != null) {
+                                Modifier.onGloballyPositioned { coords ->
+                                    if (coords.isAttached) {
+                                        onQualityBadgeBoundsChanged(coords.boundsInRoot())
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
                         .clip(RoundedCornerShape(6.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
