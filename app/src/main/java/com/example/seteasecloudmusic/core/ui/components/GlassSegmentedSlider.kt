@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -193,18 +194,25 @@ fun GlassThumb(
     geometry: GlassThumbGeometry,
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
+    alphaProvider: (() -> Float)? = null,
     surfaceColor: Color = Color.White,
     surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha,
     blurRadius: Dp = GlassSliderDefaults.BlurRadius,
     orientation: Orientation = Orientation.Horizontal
 ) {
-    if (geometry.width <= 0.dp || geometry.height <= 0.dp || alpha <= 0f) return
+    if (geometry.width <= 0.dp || geometry.height <= 0.dp || (alphaProvider == null && alpha <= 0f)) return
 
     val innerCornerRadius = geometry.innerCornerRadius
     Box(
         modifier
+            .drawWithContent {
+                val currentAlpha = alphaProvider?.invoke() ?: alpha
+                if (currentAlpha > 0.001f) {
+                    drawContent()
+                }
+            }
             .graphicsLayer {
-                this.alpha = alpha
+                this.alpha = (alphaProvider?.invoke() ?: alpha).coerceIn(0f, 1f)
                 if (orientation == Orientation.Vertical) {
                     translationY = geometry.offsetX.toPx()
                     scaleY = geometry.stretchScale

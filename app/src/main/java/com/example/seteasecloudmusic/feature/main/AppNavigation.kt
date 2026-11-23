@@ -71,11 +71,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -220,6 +222,12 @@ private const val SEARCH_PAGE_INDEX = 3
 private fun lerpDp(start: Dp, stop: Dp, fraction: Float): Dp = start + (stop - start) * fraction
 private fun lerpColor(start: Color, stop: Color, fraction: Float): Color = androidx.compose.ui.graphics.lerp(start, stop, fraction)
 
+/** 非 State 的迷你条坐标引用：形变动画期间更新坐标不触发 AppNavigation 根组件重组，仅在打开全屏播放页时读取。 */
+private class MiniPlayerBoundsHolder(
+    var container: Rect? = null,
+    var artwork: Rect? = null
+)
+
 // 左侧主导航条内部分段滑块
 @Composable
 private fun LeftBarGlassThumb(
@@ -230,7 +238,7 @@ private fun LeftBarGlassThumb(
     dragOffsetX: State<Float?>,
     barHeight: Dp,
     cornerRadius: Dp,
-    alpha: Float,
+    alphaProvider: () -> Float,
     modifier: Modifier = Modifier
 ) {
     val geometry = rememberGlassThumbGeometry(
@@ -244,9 +252,59 @@ private fun LeftBarGlassThumb(
     GlassThumb(
         backdrop = backdrop,
         geometry = geometry,
-        alpha = alpha,
+        alphaProvider = alphaProvider,
         surfaceAlpha = GlassSliderDefaults.ThumbSurfaceAlpha,
         modifier = modifier
+    )
+}
+
+/** 独立可跳过的液态玻璃容器：隔绝外层交互状态切换导致的重组，防止 backdrop 重建 ShapeProvider。 */
+@Composable
+private fun LeftBarLiquidGlassContainer(
+    backdrop: Backdrop,
+    cornerRadius: Dp,
+    mainBarProgressAnimation: Animatable<Float, *>,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .liquidGlass(
+                backdrop = backdrop,
+                cornerRadius = cornerRadius,
+                // 按下放大时同步缩放被采样的内容层，避免折射采样与组件本体错位
+                layerBlock = {
+                    val progress = mainBarProgressAnimation.value
+                    val maxScale = (size.width + 8f.dp.toPx()) / size.width
+                    val scale = lerp(1f, maxScale, progress)
+                    scaleX = scale
+                    scaleY = scale
+                }
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(cornerRadius)),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun SearchButtonLiquidGlassContainer(
+    backdrop: Backdrop,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier.liquidGlass(
+            backdrop = backdrop,
+            cornerRadius = cornerRadius,
+            surfaceAlpha = GlassDefaults.SurfaceAlphaBright
+        ),
+        content = content
     )
 }
 
@@ -293,8 +351,8 @@ fun AppNavigation(
 
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showPlaylistQueueSheet by rememberSaveable { mutableStateOf(false) }
-    var miniPlayerContainerBounds by remember { mutableStateOf<Rect?>(null) }
-    var miniPlayerArtworkBounds by remember { mutableStateOf<Rect?>(null) }
+    val miniPlayerBoundsRef = remember { MiniPlayerBoundsHolder() }
+    var nowPlayingBoundsRevision by remember { mutableIntStateOf(0) }
     var frozenOpeningContainerBounds by remember { mutableStateOf<Rect?>(null) }
     var frozenOpeningArtworkBounds by remember { mutableStateOf<Rect?>(null) }
     var nowPlayingHostBounds by remember { mutableStateOf<Rect?>(null) }
@@ -364,8 +422,8 @@ fun AppNavigation(
         if (!artworkUrl.isNullOrBlank()) {
             nowPlayingArtworkUrl = artworkUrl
         }
-        frozenOpeningContainerBounds = miniPlayerContainerBounds
-        frozenOpeningArtworkBounds = miniPlayerArtworkBounds
+        frozenOpeningContainerBounds = miniPlayerBoundsRef.container
+        frozenOpeningArtworkBounds = miniPlayerBoundsRef.artwork
         val wasOpen = showNowPlaying
         showNowPlaying = true
         nowPlayingAnimJob = nowPlayingScope.launch {
@@ -407,8 +465,8 @@ fun AppNavigation(
     }
 
     LaunchedEffect(window.width, window.height, window.separatingFold) {
-        miniPlayerContainerBounds = null
-        miniPlayerArtworkBounds = null
+        miniPlayerBoundsRef.container = null
+        miniPlayerBoundsRef.artwork = null
         frozenOpeningContainerBounds = null
         frozenOpeningArtworkBounds = null
         nowPlayingArtworkBounds = null
@@ -469,14 +527,14 @@ fun AppNavigation(
         derivedStateOf { selectedIndexState.intValue == SEARCH_PAGE_INDEX }
     }
 
-    val searchProgress by animateFloatAsState(
+    val searchProgressState = animateFloatAsState(
         targetValue = if (isSearchExpanded) 1f else 0f,
         animationSpec = spring(stiffness = 500f, dampingRatio = 0.8f),
         label = "searchProgress"
     )
 
     val showGlassSlider = !isSearchExpanded
-    val sliderAlpha by animateFloatAsState(
+    val sliderAlphaState = animateFloatAsState(
         targetValue = if (showGlassSlider) 1f else 0f,
         animationSpec = if (isSearchExpanded) snap() else spring(stiffness = 500f, dampingRatio = 0.8f),
         label = "sliderAlpha"
@@ -539,8 +597,6 @@ fun AppNavigation(
         playerVisible = showNowPlaying,
         centerTravel = miniPlayerCenterTravel
     )
-    val hintProgress = navigationScroll.scrollHintProgress.value
-    val hintScale = 1f - 0.05f * hintProgress
     val isPlayerOpaque by remember {
         derivedStateOf { showNowPlaying && nowPlayingProgress.value >= 0.999f }
     }
@@ -620,12 +676,15 @@ fun AppNavigation(
         }
         // --- 顶层悬浮导航栏及独立搜索按钮 ---
         val isBottomChromeHidden by PlayerEntryPoints.isBottomChromeHidden.collectAsStateWithLifecycle()
-        val bottomChromeHideProgress by animateFloatAsState(
+        val bottomChromeHideProgressState = animateFloatAsState(
             targetValue = if (isBottomChromeHidden) 1f else 0f,
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 340f),
             label = "bottomChromeHideProgress"
         )
-        if (!useRail && bottomChromeHideProgress < 0.999f) {
+        val isBottomChromeVisible by remember {
+            derivedStateOf { bottomChromeHideProgressState.value < 0.999f }
+        }
+        if (!useRail && isBottomChromeVisible) {
         AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(2f)) {
         BoxWithConstraints(
             modifier = Modifier
@@ -641,8 +700,10 @@ fun AppNavigation(
                 .height(navBarHeight).testTag("horizontal_glass_dock")
                 .graphicsLayer {
                     val playerOpenSink = (nowPlayingProgress.value * 1.25f).coerceIn(0f, 1f)
-                    alpha = (1f - playerOpenSink) * (1f - bottomChromeHideProgress)
-                    translationY = playerOpenSink * 48.dp.toPx() + bottomChromeHideProgress * 150.dp.toPx()
+                    val hideProgress = bottomChromeHideProgressState.value
+                    val hintScale = 1f - 0.05f * navigationScroll.scrollHintProgress.value
+                    alpha = (1f - playerOpenSink) * (1f - hideProgress)
+                    translationY = playerOpenSink * 48.dp.toPx() + hideProgress * 150.dp.toPx()
                     scaleX = hintScale
                     scaleY = hintScale
                     transformOrigin = TransformOrigin(0.5f, 1f)
@@ -652,24 +713,45 @@ fun AppNavigation(
             val ballSize = navBarHeight
             val normalLeftWidth = totalWidth - ballSize - mainSearchGap
 
-            val navCompactProgress = navigationScroll.compactProgress.value
-            val collapseProgress = maxOf(searchProgress, navCompactProgress)
-            val leftWidth = lerpDp(normalLeftWidth, ballSize, collapseProgress)
-
             val searchGap = 10.dp
             val searchBarStartX = totalWidth - ballSize
             val searchBarTargetX = ballSize + searchGap
             val searchBarTargetWidth = totalWidth - (ballSize * 2) - (searchGap * 2)
 
-            val currentSearchBarX = lerpDp(searchBarStartX, searchBarTargetX, searchProgress)
-            val currentSearchBarWidth = lerpDp(ballSize, searchBarTargetWidth, searchProgress)
+            val isLeftBarCompactClickable by remember {
+                derivedStateOf { isSearchExpanded || navigationScroll.compactProgress.value > 0.5f }
+            }
+            val isLeftBarDragEnabled by remember {
+                derivedStateOf {
+                    !isSearchExpanded &&
+                        searchProgressState.value < 0.05f &&
+                        navigationScroll.compactProgress.value < 0.05f
+                }
+            }
+            val showCloseButton by remember {
+                derivedStateOf { searchProgressState.value > 0.01f }
+            }
 
             Box(modifier = Modifier.fillMaxSize()) {
 
                 // ============ 左侧主导航条 (包含主页、电台、我的，展开搜索或页面下滚时两边同步缩减为球状，只保留当前页图标并居中) ============
                 Box(
                     modifier = Modifier
-                        .width(leftWidth)
+                        .layout { measurable, constraints ->
+                            val collapseProgress = maxOf(
+                                searchProgressState.value,
+                                navigationScroll.compactProgress.value
+                            )
+                            val widthPx = lerpDp(normalLeftWidth, ballSize, collapseProgress)
+                                .roundToPx()
+                                .coerceIn(0, constraints.maxWidth)
+                            val placeable = measurable.measure(
+                                constraints.copy(minWidth = widthPx, maxWidth = widthPx)
+                            )
+                            layout(widthPx, placeable.height) {
+                                placeable.placeRelative(0, 0)
+                            }
+                        }
                         .fillMaxHeight().testTag("bottom_navigation_button")
                         .graphicsLayer {
                             // 按下时整体轻微放大，模拟液态玻璃被“压出张力”的感觉。缩小底栏放大比例。
@@ -679,27 +761,15 @@ fun AppNavigation(
                             scaleX = scale
                             scaleY = scale
                         }
-                        .liquidGlass(
-                            backdrop = backdrop,
-                            cornerRadius = cornerRadius,
-                            // 按下放大时同步缩放被采样的内容层，避免折射采样与组件本体错位
-                            layerBlock = {
-                                val progress = mainBarProgressAnimation.value
-                                val maxScale = (size.width + 8f.dp.toPx()) / size.width
-                                val scale = lerp(1f, maxScale, progress)
-                                scaleX = scale
-                                scaleY = scale
-                            }
-                        )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            enabled = isSearchExpanded || navCompactProgress > 0.5f
+                            enabled = isLeftBarCompactClickable
                         ) {
                             if (isSearchExpanded) {
                                 searchViewModel.onClearQuery()
                                 selectedIndexState.intValue = lastActiveTab
-                            } else if (navCompactProgress > 0.5f) {
+                            } else if (navigationScroll.compactProgress.value > 0.5f) {
                                 navigationScroll.expand()
                             }
                         }
@@ -727,17 +797,15 @@ fun AppNavigation(
                                 }
                             },
                             // 搜索展开或处于紧凑态时底栏交给 clickable 处理（点击展开），不响应滑动切换
-                            enabled = !isSearchExpanded && searchProgress < 0.05f && navCompactProgress < 0.05f
+                            enabled = isLeftBarDragEnabled
                         )
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(cornerRadius))
+                    LeftBarLiquidGlassContainer(
+                        backdrop = backdrop,
+                        cornerRadius = cornerRadius,
+                        mainBarProgressAnimation = mainBarProgressAnimation,
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        val thumbExpansionAlpha = ((1f - collapseProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
-                        val thumbAlpha = if (isSearchExpanded) 0f else (sliderAlpha * thumbExpansionAlpha)
-
                         LeftBarGlassThumb(
                             backdrop = backdrop,
                             containerWidth = normalLeftWidth,
@@ -746,90 +814,136 @@ fun AppNavigation(
                             dragOffsetX = dragOffsetXState,
                             barHeight = navBarHeight,
                             cornerRadius = cornerRadius,
-                            alpha = thumbAlpha,
+                            alphaProvider = {
+                                if (isSearchExpanded) {
+                                    0f
+                                } else {
+                                    val collapseProgress = maxOf(
+                                        searchProgressState.value,
+                                        navigationScroll.compactProgress.value
+                                    )
+                                    val thumbExpansionAlpha = ((1f - collapseProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+                                    sliderAlphaState.value * thumbExpansionAlpha
+                                }
+                            },
                             modifier = Modifier.align(Alignment.CenterStart)
                         )
 
                         val slotWidth = normalLeftWidth / MainNavItems.size
-                        val inactiveAlpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
-                        val labelAlpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                        val isSearchUnderHalf by remember {
+                            derivedStateOf { searchProgressState.value < 0.5f }
+                        }
 
                         MainNavItems.forEachIndexed { index, item ->
                             val isActiveTab = index == lastActiveTab
                             val isSelected = selectedIndexState.intValue == index && !isSearchExpanded
-                            val iconAlpha = if (isActiveTab) 1f else inactiveAlpha
+                            val normalCenterX = slotWidth * (index + 0.5f)
+                            val targetCenterX = ballSize / 2
+                            val normalCenterY = 18.dp
+                            val targetCenterY = ballSize / 2
+                            val targetColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
+                            val iconColor = if (isActiveTab && isSearchExpanded) {
+                                lerpColor(targetColor, Color.DarkGray, searchProgressState.value)
+                            } else {
+                                targetColor
+                            }
+                            val iconRes = if (isSelected && isSearchUnderHalf) item.selectedIconRes else item.iconRes
 
-                            if (iconAlpha > 0f) {
-                                val normalCenterX = slotWidth * (index + 0.5f)
-                                val targetCenterX = ballSize / 2
-                                val currentCenterX = if (isActiveTab) {
-                                    lerpDp(normalCenterX, targetCenterX, collapseProgress)
-                                } else {
-                                    normalCenterX
-                                }
-
-                                val normalCenterY = 18.dp
-                                val targetCenterY = ballSize / 2
-                                val currentCenterY = if (isActiveTab) {
-                                    lerpDp(normalCenterY, targetCenterY, collapseProgress)
-                                } else {
-                                    normalCenterY
-                                }
-
-                                val targetColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
-                                val iconColor = if (isActiveTab && isSearchExpanded) {
-                                    lerpColor(targetColor, Color.DarkGray, searchProgress)
-                                } else {
-                                    targetColor
-                                }
-
-                                val iconRes = if (isSelected && searchProgress < 0.5f) item.selectedIconRes else item.iconRes
-
-                                Box(
-                                    modifier = Modifier
-                                        .offset {
-                                            IntOffset(
-                                                (currentCenterX - 11.dp).roundToPx(),
-                                                (currentCenterY - 11.dp).roundToPx()
-                                            )
+                            Box(
+                                modifier = Modifier
+                                    .offset {
+                                        val collapseProgress = maxOf(
+                                            searchProgressState.value,
+                                            navigationScroll.compactProgress.value
+                                        )
+                                        val currentCenterX = if (isActiveTab) {
+                                            lerpDp(normalCenterX, targetCenterX, collapseProgress)
+                                        } else {
+                                            normalCenterX
                                         }
-                                        .size(22.dp)
-                                        .graphicsLayer { alpha = iconAlpha },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(id = iconRes),
-                                        contentDescription = item.title,
-                                        tint = iconColor,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
+                                        val currentCenterY = if (isActiveTab) {
+                                            lerpDp(normalCenterY, targetCenterY, collapseProgress)
+                                        } else {
+                                            normalCenterY
+                                        }
+                                        IntOffset(
+                                            (currentCenterX - 11.dp).roundToPx(),
+                                            (currentCenterY - 11.dp).roundToPx()
+                                        )
+                                    }
+                                    .size(22.dp)
+                                    .drawWithContent {
+                                        val iconAlpha = if (isActiveTab) {
+                                            1f
+                                        } else {
+                                            val collapseProgress = maxOf(
+                                                searchProgressState.value,
+                                                navigationScroll.compactProgress.value
+                                            )
+                                            (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                                        }
+                                        if (iconAlpha > 0.001f) {
+                                            drawContent()
+                                        }
+                                    }
+                                    .graphicsLayer {
+                                        alpha = if (isActiveTab) {
+                                            1f
+                                        } else {
+                                            val collapseProgress = maxOf(
+                                                searchProgressState.value,
+                                                navigationScroll.compactProgress.value
+                                            )
+                                            (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = iconRes),
+                                    contentDescription = item.title,
+                                    tint = iconColor,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
 
-                            if (labelAlpha > 0f) {
-                                val normalCenterX = slotWidth * (index + 0.5f)
-                                val isSelected = selectedIndexState.intValue == index
-                                val itemColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
+                            val isLabelSelected = selectedIndexState.intValue == index
+                            val itemColor = if (isLabelSelected) Color(0xFFFA233B) else Color.DarkGray
 
-                                Box(
-                                    modifier = Modifier
-                                        .offset {
-                                            IntOffset(
-                                                (normalCenterX - 28.dp).roundToPx(),
-                                                33.dp.roundToPx()
-                                            )
+                            Box(
+                                modifier = Modifier
+                                    .offset {
+                                        IntOffset(
+                                            (normalCenterX - 28.dp).roundToPx(),
+                                            33.dp.roundToPx()
+                                        )
+                                    }
+                                    .width(56.dp)
+                                    .drawWithContent {
+                                        val collapseProgress = maxOf(
+                                            searchProgressState.value,
+                                            navigationScroll.compactProgress.value
+                                        )
+                                        val labelAlpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                                        if (labelAlpha > 0.001f) {
+                                            drawContent()
                                         }
-                                        .width(56.dp)
-                                        .graphicsLayer { alpha = labelAlpha },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = item.title,
-                                        color = itemColor,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
-                                        maxLines = 1
-                                    )
-                                }
+                                    }
+                                    .graphicsLayer {
+                                        val collapseProgress = maxOf(
+                                            searchProgressState.value,
+                                            navigationScroll.compactProgress.value
+                                        )
+                                        alpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = item.title,
+                                    color = itemColor,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                                    maxLines = 1
+                                )
                             }
                         }
                     }
@@ -853,8 +967,23 @@ fun AppNavigation(
 
                 Box(
                     modifier = Modifier
-                        .offset { IntOffset(currentSearchBarX.roundToPx(), 0) }
-                        .width(currentSearchBarWidth)
+                        .offset {
+                            IntOffset(
+                                lerpDp(searchBarStartX, searchBarTargetX, searchProgressState.value).roundToPx(),
+                                0
+                            )
+                        }
+                        .layout { measurable, constraints ->
+                            val widthPx = lerpDp(ballSize, searchBarTargetWidth, searchProgressState.value)
+                                .roundToPx()
+                                .coerceIn(0, constraints.maxWidth)
+                            val placeable = measurable.measure(
+                                constraints.copy(minWidth = widthPx, maxWidth = widthPx)
+                            )
+                            layout(widthPx, placeable.height) {
+                                placeable.placeRelative(0, 0)
+                            }
+                        }
                         .fillMaxHeight().testTag("bottom_search_button")
                         .graphicsLayer {
                             val progress = searchProgressAnimation.value
@@ -863,11 +992,6 @@ fun AppNavigation(
                             scaleX = scale
                             scaleY = scale
                         }
-                        .liquidGlass(
-                            backdrop = backdrop,
-                            cornerRadius = cornerRadius,
-                            surfaceAlpha = GlassDefaults.SurfaceAlphaBright
-                        )
                         .clickable(
                             interactionSource = searchInteractionSource,
                             indication = null,
@@ -878,45 +1002,70 @@ fun AppNavigation(
                             selectedIndexState.intValue = SEARCH_PAGE_INDEX
                         }
                 ) {
-                    val iconStartPadding = lerpDp((ballSize - 20.dp) / 2, 16.dp, searchProgress)
-                    val iconSize = lerpDp(20.dp, 17.dp, searchProgress)
-                    val iconTint = lerpColor(Color.DarkGray, Color(0xFFFA233B), searchProgress)
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(start = iconStartPadding, end = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    SearchButtonLiquidGlassContainer(
+                        backdrop = backdrop,
+                        cornerRadius = cornerRadius,
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_nav_search),
-                            contentDescription = "搜索",
-                            tint = iconTint,
-                            modifier = Modifier.size(iconSize)
-                        )
+                        val showSearchInput by remember {
+                            derivedStateOf { searchProgressState.value > 0.15f }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .layout { measurable, constraints ->
+                                    val startPx = lerpDp((ballSize - 20.dp) / 2, 16.dp, searchProgressState.value).roundToPx()
+                                    val endPx = 16.dp.roundToPx()
+                                    val maxW = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
+                                    val placeable = measurable.measure(
+                                        constraints.copy(minWidth = 0, maxWidth = maxW)
+                                    )
+                                    layout(constraints.maxWidth, placeable.height) {
+                                        placeable.placeRelative(startPx, (constraints.maxHeight - placeable.height) / 2)
+                                    }
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val iconTint = if (isSearchExpanded) {
+                                lerpColor(Color.DarkGray, Color(0xFFFA233B), searchProgressState.value)
+                            } else {
+                                Color.DarkGray
+                            }
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_nav_search),
+                                contentDescription = "搜索",
+                                tint = iconTint,
+                                modifier = Modifier.layout { measurable, _ ->
+                                    val px = lerpDp(20.dp, 17.dp, searchProgressState.value).roundToPx().coerceAtLeast(1)
+                                    val placeable = measurable.measure(Constraints.fixed(px, px))
+                                    layout(px, px) { placeable.place(0, 0) }
+                                }
+                            )
 
-                        if (searchProgress > 0.15f) {
-                            val inputAlpha = ((searchProgress - 0.2f) / 0.8f).coerceIn(0f, 1f)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .graphicsLayer { alpha = inputAlpha },
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                SearchQueryInputContent(
-                                    viewModel = searchViewModel,
-                                    enabled = isSearchExpanded,
-                                    modifier = Modifier.fillMaxWidth().fillMaxHeight()
-                                )
+                            if (showSearchInput) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .graphicsLayer {
+                                            alpha = ((searchProgressState.value - 0.2f) / 0.8f).coerceIn(0f, 1f)
+                                        },
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    SearchQueryInputContent(
+                                        viewModel = searchViewModel,
+                                        enabled = isSearchExpanded,
+                                        modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 // ============ 右侧关闭按钮 (在原先搜索位置从小放大) ============
-                if (searchProgress > 0.01f) {
+                if (showCloseButton) {
                     val closeInteractionSource = remember { MutableInteractionSource() }
 
                     LaunchedEffect(closeInteractionSource) {
@@ -940,7 +1089,7 @@ fun AppNavigation(
                                 val progress = closeProgressAnimation.value
                                 val maxScale = (size.width + 4f.dp.toPx()) / size.width
                                 val pressScale = lerp(1f, maxScale, progress)
-                                val appearScale = searchProgress.coerceIn(0f, 1f)
+                                val appearScale = searchProgressState.value.coerceIn(0f, 1f)
                                 scaleX = appearScale * pressScale
                                 scaleY = appearScale * pressScale
                                 alpha = appearScale
@@ -975,22 +1124,16 @@ fun AppNavigation(
         }
 
         val normalMiniPlayerBottom = (if (useRail) 18.dp else 6.dp + navBarHeight + miniPlayerNavGap) + animatedImeOffset
-        val compactMiniPlayerBottom = 6.dp + animatedImeOffset
-        val currentMiniPlayerBottom = lerpDp(
-            normalMiniPlayerBottom,
-            compactMiniPlayerBottom,
-            miniPlayerChromeMotion.verticalProgress.value
-        )
-
         val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
-        val isMiniPlayerVisible = bottomChromeHideProgress < 0.999f
-
-        if (isMiniPlayerVisible && !useRail) {
-            val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
-            val sharesArtworkNow = showNowPlaying &&
-                activeSourceArtwork?.isUsable() == true &&
-                nowPlayingArtworkBounds?.isUsable() == true
+        if (isBottomChromeVisible && !useRail) {
+            val sharesArtworkNow = if (showNowPlaying) {
+                nowPlayingBoundsRevision // 仅在打开/关闭全屏播放页时订阅坐标变更
+                val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerBoundsRef.artwork
+                activeSourceArtwork?.isUsable() == true && nowPlayingArtworkBounds?.isUsable() == true
+            } else {
+                false
+            }
             AdaptiveOverlayPane(Modifier.fillMaxSize().zIndex(1f)) {
             SearchMiniPlayerBar(
                 backdrop = backdrop,
@@ -1009,13 +1152,15 @@ fun AppNavigation(
                     }
                 },
                 onContainerBoundsChanged = { bounds ->
-                    if (miniPlayerContainerBounds != bounds) {
-                        miniPlayerContainerBounds = bounds
+                    if (miniPlayerBoundsRef.container != bounds) {
+                        miniPlayerBoundsRef.container = bounds
+                        if (showNowPlaying) nowPlayingBoundsRevision++
                     }
                 },
                 onArtworkBoundsChanged = { bounds ->
-                    if (miniPlayerArtworkBounds != bounds) {
-                        miniPlayerArtworkBounds = bounds
+                    if (miniPlayerBoundsRef.artwork != bounds) {
+                        miniPlayerBoundsRef.artwork = bounds
+                        if (showNowPlaying) nowPlayingBoundsRevision++
                     }
                 },
                 hideArtwork = sharesArtworkNow || (showNowPlaying && nowPlayingProgress.value > 0.02f),
@@ -1027,17 +1172,28 @@ fun AppNavigation(
                     .padding(
                         start = railStartPadding,
                         end = railEndPadding,
-                        bottom = currentMiniPlayerBottom
+                        bottom = normalMiniPlayerBottom
                     )
-                    .horizontalMiniPlayerFrame(miniPlayerChromeMotion.horizontalProgress.value,
-                        horizontalPadding = horizontalPadding, buttonSize = navBarHeight)
+                    .offset {
+                        IntOffset(
+                            0,
+                            (miniPlayerChromeMotion.verticalProgress.value * miniPlayerCenterTravel.toPx()).roundToInt()
+                        )
+                    }
+                    .horizontalMiniPlayerFrame(
+                        progressProvider = { miniPlayerChromeMotion.horizontalProgress.value },
+                        horizontalPadding = horizontalPadding,
+                        buttonSize = navBarHeight
+                    )
                     .height(currentMiniPlayerHeight)
                     .graphicsLayer {
                         val shellFade = if (showNowPlaying) {
                             (1f - playerBackgroundAlpha(nowPlayingProgress.value) * 1.15f).coerceIn(0f, 1f)
                         } else 1f
-                        alpha = shellFade * (1f - bottomChromeHideProgress)
-                        translationY = bottomChromeHideProgress * 180.dp.toPx()
+                        val hideProgress = bottomChromeHideProgressState.value
+                        val hintScale = 1f - 0.05f * navigationScroll.scrollHintProgress.value
+                        alpha = shellFade * (1f - hideProgress)
+                        translationY = hideProgress * 180.dp.toPx()
                         scaleX = hintScale
                         scaleY = hintScale
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -1071,12 +1227,26 @@ fun AppNavigation(
                 }, miniPlayer = { inOverflow, closeOverflow ->
                     SideMiniPlayer(playerViewModel.playbackState, backdrop,
                         { closeOverflow(); openPlayer(it) }, { closeOverflow(); playerViewModel.onPlayPause() }, { closeOverflow(); showPlaylistQueueSheet = true },
-                        { miniPlayerContainerBounds = if (inOverflow) null else it }, { miniPlayerArtworkBounds = if (inOverflow) null else it })
+                        {
+                            val next = if (inOverflow) null else it
+                            if (miniPlayerBoundsRef.container != next) {
+                                miniPlayerBoundsRef.container = next
+                                if (showNowPlaying) nowPlayingBoundsRevision++
+                            }
+                        },
+                        {
+                            val next = if (inOverflow) null else it
+                            if (miniPlayerBoundsRef.artwork != next) {
+                                miniPlayerBoundsRef.artwork = next
+                                if (showNowPlaying) nowPlayingBoundsRevision++
+                            }
+                        })
                 })
         }
         if (showNowPlaying) {
-            val activeSourceContainer = frozenOpeningContainerBounds ?: miniPlayerContainerBounds
-            val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerArtworkBounds
+            nowPlayingBoundsRevision
+            val activeSourceContainer = frozenOpeningContainerBounds ?: miniPlayerBoundsRef.container
+            val activeSourceArtwork = frozenOpeningArtworkBounds ?: miniPlayerBoundsRef.artwork
             NowPlayingTransitionLayer(
                 playerViewModel = playerViewModel,
                 progress = nowPlayingProgress.asState(),
@@ -1119,7 +1289,7 @@ fun AppNavigation(
                 },
                 onGrabberDragDelta = { deltaPx ->
                     val hostH = nowPlayingHostBounds?.height ?: with(rootDensity) { window.height.toPx() }
-                    val miniH = miniPlayerContainerBounds?.height ?: with(rootDensity) { navBarHeight.toPx() }
+                    val miniH = miniPlayerBoundsRef.container?.height ?: with(rootDensity) { navBarHeight.toPx() }
                     val travelPx = (hostH - miniH).coerceAtLeast(1f)
                     val nextP = (nowPlayingProgress.value - deltaPx / travelPx).coerceIn(0f, 1f)
                     nowPlayingScope.launch {
@@ -1128,7 +1298,7 @@ fun AppNavigation(
                 },
                 onGrabberDragEnd = { velocityY ->
                     val hostH = nowPlayingHostBounds?.height ?: with(rootDensity) { window.height.toPx() }
-                    val miniH = miniPlayerContainerBounds?.height ?: with(rootDensity) { navBarHeight.toPx() }
+                    val miniH = miniPlayerBoundsRef.container?.height ?: with(rootDensity) { navBarHeight.toPx() }
                     val travelPx = (hostH - miniH).coerceAtLeast(1f)
                     val progressVelocity = -velocityY / travelPx
                     val flingClosePx = with(rootDensity) { 580.dp.toPx() }
@@ -2324,11 +2494,16 @@ internal fun SearchMiniPlayerBar(
                         },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val coverSize = lerpDp(34.dp, 30.dp, contentProgress.value)
                     MiniPlayerArtwork(
                         imageUrl = currentArtworkUrl,
                         modifier = Modifier
-                            .size(coverSize)
+                            .layout { measurable, _ ->
+                                val sizePx = lerpDp(34.dp, 30.dp, contentProgress.value)
+                                    .roundToPx()
+                                    .coerceAtLeast(1)
+                                val placeable = measurable.measure(Constraints.fixed(sizePx, sizePx))
+                                layout(sizePx, sizePx) { placeable.place(0, 0) }
+                            }
                             .graphicsLayer { alpha = if (hideArtwork) 0f else 1f },
                         onBoundsChanged = { bounds ->
                             if (!isDragging && !isTransitioning) {
@@ -2370,46 +2545,69 @@ internal fun SearchMiniPlayerBar(
                 }
             }
 
-            // 播放列表图标（在展开状态展示，紧凑状态随 contentProgress 平滑缩小并淡出）
-            val playlistVisibility = (1f - contentProgress.value).coerceIn(0f, 1f)
-            if (playlistVisibility > 0.001f) {
-                val playlistWidth = 28.dp * playlistVisibility
+            // 播放列表图标（在展开状态展示，紧凑状态随 contentProgress 在布局/绘制阶段平滑缩小并淡出，避免外层 SearchMiniPlayerBar 重组）
+            Box(
+                modifier = Modifier
+                    .layout { measurable, _ ->
+                        val visibility = (1f - contentProgress.value).coerceIn(0f, 1f)
+                        val iconBoxSizePx = 28.dp.roundToPx()
+                        val boxWidthPx = if (visibility > 0.001f) (28.dp * visibility).roundToPx() else 0
+                        val placeable = measurable.measure(Constraints.fixed(boxWidthPx, iconBoxSizePx))
+                        layout(boxWidthPx, iconBoxSizePx) {
+                            if (visibility > 0.001f) {
+                                placeable.placeRelative(0, 0)
+                            }
+                        }
+                    }
+                    .drawWithContent {
+                        if ((1f - contentProgress.value) > 0.001f) {
+                            drawContent()
+                        }
+                    }
+                    .graphicsLayer {
+                        val visibility = (1f - contentProgress.value).coerceIn(0f, 1f)
+                        alpha = visibility
+                        scaleX = 0.8f + 0.2f * visibility
+                        scaleY = 0.8f + 0.2f * visibility
+                        clip = true
+                    },
+                contentAlignment = Alignment.Center
+            ) {
                 Box(
                     modifier = Modifier
-                        .width(playlistWidth)
-                        .height(28.dp)
-                        .graphicsLayer {
-                            alpha = playlistVisibility
-                            scaleX = 0.8f + 0.2f * playlistVisibility
-                            scaleY = 0.8f + 0.2f * playlistVisibility
-                            clip = true
+                        .requiredSize(28.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = enabled
+                        ) {
+                            if ((1f - contentProgress.value) > 0.001f) {
+                                onPlaylistClick()
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                enabled = enabled,
-                                onClick = onPlaylistClick
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_mini_playlist),
-                            contentDescription = "播放列表",
-                            tint = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8),
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_mini_playlist),
+                        contentDescription = "播放列表",
+                        tint = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8),
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.width(lerpDp(8.dp, 0.dp, contentProgress.value)))
-            } else {
-                Spacer(modifier = Modifier.width(2.dp))
             }
+            Spacer(
+                modifier = Modifier.layout { _, _ ->
+                    val p = contentProgress.value.coerceIn(0f, 1f)
+                    val visibility = (1f - p).coerceIn(0f, 1f)
+                    val spacePx = if (visibility > 0.001f) {
+                        lerpDp(8.dp, 0.dp, p).roundToPx()
+                    } else {
+                        2.dp.roundToPx()
+                    }
+                    layout(spacePx, 0) {}
+                }
+            )
 
             // 播放暂停在最靠右，外面加上一个圈，显示播放进度，与组件的圆角和大小对齐
             MiniPlayerProgressPlayButton(
