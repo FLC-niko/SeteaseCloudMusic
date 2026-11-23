@@ -407,14 +407,6 @@ fun AppleMusicCollapsedTopBar(
         ((collapseFraction - 0.16f) / 0.54f).coerceIn(0f, 1f)
     }
 
-    // 详情页首帧（封面直通顶部状态栏）在未滑动前先保留一层轻柔的顶部状态栏渐进模糊，
-    // 随上滑平滑过渡到完整的顶栏渐进模糊。
-    val restingStatusBlurAlpha = if (showBackButton) {
-        (1f - fullBlurAlpha).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-
     // 小标题淡入：当大标题缩小接近顶部时，在左侧平滑淡入无缝接替
     val titleAlpha = if (showBackButton) {
         collapseFraction.coerceIn(0f, 1f)
@@ -427,18 +419,6 @@ fun AppleMusicCollapsedTopBar(
     Box(
         modifier = modifier.fillMaxWidth()
     ) {
-        if (backdrop != null && restingStatusBlurAlpha > 0.005f) {
-            ProgressiveTopBlur(
-                backdrop = backdrop,
-                totalHeight = statusBarHeight + 22.dp,
-                statusBarHeight = statusBarHeight,
-                alphaProvider = { restingStatusBlurAlpha },
-                deepBlurRadius = 16.dp,
-                mediumBlurRadius = 8.dp,
-                shallowBlurRadius = 3.dp
-            )
-        }
-
         if (backdrop != null && fullBlurAlpha > 0.005f) {
             ProgressiveTopBlur(
                 backdrop = backdrop,

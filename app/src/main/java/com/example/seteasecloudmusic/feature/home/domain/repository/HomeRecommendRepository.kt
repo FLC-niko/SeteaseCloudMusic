@@ -34,6 +34,46 @@ interface HomeRecommendRepository {
     fun getCachedRadarPlaylist(): RadarPlaylistData?
 
     /**
+     * 获取新歌雷达歌单（含歌曲列表）
+     */
+    suspend fun getNewSongRadarPlaylist(): Result<RadarPlaylistData>
+
+    /**
+     * 获取本地缓存的新歌雷达歌单
+     */
+    fun getCachedNewSongRadarPlaylist(): RadarPlaylistData?
+
+    /**
+     * 获取私人 DJ / 私人 FM 推荐歌曲列表
+     */
+    suspend fun getPrivateDjSongs(): Result<List<Track>>
+
+    /**
+     * 获取本地缓存的私人 DJ 歌曲列表
+     */
+    fun getCachedPrivateDjSongs(): List<Track>?
+
+    /**
+     * 获取首页「相似歌曲」漫游推荐歌曲列表
+     */
+    suspend fun getSimiRecommendSongs(): Result<List<Track>>
+
+    /**
+     * 获取本地缓存的相似歌曲列表
+     */
+    fun getCachedSimiRecommendSongs(): List<Track>?
+
+    /**
+     * 获取首页「心动模式」（/playmode/intelligence/list）歌曲列表
+     */
+    suspend fun getHeartModeSongs(): Result<List<Track>>
+
+    /**
+     * 获取本地缓存的心动模式歌曲列表
+     */
+    fun getCachedHeartModeSongs(): List<Track>?
+
+    /**
      * 获取首页「根据你喜爱的歌曲推荐」（来自 /homepage/block/page 的 HOMEPAGE_BLOCK_STYLE_RCMD）
      */
     suspend fun getFavoriteRecommendSongs(

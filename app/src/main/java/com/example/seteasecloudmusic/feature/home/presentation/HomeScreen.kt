@@ -1,7 +1,9 @@
 package com.example.seteasecloudmusic.feature.home.presentation
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.LinearEasing
@@ -12,6 +14,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +78,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
@@ -83,6 +87,7 @@ import androidx.compose.ui.res.painterResource
 import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -110,7 +115,13 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.LocalPageVisible
+import com.example.seteasecloudmusic.core.ui.components.RoamStaggeredCoverStack
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
+import com.example.seteasecloudmusic.core.ui.components.deriveDarkHueFromId
+import com.example.seteasecloudmusic.core.ui.components.extractCachedBottomEdgeColor
+import com.example.seteasecloudmusic.core.ui.components.extractCachedDominantDarkColor
+import com.example.seteasecloudmusic.core.ui.components.getCachedBottomEdgeColor
+import com.example.seteasecloudmusic.core.ui.components.getCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import kotlinx.coroutines.flow.map
@@ -136,6 +147,7 @@ fun HomeRoute(
     isForeground: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     HomeScreenContent(
         uiState = uiState,
@@ -150,10 +162,16 @@ fun HomeRoute(
             when (card.type) {
                 BigCardType.DAILY_RECOMMEND -> viewModel.playAll(uiState.tracks, 0)
                 BigCardType.RADAR_PLAYLIST -> viewModel.playAll(uiState.radarTracks, 0)
-                BigCardType.HEART_MODE -> viewModel.playAll(if (uiState.favoriteTracks.isNotEmpty()) uiState.favoriteTracks else uiState.tracks)
+                BigCardType.HEART_MODE -> {
+                    Toast.makeText(context, "正在开启心动模式", Toast.LENGTH_SHORT).show()
+                    viewModel.playHeartMode()
+                }
                 BigCardType.PRIVATE_DJ -> viewModel.playPrivateDj()
-                BigCardType.SIMI_SONGS -> viewModel.playAll(if (uiState.favoriteTracks.isNotEmpty()) uiState.favoriteTracks else uiState.tracks)
-                BigCardType.SIMI_ARTISTS -> viewModel.playAll(uiState.tracks)
+                BigCardType.SIMI_SONGS -> viewModel.playSimiSongs()
+                BigCardType.NEW_SONG_RADAR -> viewModel.playAll(
+                    if (uiState.newSongRadarTracks.isNotEmpty()) uiState.newSongRadarTracks else uiState.tracks,
+                    0
+                )
             }
         },
         onRetryClick = viewModel::onRetryClick,
@@ -342,21 +360,30 @@ internal fun HomeScreenContent(
                     favoriteTracks = uiState.favoriteTracks,
                     radarTracks = uiState.radarTracks,
                     radarPlaylist = uiState.radarPlaylist,
+                    newSongRadarTracks = uiState.newSongRadarTracks,
+                    newSongRadarPlaylist = uiState.newSongRadarPlaylist,
+                    privateDjTracks = uiState.privateDjTracks,
+                    simiSongsTracks = uiState.simiSongsTracks,
                     likedCoverUrl = uiState.likedMusicCoverUrl,
                     privateDjCoverUrl = uiState.privateDjCoverUrl,
                     onCardClick = { card ->
-                        val targetTracks = when (card.type) {
-                            BigCardType.DAILY_RECOMMEND -> uiState.tracks
-                            BigCardType.RADAR_PLAYLIST -> uiState.radarTracks
-                            BigCardType.HEART_MODE -> if (uiState.favoriteTracks.isNotEmpty()) uiState.favoriteTracks else uiState.tracks
-                            BigCardType.PRIVATE_DJ -> uiState.tracks
-                            BigCardType.SIMI_SONGS -> if (uiState.favoriteTracks.isNotEmpty()) uiState.favoriteTracks else uiState.tracks
-                            BigCardType.SIMI_ARTISTS -> uiState.tracks
-                        }
-                        if (targetTracks.isNotEmpty()) {
-                            onPosterWallClick(targetTracks, card.title, card.coverUrl)
-                        } else {
-                            onCardPlayClick(card)
+                        when (card.type) {
+                            BigCardType.HEART_MODE,
+                            BigCardType.PRIVATE_DJ,
+                            BigCardType.SIMI_SONGS -> onCardPlayClick(card)
+                            else -> {
+                                val targetTracks = when (card.type) {
+                                    BigCardType.DAILY_RECOMMEND -> uiState.tracks
+                                    BigCardType.RADAR_PLAYLIST -> uiState.radarTracks
+                                    BigCardType.NEW_SONG_RADAR -> if (uiState.newSongRadarTracks.isNotEmpty()) uiState.newSongRadarTracks else uiState.tracks
+                                    BigCardType.HEART_MODE, BigCardType.PRIVATE_DJ, BigCardType.SIMI_SONGS -> emptyList()
+                                }
+                                if (targetTracks.isNotEmpty()) {
+                                    onPosterWallClick(targetTracks, card.title, card.coverUrl)
+                                } else {
+                                    onCardPlayClick(card)
+                                }
+                            }
                         }
                     },
                     onCardPlayClick = onCardPlayClick,
@@ -818,7 +845,7 @@ enum class BigCardType {
     HEART_MODE,
     PRIVATE_DJ,
     SIMI_SONGS,
-    SIMI_ARTISTS
+    NEW_SONG_RADAR
 }
 
 data class BigCardItem(
@@ -826,6 +853,7 @@ data class BigCardItem(
     val title: String,
     val subtitle: String,
     val coverUrl: String? = null,
+    val previewTracks: List<Track> = emptyList(),
     val defaultGradient: List<Color>
 )
 
@@ -1120,22 +1148,49 @@ private fun BigCardPlaylistsSection(
     favoriteTracks: List<Track>,
     radarTracks: List<Track>,
     radarPlaylist: RadarPlaylistData?,
+    newSongRadarTracks: List<Track>,
+    newSongRadarPlaylist: RadarPlaylistData?,
+    privateDjTracks: List<Track>,
+    simiSongsTracks: List<Track>,
     likedCoverUrl: String?,
     privateDjCoverUrl: String?,
     onCardClick: (BigCardItem) -> Unit,
     onCardPlayClick: (BigCardItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val simiTrackCover = favoriteTracks.firstOrNull()?.coverUrl
-        ?: tracks.firstOrNull()?.coverUrl
-
     val defaultRecommendCover = favoriteTracks.firstOrNull()?.coverUrl
         ?: tracks.firstOrNull()?.coverUrl
 
     val djCover = privateDjCoverUrl?.takeIf { it.isNotBlank() }
+        ?: privateDjTracks.firstOrNull()?.coverUrl
         ?: defaultRecommendCover
 
-    val cards = remember(tracks, favoriteTracks, radarTracks, radarPlaylist, likedCoverUrl, djCover) {
+    val simiDisplayTracks = remember(simiSongsTracks, favoriteTracks, tracks) {
+        when {
+            simiSongsTracks.isNotEmpty() -> simiSongsTracks
+            favoriteTracks.isNotEmpty() -> favoriteTracks
+            else -> tracks
+        }
+    }
+    val simiLeadTrack = simiDisplayTracks.firstOrNull()
+    val simiCompanionText = remember(simiDisplayTracks) {
+        val titles = simiDisplayTracks.map { it.title }.filter { it.isNotBlank() }.take(3)
+        if (titles.isNotEmpty()) titles.joinToString("、") else "从你喜欢的歌听起"
+    }
+
+    val cards = remember(
+        tracks,
+        favoriteTracks,
+        radarTracks,
+        radarPlaylist,
+        newSongRadarTracks,
+        newSongRadarPlaylist,
+        likedCoverUrl,
+        djCover,
+        simiDisplayTracks,
+        simiLeadTrack,
+        simiCompanionText
+    ) {
         listOf(
             BigCardItem(
                 type = BigCardType.RADAR_PLAYLIST,
@@ -1159,18 +1214,22 @@ private fun BigCardPlaylistsSection(
                 defaultGradient = listOf(Color(0xFF141E30), Color(0xFF243B55))
             ),
             BigCardItem(
-                type = BigCardType.SIMI_SONGS,
-                title = "相似歌曲",
-                subtitle = "从你喜欢的歌听起",
-                coverUrl = simiTrackCover,
-                defaultGradient = listOf(Color(0xFF9E8B83), Color(0xFF7A6861))
+                type = BigCardType.NEW_SONG_RADAR,
+                title = "新歌雷达",
+                subtitle = newSongRadarPlaylist?.description?.ifBlank { "发现最新发行的好歌" } ?: "发现最新发行的好歌",
+                coverUrl = newSongRadarPlaylist?.coverUrl
+                    ?: newSongRadarTracks.firstOrNull()?.coverUrl
+                    ?: tracks.getOrNull(4)?.coverUrl
+                    ?: tracks.getOrNull(2)?.coverUrl,
+                defaultGradient = listOf(Color(0xFF1A2A6C), Color(0xFFB21F1F), Color(0xFFFDBB2D))
             ),
             BigCardItem(
-                type = BigCardType.SIMI_ARTISTS,
-                title = "相似艺人",
-                subtitle = "常听歌手风格深度探索",
-                coverUrl = tracks.getOrNull(4)?.coverUrl ?: tracks.getOrNull(2)?.coverUrl,
-                defaultGradient = listOf(Color(0xFF1F1C18), Color(0xFF8E0E00))
+                type = BigCardType.SIMI_SONGS,
+                title = "相似歌曲",
+                subtitle = simiCompanionText,
+                coverUrl = simiLeadTrack?.coverUrl,
+                previewTracks = simiDisplayTracks.take(3),
+                defaultGradient = listOf(Color(0xFF9E8B83), Color(0xFF7A6861))
             )
         )
     }
@@ -1210,66 +1269,88 @@ private fun BigCardPlaylistItem(
     onPlayClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (card.type == BigCardType.SIMI_SONGS) {
+        SimiSongsRoamStyleCard(
+            card = card,
+            onClick = onClick,
+            onPlayClick = onPlayClick,
+            modifier = modifier
+        )
+        return
+    }
+
+    val context = LocalContext.current
+    val coverUrl = card.coverUrl
+    val fallbackExtendColor = remember(card.type, card.defaultGradient) {
+        if (card.type == BigCardType.PRIVATE_DJ && coverUrl.isNullOrBlank()) {
+            Color(0xFF7A7C80)
+        } else {
+            card.defaultGradient.lastOrNull() ?: Color(0xFF262C30)
+        }
+    }
+    val cachedExtendColor = remember(coverUrl) { getCachedBottomEdgeColor(coverUrl) }
+    var extendColor by remember(card.type, coverUrl, cachedExtendColor) {
+        mutableStateOf(cachedExtendColor ?: fallbackExtendColor)
+    }
+
+    LaunchedEffect(coverUrl, cachedExtendColor) {
+        if (cachedExtendColor != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
+        extractCachedBottomEdgeColor(context, coverUrl)?.let { extracted ->
+            extendColor = extracted
+        }
+    }
+
+    val animatedExtendColor by animateColorAsState(
+        targetValue = extendColor,
+        animationSpec = tween(durationMillis = 350),
+        label = "bigCardExtendBg"
+    )
+
     Box(
         modifier = modifier
             .width(160.dp)
             .height(215.dp)
             .clip(RoundedCornerShape(18.dp))
+            .drawBehind { drawRect(animatedExtendColor) }
             .clickable(onClick = onClick)
     ) {
-        if (card.type == BigCardType.SIMI_SONGS && !card.coverUrl.isNullOrBlank()) {
-            // 官方同款：深灰暖咖色底，顶部内嵌精致居中单曲方块
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF94837B)),
-                contentAlignment = Alignment.TopCenter
-            ) {
+        // 顶部 1:1 完整正方形封面，避免左右裁剪
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .align(Alignment.TopCenter)
+        ) {
+            if (!coverUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = coverUrl.toCoverThumbnailUrl(360),
+                    contentDescription = card.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (card.type == BigCardType.PRIVATE_DJ) {
+                // 官方同款手绘素描质感插画兜底
+                PrivateDjCardArtwork()
+            } else {
                 Box(
                     modifier = Modifier
-                        .padding(top = 22.dp)
-                        .size(86.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AsyncImage(
-                        model = card.coverUrl.toCoverThumbnailUrl(200),
-                        contentDescription = card.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(78.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                }
+                        .fillMaxSize()
+                        .background(Brush.linearGradient(card.defaultGradient))
+                )
             }
-        } else if (!card.coverUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = card.coverUrl.toCoverThumbnailUrl(360),
-                contentDescription = card.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else if (card.type == BigCardType.PRIVATE_DJ) {
-            // 官方同款手绘素描质感插画兜底
-            PrivateDjCardArtwork()
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.linearGradient(card.defaultGradient))
-            )
         }
 
+        // 从正方形封面下沿柔和过渡到底部取色延伸区域
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.05f),
-                        0.18f to Color.Transparent,
-                        0.76f to Color.Transparent,
-                        1.0f to Color.Black.copy(alpha = 0.55f)
+                        0.0f to Color.Transparent,
+                        0.54f to Color.Transparent,
+                        0.66f to animatedExtendColor.copy(alpha = 0.70f),
+                        0.74f to animatedExtendColor,
+                        1.0f to animatedExtendColor
                     )
                 )
         )
@@ -1316,6 +1397,135 @@ private fun BigCardPlaylistItem(
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 首页「相似歌曲」卡片：复用电台页「从你喜欢的歌曲开始漫游」的视觉样式
+ * （封面主色提取背景 + 顶部歌名 + 中部三张错落叠放封面 + 底部深色半透明底栏与直接播放）
+ */
+@Composable
+private fun SimiSongsRoamStyleCard(
+    card: BigCardItem,
+    onClick: () -> Unit,
+    onPlayClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val leadTrack = card.previewTracks.firstOrNull()
+    val firstCover = leadTrack?.coverUrl ?: card.coverUrl
+    val secondCover = card.previewTracks.getOrNull(1)?.coverUrl ?: firstCover
+    val thirdCover = card.previewTracks.getOrNull(2)?.coverUrl ?: secondCover ?: firstCover
+    val seedId = leadTrack?.id ?: 0L
+    val cachedColor = remember(firstCover) { getCachedDominantDarkColor(firstCover) }
+    var dominantColor by remember(seedId, cachedColor) {
+        mutableStateOf(cachedColor ?: deriveDarkHueFromId(seedId))
+    }
+
+    LaunchedEffect(firstCover, cachedColor) {
+        if (cachedColor != null || firstCover.isNullOrBlank()) return@LaunchedEffect
+        extractCachedDominantDarkColor(context, firstCover)?.let { extracted ->
+            dominantColor = extracted
+        }
+    }
+
+    val animatedBgState = animateColorAsState(
+        targetValue = dominantColor,
+        animationSpec = tween(durationMillis = 350),
+        label = "simiSongsRoamBg"
+    )
+
+    val topSongTitle = leadTrack?.title?.takeIf { it.isNotBlank() } ?: "从你喜欢的歌听起"
+
+    Box(
+        modifier = modifier
+            .width(160.dp)
+            .height(215.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .drawBehind { drawRect(animatedBgState.value) }
+            .border(0.5.dp, Color(0x12000000), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // 上半部分：起点歌名 + 三张错落叠放专辑封面
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 6.dp)
+            ) {
+                Text(
+                    text = topSongTitle,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                RoamStaggeredCoverStack(
+                    firstCoverUrl = firstCover,
+                    secondCoverUrl = secondCover,
+                    thirdCoverUrl = thirdCover,
+                    contentDescription = topSongTitle
+                )
+            }
+
+            // 下半部分：半透明深色底栏（标题、关联歌名与播放按钮）
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.28f))
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = card.title,
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = card.subtitle,
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onPlayClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_mini_play),
+                            contentDescription = "播放",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
     }

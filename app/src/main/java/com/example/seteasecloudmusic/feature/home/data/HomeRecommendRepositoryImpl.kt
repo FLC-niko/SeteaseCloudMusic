@@ -9,8 +9,11 @@ import com.example.seteasecloudmusic.feature.discover.data.DiscoverService
 import com.example.seteasecloudmusic.feature.discover.data.NewsongItemResponse
 import com.example.seteasecloudmusic.feature.home.domain.repository.FavoriteRecommendSectionData
 import com.example.seteasecloudmusic.feature.home.domain.repository.HomeRecommendRepository
+import com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData
 import com.example.seteasecloudmusic.feature.mine.data.MineCacheManager
 import com.example.seteasecloudmusic.feature.mine.data.MineService
+import com.example.seteasecloudmusic.feature.mine.data.PlaylistTrackItemResponse
+import com.example.seteasecloudmusic.feature.radio.data.RadioSongItemResponse
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -30,72 +33,222 @@ class HomeRecommendRepositoryImpl @Inject constructor(
         return homeRecommendCache.getDailyRecommend()
     }
 
-    override fun getCachedRadarPlaylist(): com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData? {
+    override fun getCachedRadarPlaylist(): RadarPlaylistData? {
         return homeRecommendCache.getRadarPlaylist()
     }
 
-    override suspend fun getRadarPlaylist(): Result<com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData> =
-        withContext(Dispatchers.IO) {
-            try {
-                // 1. 若有登录态，优先尝试从推荐歌单 /recommend/resource 中获取含“雷达”的歌单 ID
-                var targetPlaylistId = 3136952023L // 官方网易云“私人雷达”默认歌单 ID
+    override suspend fun getRadarPlaylist(): Result<RadarPlaylistData> =
+        fetchRadarPlaylist(
+            defaultPlaylistId = 3136952023L,
+            defaultName = "私人雷达",
+            defaultDescription = "反复聆听你最爱的歌",
+            recommendReasonTag = "私人雷达",
+            discoverPlaylistId = {
                 if (hasLoginCookie()) {
-                    try {
-                        val resourceResp = dailyRecommendService.getRecommendResource()
-                        if (resourceResp.code == 200 && resourceResp.recommend.isNotEmpty()) {
-                            val radarPl = resourceResp.recommend.firstOrNull { it.name?.contains("雷达") == true }
-                                ?: resourceResp.recommend.firstOrNull()
-                            if (radarPl?.id != null && radarPl.id > 0L) {
-                                targetPlaylistId = radarPl.id
-                            }
+                    val resourceResp = dailyRecommendService.getRecommendResource()
+                    if (resourceResp.code == 200 && resourceResp.recommend.isNotEmpty()) {
+                        val radarPl = resourceResp.recommend.firstOrNull { it.name?.contains("雷达") == true }
+                            ?: resourceResp.recommend.firstOrNull()
+                        radarPl?.id?.takeIf { it > 0L }
+                    } else null
+                } else null
+            },
+            getCached = { homeRecommendCache.getRadarPlaylist() },
+            saveCache = { homeRecommendCache.saveRadarPlaylist(it) },
+            getFallback = { getDefaultRadarPlaylist() }
+        )
+
+    override fun getCachedNewSongRadarPlaylist(): RadarPlaylistData? {
+        return homeRecommendCache.getNewSongRadarPlaylist()
+    }
+
+    override suspend fun getNewSongRadarPlaylist(): Result<RadarPlaylistData> =
+        fetchRadarPlaylist(
+            defaultPlaylistId = NEW_SONG_RADAR_PLAYLIST_ID,
+            defaultName = "新歌雷达",
+            defaultDescription = "发现最新发行的好歌",
+            recommendReasonTag = "新歌雷达",
+            discoverPlaylistId = {
+                var resolvedId: Long? = null
+                runCatching {
+                    val mgcBlock = findHomepageBlockAcrossPages(
+                        refresh = false,
+                        blockCode = "HOMEPAGE_BLOCK_MGC_PLAYLIST"
+                    )
+                    resolvedId = mgcBlock?.creatives
+                        ?.flatMap { it.resources }
+                        ?.firstOrNull { res ->
+                            val title = res.uiElement?.mainTitle?.title.orEmpty()
+                            title.contains("新歌雷达") || title.contains("新歌")
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        // 继续使用默认私人雷达 ID
+                        ?.resourceId
+                        ?.toLongOrNull()
+                        ?.takeIf { it > 0L }
+                }
+                if (resolvedId == null && hasLoginCookie()) {
+                    runCatching {
+                        val resourceResp = dailyRecommendService.getRecommendResource()
+                        resolvedId = resourceResp.recommend
+                            .firstOrNull { it.name?.contains("新歌雷达") == true }
+                            ?.id
+                            ?.takeIf { it > 0L }
                     }
                 }
+                resolvedId
+            },
+            getCached = { homeRecommendCache.getNewSongRadarPlaylist() },
+            saveCache = { homeRecommendCache.saveNewSongRadarPlaylist(it) },
+            getFallback = { getNewSongRadarFallbackPlaylist() }
+        )
 
-                // 2. 调用 /playlist/detail?id=... 获取完整歌单与曲目
+    private suspend fun fetchRadarPlaylist(
+        defaultPlaylistId: Long,
+        defaultName: String,
+        defaultDescription: String,
+        recommendReasonTag: String,
+        discoverPlaylistId: suspend () -> Long?,
+        getCached: () -> RadarPlaylistData?,
+        saveCache: (RadarPlaylistData) -> Unit,
+        getFallback: suspend () -> RadarPlaylistData
+    ): Result<RadarPlaylistData> = withContext(Dispatchers.IO) {
+        try {
+            val targetPlaylistId = try {
+                discoverPlaylistId() ?: defaultPlaylistId
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                defaultPlaylistId
+            }
+
+            try {
+                val detailResp = dailyRecommendService.getPlaylistDetail(targetPlaylistId)
+                if (detailResp.code == 200 && detailResp.playlist != null) {
+                    val pl = detailResp.playlist
+                    val tracks = (pl.tracks ?: emptyList()).map { item ->
+                        mapPlaylistTrackItemToTrack(item, pl.coverImgUrl, recommendReasonTag)
+                    }.distinctBy { it.id }
+
+                    if (tracks.isNotEmpty()) {
+                        val radarData = RadarPlaylistData(
+                            id = pl.id ?: targetPlaylistId,
+                            name = pl.name?.takeIf { it.isNotBlank() } ?: defaultName,
+                            description = pl.description?.takeIf { it.isNotBlank() } ?: defaultDescription,
+                            coverUrl = pl.coverImgUrl ?: tracks.firstOrNull()?.coverUrl,
+                            trackCount = pl.trackCount ?: tracks.size,
+                            tracks = tracks
+                        )
+                        saveCache(radarData)
+                        return@withContext Result.success(radarData)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 走缓存或兜底
+            }
+
+            val cached = getCached()
+            if (cached != null && cached.tracks.isNotEmpty()) {
+                return@withContext Result.success(cached)
+            }
+
+            Result.success(getFallback())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            val cached = getCached()
+            if (cached != null) {
+                Result.success(cached)
+            } else {
+                Result.success(getFallback())
+            }
+        }
+    }
+
+    override fun getCachedPrivateDjSongs(): List<Track>? {
+        return homeRecommendCache.getPrivateDjSongs()
+    }
+
+    override suspend fun getPrivateDjSongs(): Result<List<Track>> = withContext(Dispatchers.IO) {
+        try {
+            val collected = mutableListOf<Track>()
+
+            // 1. 优先调用 /personal/fm/mode?mode=AIDJ 获取私人 DJ 模式推荐流
+            try {
+                val aidjResp = dailyRecommendService.getPersonalFmMode(mode = "AIDJ", limit = 10)
+                if (aidjResp.code == 200 && aidjResp.data.isNotEmpty()) {
+                    collected.addAll(aidjResp.data.map(::mapPersonalFmSongToTrack))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 继续尝试标准私人 FM
+            }
+
+            // 2. 若 AIDJ 模式返回不足，补充或降级调用经典私人 FM /personal_fm
+            if (collected.size < 3) {
                 try {
-                    val detailResp = dailyRecommendService.getPlaylistDetail(targetPlaylistId)
-                    if (detailResp.code == 200 && detailResp.playlist != null) {
-                        val pl = detailResp.playlist
-                        val tracks = (pl.tracks ?: emptyList()).map { item ->
-                            Track(
-                                id = item.id ?: 0L,
-                                title = item.name?.takeIf { it.isNotBlank() } ?: "未知歌曲",
-                                artists = (item.ar ?: emptyList()).map { ar ->
-                                    Artist(
-                                        id = ar.id ?: 0L,
-                                        name = ar.name?.takeIf { it.isNotBlank() } ?: "未知歌手",
-                                        coverUrl = null
-                                    )
-                                }.ifEmpty { listOf(Artist(id = 0L, name = "未知歌手")) },
-                                album = Album(
-                                    id = item.al?.id ?: 0L,
-                                    title = item.al?.name?.takeIf { it.isNotBlank() } ?: "未知专辑",
-                                    coverUrl = item.al?.picUrl
-                                ),
-                                coverUrl = item.al?.picUrl ?: pl.coverImgUrl,
-                                durationMs = item.dt ?: 0L,
-                                playableUrl = null,
-                                isPlayable = (item.fee ?: 0) != 4,
-                                recommendReason = "私人雷达"
-                            )
-                        }.distinctBy { it.id }
+                    val fmResp = dailyRecommendService.getPersonalFm()
+                    if (fmResp.code == 200 && fmResp.data.isNotEmpty()) {
+                        collected.addAll(fmResp.data.map(::mapPersonalFmSongToTrack))
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // 走缓存或兜底
+                }
+            }
 
-                        if (tracks.isNotEmpty()) {
-                            val radarData = com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData(
-                                id = pl.id ?: targetPlaylistId,
-                                name = pl.name?.takeIf { it.isNotBlank() } ?: "私人雷达",
-                                description = pl.description?.takeIf { it.isNotBlank() } ?: "反复聆听你最爱的歌",
-                                coverUrl = pl.coverImgUrl,
-                                trackCount = pl.trackCount ?: tracks.size,
-                                tracks = tracks
-                            )
-                            homeRecommendCache.saveRadarPlaylist(radarData)
-                            return@withContext Result.success(radarData)
+            val distinctTracks = collected.filter { it.id > 0L && it.title.isNotBlank() }.distinctBy { it.id }
+            if (distinctTracks.isNotEmpty()) {
+                homeRecommendCache.savePrivateDjSongs(distinctTracks)
+                return@withContext Result.success(distinctTracks)
+            }
+
+            val cached = homeRecommendCache.getPrivateDjSongs()
+            if (!cached.isNullOrEmpty()) {
+                return@withContext Result.success(cached)
+            }
+
+            Result.success(
+                homeRecommendCache.getFavoriteRecommend()?.tracks
+                    ?: homeRecommendCache.getDailyRecommend()
+                    ?: getDefaultFallbackTracks()
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            val cached = homeRecommendCache.getPrivateDjSongs()
+            if (!cached.isNullOrEmpty()) {
+                Result.success(cached)
+            } else {
+                Result.success(
+                    homeRecommendCache.getFavoriteRecommend()?.tracks
+                        ?: homeRecommendCache.getDailyRecommend()
+                        ?: getDefaultFallbackTracks()
+                )
+            }
+        }
+    }
+
+    override fun getCachedSimiRecommendSongs(): List<Track>? {
+        return homeRecommendCache.getSimiSongs()
+    }
+
+    override suspend fun getSimiRecommendSongs(): Result<List<Track>> = withContext(Dispatchers.IO) {
+        try {
+            val seedTrack = pickSimiSeedTrack()
+            if (seedTrack != null && seedTrack.id > 0L) {
+                try {
+                    val simiResp = dailyRecommendService.getSimiSongs(seedTrack.id)
+                    if (simiResp.code == 200 && simiResp.songs.isNotEmpty()) {
+                        val simiTracks = simiResp.songs
+                            .filter { it.id > 0L && it.name.isNotBlank() }
+                            .map { mapRadioSongToTrack(it, recommendReason = "相似歌曲") }
+                        val combined = (listOf(seedTrack) + simiTracks).distinctBy { it.id }
+                        if (combined.size >= 2) {
+                            homeRecommendCache.saveSimiSongs(combined)
+                            return@withContext Result.success(combined)
                         }
                     }
                 } catch (e: CancellationException) {
@@ -103,26 +256,148 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                 } catch (_: Exception) {
                     // 走缓存或兜底
                 }
+            }
 
-                // 3. 查本地缓存
-                val cached = homeRecommendCache.getRadarPlaylist()
-                if (cached != null && cached.tracks.isNotEmpty()) {
-                    return@withContext Result.success(cached)
-                }
+            val cached = homeRecommendCache.getSimiSongs()
+            if (!cached.isNullOrEmpty()) {
+                return@withContext Result.success(cached)
+            }
 
-                // 4. 极致兜底：静态预设雷达歌单
-                Result.success(getDefaultRadarPlaylist())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val cached = homeRecommendCache.getRadarPlaylist()
-                if (cached != null) {
-                    Result.success(cached)
-                } else {
-                    Result.success(getDefaultRadarPlaylist())
-                }
+            Result.success(
+                homeRecommendCache.getFavoriteRecommend()?.tracks
+                    ?: homeRecommendCache.getDailyRecommend()
+                    ?: getDefaultFallbackTracks()
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            val cached = homeRecommendCache.getSimiSongs()
+            if (!cached.isNullOrEmpty()) {
+                Result.success(cached)
+            } else {
+                Result.success(
+                    homeRecommendCache.getFavoriteRecommend()?.tracks
+                        ?: homeRecommendCache.getDailyRecommend()
+                        ?: getDefaultFallbackTracks()
+                )
             }
         }
+    }
+
+    override fun getCachedHeartModeSongs(): List<Track>? {
+        return homeRecommendCache.getHeartModeSongs()
+    }
+
+    override suspend fun getHeartModeSongs(): Result<List<Track>> = withContext(Dispatchers.IO) {
+        try {
+            val (likedPlaylistId, likedTracks) = loadLikedPlaylistSeedPool()
+            val seedTrack = likedTracks.take(8).randomOrNull()
+
+            if (likedPlaylistId != null && likedPlaylistId > 0L && seedTrack != null && seedTrack.id > 0L) {
+                try {
+                    val intelResp = dailyRecommendService.getIntelligenceList(
+                        id = seedTrack.id,
+                        pid = likedPlaylistId,
+                        sid = seedTrack.id
+                    )
+                    if (intelResp.code == 200 && intelResp.data.isNotEmpty()) {
+                        val intelTracks = intelResp.data
+                            .mapNotNull { it.songInfo }
+                            .filter { it.id > 0L && it.name.isNotBlank() }
+                            .map { mapRadioSongToTrack(it, recommendReason = "心动模式") }
+                        val combined = (listOf(seedTrack) + intelTracks).distinctBy { it.id }
+                        if (combined.isNotEmpty()) {
+                            homeRecommendCache.saveHeartModeSongs(combined)
+                            return@withContext Result.success(combined)
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // 走我喜欢的歌单或缓存兜底
+                }
+            }
+
+            if (likedTracks.isNotEmpty()) {
+                homeRecommendCache.saveHeartModeSongs(likedTracks)
+                return@withContext Result.success(likedTracks)
+            }
+
+            val cached = homeRecommendCache.getHeartModeSongs()
+            if (!cached.isNullOrEmpty()) {
+                return@withContext Result.success(cached)
+            }
+
+            Result.success(
+                homeRecommendCache.getFavoriteRecommend()?.tracks
+                    ?: homeRecommendCache.getDailyRecommend()
+                    ?: getDefaultFallbackTracks()
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            val cached = homeRecommendCache.getHeartModeSongs()
+            if (!cached.isNullOrEmpty()) {
+                Result.success(cached)
+            } else {
+                Result.success(
+                    homeRecommendCache.getFavoriteRecommend()?.tracks
+                        ?: homeRecommendCache.getDailyRecommend()
+                        ?: getDefaultFallbackTracks()
+                )
+            }
+        }
+    }
+
+    private suspend fun loadLikedPlaylistSeedPool(): Pair<Long?, List<Track>> {
+        val userId = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .getLong("user_id", -1L)
+        if (userId <= 0L || !hasLoginCookie()) return null to emptyList()
+
+        val likedId = mineCacheManager.getUserPlaylists(userId)?.likedPlaylist?.id
+            ?: runCatching {
+                val resp = mineService.getUserPlaylists(uid = userId)
+                val playlists = resp.playlist ?: emptyList()
+                playlists.firstOrNull { (it.specialType ?: 0) == 5 }?.id
+            }.getOrNull()
+
+        if (likedId == null || likedId <= 0L) return null to emptyList()
+
+        val cachedLikedTracks = mineCacheManager.getFullPlaylistDetail(likedId)?.tracks
+            ?.filter { it.id > 0L && it.title.isNotBlank() }
+        if (!cachedLikedTracks.isNullOrEmpty()) {
+            return likedId to cachedLikedTracks
+        }
+
+        val remoteLiked = runCatching {
+            dailyRecommendService.getPlaylistDetail(likedId).playlist?.let { pl ->
+                (pl.tracks ?: emptyList()).map { item ->
+                    mapPlaylistTrackItemToTrack(item, pl.coverImgUrl, "红心漫游")
+                }
+            }
+        }.getOrNull()?.filter { it.id > 0L && it.title.isNotBlank() }.orEmpty()
+
+        return likedId to remoteLiked
+    }
+
+    private suspend fun pickSimiSeedTrack(): Track? {
+        val (_, likedTracks) = loadLikedPlaylistSeedPool()
+        if (likedTracks.isNotEmpty()) {
+            return likedTracks.take(8).random()
+        }
+
+        val favSeed = homeRecommendCache.getFavoriteRecommend()?.tracks?.firstOrNull { it.id > 0L }
+        if (favSeed != null) return favSeed
+
+        val dailySeed = homeRecommendCache.getDailyRecommend()?.firstOrNull { it.id > 0L }
+        if (dailySeed != null) return dailySeed
+
+        return runCatching {
+            discoverService.getPersonalizedNewsong(limit = 6).result.firstOrNull()?.song?.let {
+                mapNewsongToTrack(it, null)
+            }
+        }.getOrNull()
+    }
 
     override suspend fun getDailyRecommendSongs(afresh: Boolean): Result<List<Track>> =
         withContext(Dispatchers.IO) {
@@ -192,6 +467,138 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                 }
             }
         }
+
+    private fun mapPlaylistTrackItemToTrack(
+        item: PlaylistTrackItemResponse,
+        fallbackCoverUrl: String?,
+        recommendReason: String
+    ): Track {
+        return Track(
+            id = item.id ?: 0L,
+            title = item.name?.takeIf { it.isNotBlank() } ?: "未知歌曲",
+            artists = (item.ar ?: emptyList()).map { ar ->
+                Artist(
+                    id = ar.id ?: 0L,
+                    name = ar.name?.takeIf { it.isNotBlank() } ?: "未知歌手",
+                    coverUrl = null
+                )
+            }.ifEmpty { listOf(Artist(id = 0L, name = "未知歌手")) },
+            album = Album(
+                id = item.al?.id ?: 0L,
+                title = item.al?.name?.takeIf { it.isNotBlank() } ?: "未知专辑",
+                coverUrl = item.al?.picUrl
+            ),
+            coverUrl = item.al?.picUrl ?: fallbackCoverUrl,
+            durationMs = item.dt ?: 0L,
+            playableUrl = null,
+            isPlayable = (item.fee ?: 0) != 4,
+            recommendReason = recommendReason
+        )
+    }
+
+    private fun mapPersonalFmSongToTrack(song: PersonalFmSongItemResponse): Track {
+        val artists = song.artists.map {
+            Artist(
+                id = it.id ?: 0L,
+                name = it.name?.takeIf { value -> value.isNotBlank() } ?: "未知歌手",
+                coverUrl = null
+            )
+        }.ifEmpty { listOf(Artist(id = 0L, name = "未知歌手")) }
+
+        val album = Album(
+            id = song.album?.id ?: 0L,
+            title = song.album?.name?.takeIf { it.isNotBlank() } ?: "未知专辑",
+            coverUrl = song.album?.picUrl
+        )
+
+        val isPlayable = song.privilege?.let { privilege ->
+            val blockedStatus = (privilege.st ?: 0) < 0
+            val hasPlayableLevel = (privilege.pl ?: 0L) > 0L
+            !blockedStatus && hasPlayableLevel
+        } ?: (song.fee != 4)
+
+        return Track(
+            id = song.id,
+            title = song.name.ifBlank { "未知歌曲" },
+            artists = artists,
+            album = album,
+            coverUrl = song.album?.picUrl,
+            durationMs = song.duration,
+            playableUrl = null,
+            isPlayable = isPlayable,
+            recommendReason = song.reason?.takeIf { it.isNotBlank() } ?: "私人 DJ"
+        )
+    }
+
+    private fun mapRadioSongToTrack(
+        song: RadioSongItemResponse,
+        recommendReason: String = "相似歌曲"
+    ): Track {
+        val artists = song.artists.map {
+            Artist(
+                id = it.id ?: 0L,
+                name = it.name?.takeIf { n -> n.isNotBlank() } ?: "未知歌手",
+                coverUrl = it.picUrl
+            )
+        }.ifEmpty { listOf(Artist(id = 0L, name = "未知歌手")) }
+
+        val cover = song.album?.picUrl
+        return Track(
+            id = song.id,
+            title = song.name.ifBlank { "未知歌曲" },
+            artists = artists,
+            album = Album(
+                id = song.album?.id ?: 0L,
+                title = song.album?.name?.takeIf { it.isNotBlank() } ?: "未知专辑",
+                coverUrl = cover
+            ),
+            coverUrl = cover,
+            durationMs = song.dt ?: 0L,
+            playableUrl = null,
+            isPlayable = (song.fee ?: 0) != 4,
+            recommendReason = recommendReason
+        )
+    }
+
+    private suspend fun findHomepageBlockAcrossPages(
+        refresh: Boolean,
+        blockCode: String
+    ): HomepageBlockItemResponse? {
+        val page1 = dailyRecommendService.getHomepageBlockPage(refresh = refresh)
+        if (page1.code != 200 || page1.data == null) return null
+        val match1 = page1.data.blocks.firstOrNull { it.blockCode == blockCode }
+        if (match1 != null) return match1
+
+        val cursor = page1.data.cursor
+        if (page1.data.hasMore == true && !cursor.isNullOrBlank()) {
+            val page2 = dailyRecommendService.getHomepageBlockPage(refresh = false, cursor = cursor)
+            if (page2.code == 200 && page2.data != null) {
+                return page2.data.blocks.firstOrNull { it.blockCode == blockCode }
+            }
+        }
+        return null
+    }
+
+    private suspend fun getNewSongRadarFallbackPlaylist(): RadarPlaylistData {
+        val newsongTracks = runCatching {
+            val resp = discoverService.getPersonalizedNewsong(limit = 18)
+            if (resp.code == 200) {
+                resp.result.mapNotNull { item ->
+                    item.song?.let { song -> mapNewsongToTrack(song, item.picUrl) }
+                }.distinctBy { it.id }
+            } else emptyList()
+        }.getOrDefault(emptyList())
+
+        val fallbackTracks = if (newsongTracks.isNotEmpty()) newsongTracks else getDefaultFallbackTracks()
+        return RadarPlaylistData(
+            id = NEW_SONG_RADAR_PLAYLIST_ID,
+            name = "新歌雷达",
+            description = "发现最新发行的好歌",
+            coverUrl = fallbackTracks.firstOrNull()?.coverUrl,
+            trackCount = fallbackTracks.size,
+            tracks = fallbackTracks
+        )
+    }
 
     private fun mapToTrack(song: DailyRecommendSongItemResponse): Track {
         val qualityTags = mutableListOf<AudioQuality>()
@@ -382,36 +789,35 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     override suspend fun getFavoriteRecommendSongs(afresh: Boolean): Result<FavoriteRecommendSectionData> =
         withContext(Dispatchers.IO) {
             try {
-                // 1. 调用官方首页 Block 接口 /homepage/block/page
+                // 1. 调用官方首页 Block 接口 /homepage/block/page（支持 cursor 翻页兜底查找）
                 try {
-                    val blockResponse = dailyRecommendService.getHomepageBlockPage(refresh = afresh)
-                    if (blockResponse.code == 200 && blockResponse.data != null) {
-                        val blocks = blockResponse.data.blocks
-                        val styleBlock = blocks.firstOrNull { it.blockCode == "HOMEPAGE_BLOCK_STYLE_RCMD" }
-                        if (styleBlock != null) {
-                            val blockTitle = styleBlock.uiElement?.subTitle?.title
-                                ?.takeIf { it.isNotBlank() }
-                                ?: "根据你喜爱的歌曲推荐"
+                    val styleBlock = findHomepageBlockAcrossPages(
+                        refresh = afresh,
+                        blockCode = "HOMEPAGE_BLOCK_STYLE_RCMD"
+                    )
+                    if (styleBlock != null) {
+                        val blockTitle = styleBlock.uiElement?.subTitle?.title
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "根据你喜爱的歌曲推荐"
 
-                            val tracks = mutableListOf<Track>()
-                            for (creative in styleBlock.creatives) {
-                                for (resource in creative.resources) {
-                                    val mappedTrack = mapHomepageResourceToTrack(resource)
-                                    if (mappedTrack != null) {
-                                        tracks.add(mappedTrack)
-                                    }
+                        val tracks = mutableListOf<Track>()
+                        for (creative in styleBlock.creatives) {
+                            for (resource in creative.resources) {
+                                val mappedTrack = mapHomepageResourceToTrack(resource)
+                                if (mappedTrack != null) {
+                                    tracks.add(mappedTrack)
                                 }
                             }
+                        }
 
-                            val distinctTracks = tracks.distinctBy { it.id }
-                            if (distinctTracks.isNotEmpty()) {
-                                val sectionData = FavoriteRecommendSectionData(
-                                    title = blockTitle,
-                                    tracks = distinctTracks
-                                )
-                                homeRecommendCache.saveFavoriteRecommend(sectionData)
-                                return@withContext Result.success(sectionData)
-                            }
+                        val distinctTracks = tracks.distinctBy { it.id }
+                        if (distinctTracks.isNotEmpty()) {
+                            val sectionData = FavoriteRecommendSectionData(
+                                title = blockTitle,
+                                tracks = distinctTracks
+                            )
+                            homeRecommendCache.saveFavoriteRecommend(sectionData)
+                            return@withContext Result.success(sectionData)
                         }
                     }
                 } catch (e: CancellationException) {
@@ -601,5 +1007,6 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     companion object {
         private const val COOKIE_PREF_NAME = "auth_cookies"
         private const val COOKIE_KEY = "cookie_string"
+        private const val NEW_SONG_RADAR_PLAYLIST_ID = 5300458264L
     }
 }

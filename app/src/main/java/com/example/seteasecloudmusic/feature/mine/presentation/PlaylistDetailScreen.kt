@@ -1496,18 +1496,6 @@ private fun CompactPlaylistDetailScreen(
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 // 1. 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无白色状态栏遮罩）
-                if (isEdgeToEdgeHero) {
-                    ProgressiveTopBlur(
-                        backdrop = playlistTopBackdrop,
-                        totalHeight = statusBarHeight + 24.dp,
-                        statusBarHeight = statusBarHeight,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                        alphaProvider = { 1f - topBlurAlphaState.value },
-                        deepBlurRadius = 16.dp,
-                        mediumBlurRadius = 8.dp,
-                        shallowBlurRadius = 3.dp
-                    )
-                }
                 ProgressiveTopBlur(
                     backdrop = playlistTopBackdrop,
                     totalHeight = statusBarHeight + 82.dp,

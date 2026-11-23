@@ -57,9 +57,7 @@ fun DailyRecommendDetailScreen(
                 "每日推荐" -> -1001L
                 "雷达歌单" -> -1002L
                 "心动模式" -> -1003L
-                "私人 DJ" -> -1004L
-                "相似歌曲" -> -1005L
-                "相似艺人" -> -1006L
+                "新歌雷达" -> -1006L
                 else -> title.hashCode().toLong()
             },
             name = title,
@@ -68,9 +66,7 @@ fun DailyRecommendDetailScreen(
                 "每日推荐" -> "今天，听点喜欢的"
                 "雷达歌单" -> "反复聆听你爱的歌"
                 "心动模式" -> "红心歌曲和相似推荐"
-                "私人 DJ" -> "你的全天候音乐助理"
-                "相似歌曲" -> "从你喜欢的歌听起"
-                "相似艺人" -> "常听歌手风格深度探索"
+                "新歌雷达" -> "发现最新发行的好歌"
                 else -> "为你精选 · 共 ${tracks.size} 首歌曲"
             },
             trackCount = tracks.size,

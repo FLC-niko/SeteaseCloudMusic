@@ -29,6 +29,11 @@ data class HomeUiState(
     val favoriteTracks: List<Track> = emptyList(),
     val radarTracks: List<Track> = emptyList(),
     val radarPlaylist: RadarPlaylistData? = null,
+    val newSongRadarTracks: List<Track> = emptyList(),
+    val newSongRadarPlaylist: RadarPlaylistData? = null,
+    val privateDjTracks: List<Track> = emptyList(),
+    val simiSongsTracks: List<Track> = emptyList(),
+    val heartModeTracks: List<Track> = emptyList(),
     val likedMusicCoverUrl: String? = null,
     val privateDjCoverUrl: String? = null,
     val errorMessage: String? = null,
@@ -51,15 +56,30 @@ class HomeViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var favoriteJob: Job? = null
     private var radarJob: Job? = null
+    private var newSongRadarJob: Job? = null
+    private var privateDjJob: Job? = null
+    private var simiSongsJob: Job? = null
+    private var heartModeJob: Job? = null
     private var loadRequestId = 0L
 
     init {
-        // 1. 异步在 IO 调度器加载本地持久化推荐、喜好推荐与雷达缓存，避免在主线程执行反射与 SharedPreferences 阻塞首帧绘制
+        // 1. 异步在 IO 调度器加载本地持久化推荐、喜好推荐、雷达与漫游缓存，避免在主线程执行反射与 SharedPreferences 阻塞首帧绘制
         viewModelScope.launch(Dispatchers.IO) {
             val cached = getDailyRecommendSongsUseCase.getCached()
             val cachedFav = getFavoriteRecommendSongsUseCase.getCached()
             val cachedRadar = getRadarPlaylistUseCase.getCached()
-            if (!cached.isNullOrEmpty() || cachedFav != null || cachedRadar != null) {
+            val cachedNewSongRadar = homeRecommendRepository.getCachedNewSongRadarPlaylist()
+            val cachedPrivateDj = homeRecommendRepository.getCachedPrivateDjSongs()
+            val cachedSimiSongs = homeRecommendRepository.getCachedSimiRecommendSongs()
+            val cachedHeartMode = homeRecommendRepository.getCachedHeartModeSongs()
+            if (!cached.isNullOrEmpty() ||
+                cachedFav != null ||
+                cachedRadar != null ||
+                cachedNewSongRadar != null ||
+                !cachedPrivateDj.isNullOrEmpty() ||
+                !cachedSimiSongs.isNullOrEmpty() ||
+                !cachedHeartMode.isNullOrEmpty()
+            ) {
                 _uiState.update {
                     it.copy(
                         tracks = cached ?: it.tracks,
@@ -67,6 +87,12 @@ class HomeViewModel @Inject constructor(
                         favoriteTracks = cachedFav?.tracks ?: it.favoriteTracks,
                         radarTracks = cachedRadar?.tracks ?: it.radarTracks,
                         radarPlaylist = cachedRadar ?: it.radarPlaylist,
+                        newSongRadarTracks = cachedNewSongRadar?.tracks ?: it.newSongRadarTracks,
+                        newSongRadarPlaylist = cachedNewSongRadar ?: it.newSongRadarPlaylist,
+                        privateDjTracks = cachedPrivateDj ?: it.privateDjTracks,
+                        simiSongsTracks = cachedSimiSongs ?: it.simiSongsTracks,
+                        heartModeTracks = cachedHeartMode ?: it.heartModeTracks,
+                        privateDjCoverUrl = it.privateDjCoverUrl ?: cachedPrivateDj?.firstOrNull()?.coverUrl,
                         isLoading = false
                     )
                 }
@@ -83,10 +109,14 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
-        // 3. 后台静默拉取今日最新推荐、喜好推荐、雷达歌单与用户红心封面
+        // 3. 后台静默拉取今日最新推荐、喜好推荐、雷达歌单、新歌雷达、私人 DJ、相似歌曲、心动模式与用户红心封面
         refreshDailyRecommend(afresh = false, silent = true)
         refreshFavoriteRecommend(afresh = false, silent = true)
         refreshRadarPlaylist(silent = true)
+        refreshNewSongRadarPlaylist(silent = true)
+        refreshPrivateDjSongs()
+        refreshSimiSongs()
+        refreshHeartModeSongs()
         fetchLikedMusicCover()
 
         // 4. 监听全局断网重试事件
@@ -95,6 +125,10 @@ class HomeViewModel @Inject constructor(
                 refreshDailyRecommend(afresh = true, silent = false)
                 refreshFavoriteRecommend(afresh = true, silent = false)
                 refreshRadarPlaylist(silent = false)
+                refreshNewSongRadarPlaylist(silent = false)
+                refreshPrivateDjSongs()
+                refreshSimiSongs()
+                refreshHeartModeSongs()
                 fetchLikedMusicCover()
             }
         }
@@ -192,10 +226,75 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun refreshNewSongRadarPlaylist(silent: Boolean = false) {
+        newSongRadarJob?.cancel()
+        newSongRadarJob = viewModelScope.launch {
+            val result = homeRecommendRepository.getNewSongRadarPlaylist()
+            result.fold(
+                onSuccess = { radarData ->
+                    _uiState.update {
+                        it.copy(
+                            newSongRadarPlaylist = radarData,
+                            newSongRadarTracks = radarData.tracks
+                        )
+                    }
+                },
+                onFailure = {
+                    // 静默失败，保持原有/预设数据
+                }
+            )
+        }
+    }
+
+    fun refreshPrivateDjSongs() {
+        privateDjJob?.cancel()
+        privateDjJob = viewModelScope.launch {
+            val result = homeRecommendRepository.getPrivateDjSongs()
+            result.onSuccess { djTracks ->
+                if (djTracks.isNotEmpty()) {
+                    _uiState.update { state ->
+                        state.copy(
+                            privateDjTracks = djTracks,
+                            privateDjCoverUrl = state.privateDjCoverUrl ?: djTracks.firstOrNull()?.coverUrl
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun refreshSimiSongs() {
+        simiSongsJob?.cancel()
+        simiSongsJob = viewModelScope.launch {
+            val result = homeRecommendRepository.getSimiRecommendSongs()
+            result.onSuccess { simiTracks ->
+                if (simiTracks.isNotEmpty()) {
+                    _uiState.update { it.copy(simiSongsTracks = simiTracks) }
+                }
+            }
+        }
+    }
+
+    fun refreshHeartModeSongs() {
+        heartModeJob?.cancel()
+        heartModeJob = viewModelScope.launch {
+            val result = homeRecommendRepository.getHeartModeSongs()
+            result.onSuccess { heartTracks ->
+                if (heartTracks.isNotEmpty()) {
+                    _uiState.update { it.copy(heartModeTracks = heartTracks) }
+                }
+            }
+        }
+    }
+
     fun onRetryClick() {
         refreshDailyRecommend(afresh = false, silent = false)
         refreshFavoriteRecommend(afresh = false, silent = false)
         refreshRadarPlaylist(silent = false)
+        refreshNewSongRadarPlaylist(silent = false)
+        refreshPrivateDjSongs()
+        refreshSimiSongs()
+        refreshHeartModeSongs()
         fetchLikedMusicCover()
     }
 
@@ -203,6 +302,10 @@ class HomeViewModel @Inject constructor(
         refreshDailyRecommend(afresh = true, silent = false)
         refreshFavoriteRecommend(afresh = true, silent = false)
         refreshRadarPlaylist(silent = false)
+        refreshNewSongRadarPlaylist(silent = false)
+        refreshPrivateDjSongs()
+        refreshSimiSongs()
+        refreshHeartModeSongs()
         fetchLikedMusicCover()
     }
 
@@ -231,24 +334,113 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * 点击私人 DJ 播放：设置播放来源为 PRIVATE_DJ，并立即更新私人 DJ 封面为当前播放曲目
+     * 点击私人 DJ 直接播放：优先调用 /personal/fm/mode?mode=AIDJ 与 /personal_fm，
+     * 设置播放来源为 PRIVATE_DJ，并立即更新私人 DJ 封面为当前播放曲目
      */
     fun playPrivateDj() {
-        val list = if (uiState.value.favoriteTracks.isNotEmpty()) uiState.value.favoriteTracks else uiState.value.tracks
-        val snapshot = list.distinctBy { it.id }
-        if (snapshot.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "暂无可播放的歌曲") }
+        val currentDjTracks = uiState.value.privateDjTracks.distinctBy { it.id }
+        if (currentDjTracks.isNotEmpty()) {
+            val firstCover = currentDjTracks.firstOrNull()?.coverUrl
+            if (!firstCover.isNullOrBlank()) {
+                _uiState.update { it.copy(privateDjCoverUrl = firstCover) }
+            }
+            musicPlayerController.replaceQueueAndPlay(
+                tracks = currentDjTracks,
+                startIndex = 0,
+                queueSource = MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ
+            )
+            // 后台拉取下一批私人 DJ 歌曲，保证下次点击持续新鲜
+            refreshPrivateDjSongs()
             return
         }
-        val firstCover = snapshot.firstOrNull()?.coverUrl
-        if (!firstCover.isNullOrBlank()) {
-            _uiState.update { it.copy(privateDjCoverUrl = firstCover) }
+
+        privateDjJob?.cancel()
+        privateDjJob = viewModelScope.launch {
+            val fetched = homeRecommendRepository.getPrivateDjSongs().getOrNull().orEmpty()
+            val list = when {
+                fetched.isNotEmpty() -> fetched
+                uiState.value.favoriteTracks.isNotEmpty() -> uiState.value.favoriteTracks
+                else -> uiState.value.tracks
+            }.distinctBy { it.id }
+
+            if (list.isEmpty()) {
+                _uiState.update { it.copy(errorMessage = "暂无可播放的歌曲") }
+                return@launch
+            }
+            val firstCover = list.firstOrNull()?.coverUrl
+            _uiState.update {
+                it.copy(
+                    privateDjTracks = if (fetched.isNotEmpty()) fetched else it.privateDjTracks,
+                    privateDjCoverUrl = firstCover ?: it.privateDjCoverUrl
+                )
+            }
+            musicPlayerController.replaceQueueAndPlay(
+                tracks = list,
+                startIndex = 0,
+                queueSource = MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ
+            )
         }
-        musicPlayerController.replaceQueueAndPlay(
-            tracks = snapshot,
-            startIndex = 0,
-            queueSource = MusicPlayerController.QUEUE_SOURCE_PRIVATE_DJ
-        )
+    }
+
+    /**
+     * 点击相似歌曲直接播放：不展开歌单详情页，直接播放基于喜欢歌曲的相似漫游序列
+     */
+    fun playSimiSongs() {
+        val currentSimiTracks = uiState.value.simiSongsTracks.distinctBy { it.id }
+        if (currentSimiTracks.isNotEmpty()) {
+            musicPlayerController.replaceQueueAndPlay(currentSimiTracks, 0)
+            return
+        }
+
+        simiSongsJob?.cancel()
+        simiSongsJob = viewModelScope.launch {
+            val fetched = homeRecommendRepository.getSimiRecommendSongs().getOrNull().orEmpty()
+            val list = when {
+                fetched.isNotEmpty() -> fetched
+                uiState.value.favoriteTracks.isNotEmpty() -> uiState.value.favoriteTracks
+                else -> uiState.value.tracks
+            }.distinctBy { it.id }
+
+            if (list.isEmpty()) {
+                _uiState.update { it.copy(errorMessage = "暂无可播放的歌曲") }
+                return@launch
+            }
+            if (fetched.isNotEmpty()) {
+                _uiState.update { it.copy(simiSongsTracks = fetched) }
+            }
+            musicPlayerController.replaceQueueAndPlay(list, 0)
+        }
+    }
+
+    /**
+     * 点击心动模式直接播放：不展开歌单详情页，直接调用 /playmode/intelligence/list 播放红心与智能相似混排
+     */
+    fun playHeartMode() {
+        val currentHeartTracks = uiState.value.heartModeTracks.distinctBy { it.id }
+        if (currentHeartTracks.isNotEmpty()) {
+            musicPlayerController.replaceQueueAndPlay(currentHeartTracks, 0)
+            refreshHeartModeSongs()
+            return
+        }
+
+        heartModeJob?.cancel()
+        heartModeJob = viewModelScope.launch {
+            val fetched = homeRecommendRepository.getHeartModeSongs().getOrNull().orEmpty()
+            val list = when {
+                fetched.isNotEmpty() -> fetched
+                uiState.value.favoriteTracks.isNotEmpty() -> uiState.value.favoriteTracks
+                else -> uiState.value.tracks
+            }.distinctBy { it.id }
+
+            if (list.isEmpty()) {
+                _uiState.update { it.copy(errorMessage = "暂无可播放的歌曲") }
+                return@launch
+            }
+            if (fetched.isNotEmpty()) {
+                _uiState.update { it.copy(heartModeTracks = fetched) }
+            }
+            musicPlayerController.replaceQueueAndPlay(list, 0)
+        }
     }
 
     fun openPlaylistDetail(tracks: List<Track>, title: String, coverUrl: String?) {
@@ -256,10 +448,7 @@ class HomeViewModel @Inject constructor(
             id = when (title) {
                 "每日推荐" -> -1001L
                 "雷达歌单" -> -1002L
-                "心动模式" -> -1003L
-                "私人 DJ" -> -1004L
-                "相似歌曲" -> -1005L
-                "相似艺人" -> -1006L
+                "新歌雷达" -> -1006L
                 else -> title.hashCode().toLong()
             },
             name = title,
@@ -267,10 +456,7 @@ class HomeViewModel @Inject constructor(
             description = when (title) {
                 "每日推荐" -> "今天，听点喜欢的"
                 "雷达歌单" -> "反复聆听你爱的歌"
-                "心动模式" -> "红心歌曲和相似推荐"
-                "私人 DJ" -> "你的全天候音乐助理"
-                "相似歌曲" -> "从你喜欢的歌听起"
-                "相似艺人" -> "常听歌手风格深度探索"
+                "新歌雷达" -> uiState.value.newSongRadarPlaylist?.description?.ifBlank { "发现最新发行的好歌" } ?: "发现最新发行的好歌"
                 else -> "为你精选 · 共 ${tracks.size} 首歌曲"
             },
             trackCount = tracks.size,

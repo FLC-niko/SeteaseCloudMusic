@@ -202,3 +202,26 @@ data class RecommendResourceCreator(
     val userId: Long? = null,
     val avatarUrl: String? = null
 )
+
+/**
+ * /personal_fm 与 /personal/fm/mode 接口响应
+ */
+data class PersonalFmResponse(
+    val code: Int = 0,
+    val popAdjust: Boolean? = null,
+    val data: List<PersonalFmSongItemResponse> = emptyList()
+)
+
+data class PersonalFmSongItemResponse(
+    val id: Long = 0L,
+    val name: String = "",
+    @SerializedName("duration", alternate = ["dt"])
+    val duration: Long? = null,
+    val fee: Int? = null,
+    val reason: String? = null,
+    @SerializedName("artists", alternate = ["ar"])
+    val artists: List<DailyRecommendArtistResponse> = emptyList(),
+    @SerializedName("album", alternate = ["al"])
+    val album: DailyRecommendAlbumResponse? = null,
+    val privilege: DailyRecommendPrivilegeResponse? = null
+)

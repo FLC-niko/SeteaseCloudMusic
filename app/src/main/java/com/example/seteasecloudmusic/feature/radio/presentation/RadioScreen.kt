@@ -1,10 +1,6 @@
 package com.example.seteasecloudmusic.feature.radio.presentation
 
 import androidx.compose.runtime.saveable.rememberSaveable
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.util.LruCache
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -86,13 +82,15 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
+import com.example.seteasecloudmusic.core.ui.components.RoamStaggeredCoverStack
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
+import com.example.seteasecloudmusic.core.ui.components.deriveDarkHueFromId
+import com.example.seteasecloudmusic.core.ui.components.extractCachedDominantDarkColor
+import com.example.seteasecloudmusic.core.ui.components.getCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
@@ -112,10 +110,6 @@ import com.example.seteasecloudmusic.feature.radio.domain.model.RadioToplistItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioTrendItem
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withContext
 import java.util.Locale
 
 private val RadioBackground = Color.White
@@ -144,8 +138,6 @@ private val OverlayCardScrimBrush = Brush.verticalGradient(
     0.78f to Color.Transparent,
     1.0f to Color.Black.copy(alpha = 0.48f)
 )
-private val RadioDominantColorCache = LruCache<String, Int>(256)
-private val RadioColorExtractSemaphore = Semaphore(2)
 
 @Composable
 fun RadioRoute(
@@ -1067,15 +1059,13 @@ private fun RoamCardItem(
 ) {
     val context = LocalContext.current
     val coverUrl = item.coverUrl
-    val cachedArgb = remember(coverUrl) {
-        coverUrl?.takeIf(String::isNotBlank)?.let { RadioDominantColorCache.get(it) }
-    }
-    var dominantColor by remember(item.id, cachedArgb) {
-        mutableStateOf(cachedArgb?.let(::Color) ?: deriveDarkHueFromId(item.id))
+    val cachedColor = remember(coverUrl) { getCachedDominantDarkColor(coverUrl) }
+    var dominantColor by remember(item.id, cachedColor) {
+        mutableStateOf(cachedColor ?: deriveDarkHueFromId(item.id))
     }
 
-    LaunchedEffect(coverUrl, cachedArgb) {
-        if (cachedArgb != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(coverUrl, cachedColor) {
+        if (cachedColor != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
         extractCachedDominantDarkColor(context, coverUrl)?.let { extracted ->
             dominantColor = extracted
         }
@@ -1123,60 +1113,12 @@ private fun RoamCardItem(
                 val secondCover = item.tracks.getOrNull(1)?.coverUrl ?: firstCover
                 val thirdCover = item.tracks.getOrNull(2)?.coverUrl ?: secondCover ?: firstCover
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(94.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // 左侧第 2 首封面（向左偏转小倾角）
-                    AsyncImage(
-                        model = secondCover?.toCoverThumbnailUrl(180),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .offset(x = (-28).dp, y = 3.dp)
-                            .size(74.dp)
-                            .graphicsLayer {
-                                rotationZ = -8f
-                                shape = RoundedCornerShape(8.dp)
-                                clip = true
-                            }
-                            .background(Color.White.copy(alpha = 0.14f))
-                            .border(0.6.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-
-                    // 右侧第 3 首封面（向右偏转小倾角）
-                    AsyncImage(
-                        model = thirdCover?.toCoverThumbnailUrl(180),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .offset(x = 28.dp, y = 3.dp)
-                            .size(74.dp)
-                            .graphicsLayer {
-                                rotationZ = 8f
-                                shape = RoundedCornerShape(8.dp)
-                                clip = true
-                            }
-                            .background(Color.White.copy(alpha = 0.14f))
-                            .border(0.6.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-
-                    // 中间第 1 首主封面
-                    AsyncImage(
-                        model = firstCover?.toCoverThumbnailUrl(240),
-                        contentDescription = item.songTitle,
-                        modifier = Modifier
-                            .zIndex(1f)
-                            .size(90.dp)
-                            .shadow(elevation = 6.dp, shape = RoundedCornerShape(9.dp), clip = false)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(Color.White.copy(alpha = 0.16f))
-                            .border(0.6.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(9.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                }
+                RoamStaggeredCoverStack(
+                    firstCoverUrl = firstCover,
+                    secondCoverUrl = secondCover,
+                    thirdCoverUrl = thirdCover,
+                    contentDescription = item.songTitle
+                )
             }
 
             // 下半部分：半透明较深色底栏（上下全为真实歌名，连接显示）
@@ -1627,15 +1569,13 @@ private fun FollowedArtistCardItem(
 ) {
     val context = LocalContext.current
     val coverUrl = item.coverUrl
-    val cachedArgb = remember(coverUrl) {
-        coverUrl?.takeIf(String::isNotBlank)?.let { RadioDominantColorCache.get(it) }
-    }
-    var dominantColor by remember(item.songId, cachedArgb) {
-        mutableStateOf(cachedArgb?.let(::Color) ?: Color(0xFF8B5E3C))
+    val cachedColor = remember(coverUrl) { getCachedDominantDarkColor(coverUrl) }
+    var dominantColor by remember(item.songId, cachedColor) {
+        mutableStateOf(cachedColor ?: Color(0xFF8B5E3C))
     }
 
-    LaunchedEffect(coverUrl, cachedArgb) {
-        if (cachedArgb != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(coverUrl, cachedColor) {
+        if (cachedColor != null || coverUrl.isNullOrBlank()) return@LaunchedEffect
         extractCachedDominantDarkColor(context, coverUrl)?.let { extracted ->
             dominantColor = extracted
         }
@@ -1753,95 +1693,4 @@ private fun formatPlayCount(playCount: Long?): String {
         }
         else -> playCount.toString()
     }
-}
-
-private fun deriveDarkHueFromId(id: Long): Color {
-    val hues = listOf(
-        Color(0xFF1E2F38), // deep teal
-        Color(0xFF27382B), // deep forest
-        Color(0xFF38262F), // deep plum
-        Color(0xFF363220), // deep olive
-        Color(0xFF202C38), // deep navy
-        Color(0xFF382A20)  // deep sienna
-    )
-    val index = (Math.abs(id) % hues.size).toInt()
-    return hues[index]
-}
-
-private suspend fun extractCachedDominantDarkColor(context: Context, coverUrl: String): Color? {
-    RadioDominantColorCache.get(coverUrl)?.let { return Color(it) }
-    return RadioColorExtractSemaphore.withPermit {
-        RadioDominantColorCache.get(coverUrl)?.let { return@withPermit Color(it) }
-        val bitmap = withContext(Dispatchers.IO) {
-            try {
-                val req = ImageRequest.Builder(context)
-                    .data(coverUrl.toCoverThumbnailUrl(100))
-                    .size(24, 24)
-                    .allowHardware(false)
-                    .build()
-                (context.imageLoader.execute(req).drawable as? BitmapDrawable)?.bitmap
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return@withPermit null
-        val extracted = withContext(Dispatchers.Default) {
-            extractDominantDarkColor(bitmap)
-        }
-        RadioDominantColorCache.put(coverUrl, extracted.toArgb())
-        extracted
-    }
-}
-
-private fun extractDominantDarkColor(bitmap: Bitmap): Color {
-    val needsScale = bitmap.width != 24 || bitmap.height != 24
-    val scaled = if (needsScale) Bitmap.createScaledBitmap(bitmap, 24, 24, false) else bitmap
-    val count = 24 * 24
-    val pixels = IntArray(count)
-    try {
-        scaled.getPixels(pixels, 0, 24, 0, 0, 24, 24)
-    } finally {
-        if (needsScale && scaled !== bitmap) {
-            scaled.recycle()
-        }
-    }
-
-    val hsv = FloatArray(3)
-    val hueBuckets = IntArray(12)
-    val bucketSat = FloatArray(12)
-    val bucketVal = FloatArray(12)
-
-    var validPixels = 0
-    for (p in pixels) {
-        android.graphics.Color.colorToHSV(p, hsv)
-        val s = hsv[1]
-        val v = hsv[2]
-        // 排除黑白灰无彩色以及极暗像素
-        if (s >= 0.16f && v >= 0.15f) {
-            val bucket = ((hsv[0] % 360f) / 30f).toInt().coerceIn(0, 11)
-            hueBuckets[bucket]++
-            bucketSat[bucket] += s
-            bucketVal[bucket] += v
-            validPixels++
-        }
-    }
-
-    if (validPixels > 0) {
-        var bestBucket = 0
-        var maxCount = -1
-        for (i in 0 until 12) {
-            if (hueBuckets[i] > maxCount) {
-                maxCount = hueBuckets[i]
-                bestBucket = i
-            }
-        }
-        val countInBucket = hueBuckets[bestBucket].coerceAtLeast(1)
-        val avgSat = (bucketSat[bestBucket] / countInBucket).coerceIn(0.40f, 0.75f)
-        val targetHue = bestBucket * 30f + 15f
-        val avgVal = bucketVal[bestBucket] / countInBucket
-        val targetVal = (avgVal * 0.55f).coerceIn(0.24f, 0.40f)
-        val colorInt = android.graphics.Color.HSVToColor(floatArrayOf(targetHue, avgSat, targetVal))
-        return Color(colorInt)
-    }
-
-    return Color(0xFF262C30)
 }
