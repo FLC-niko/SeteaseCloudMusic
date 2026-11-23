@@ -188,18 +188,6 @@ class SearchRepositoryImpl @Inject constructor(
         trackUrlCache.keys.removeIf { it.startsWith(prefix) }
     }
 
-    private fun extractAudioFormatFromUrl(url: String?): String? {
-        if (url.isNullOrBlank()) return null
-        val pathPart = url.substringBefore('?').substringBefore('#')
-        val fileName = pathPart.substringAfterLast('/', "")
-        val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        return if (ext in SUPPORTED_AUDIO_FORMAT_EXTS) {
-            ext.uppercase(Locale.ROOT)
-        } else {
-            null
-        }
-    }
-
     override suspend fun getTrackUrl(
         trackId: Long,
         level: String
@@ -240,10 +228,14 @@ class SearchRepositoryImpl @Inject constructor(
                 }
                 val sampleRateHz = songData.sr?.takeIf { it > 0 }
                 val fileSizeBytes = songData.size?.takeIf { it > 0L }
-                val format = songData.encodeType?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
-                    ?: songData.type?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
-                    ?: extractAudioFormatFromUrl(secureUrl)
                 val resolvedLevel = songData.level?.trim()?.takeIf { it.isNotBlank() } ?: level
+                val format = resolveOnlineAudioFormat(
+                    url = secureUrl,
+                    type = songData.type,
+                    encodeType = songData.encodeType,
+                    level = resolvedLevel,
+                    bitrateKbps = bitrateKbps
+                )
 
                 trackUrlCache[cacheKey] = CachedTrackUrl(
                     url = secureUrl,
@@ -284,14 +276,23 @@ class SearchRepositoryImpl @Inject constructor(
             } else {
                 val cached = trackUrlCache["${track.id}-$currentQualityLevel"]
                     ?: trackUrlCache.values.firstOrNull { it.url == existingUrl }
+                val resolvedBitrate = track.audioBitrateKbps ?: cached?.bitrateKbps
+                val resolvedLevel = track.audioQualityLevel ?: cached?.level ?: currentQualityLevel
+                val resolvedFormat = resolveOnlineAudioFormat(
+                    url = existingUrl,
+                    type = cached?.format ?: track.audioFormat,
+                    encodeType = track.audioFormat,
+                    level = resolvedLevel,
+                    bitrateKbps = resolvedBitrate
+                )
                 Result.success(
                     track.copy(
                         audioSourceLabel = track.audioSourceLabel ?: "网易云音乐 · 在线流媒体",
-                        audioBitrateKbps = track.audioBitrateKbps ?: cached?.bitrateKbps,
+                        audioBitrateKbps = resolvedBitrate,
                         audioSampleRateHz = track.audioSampleRateHz ?: cached?.sampleRateHz,
                         audioFileSizeBytes = track.audioFileSizeBytes ?: cached?.fileSizeBytes,
-                        audioFormat = track.audioFormat ?: cached?.format ?: extractAudioFormatFromUrl(existingUrl),
-                        audioQualityLevel = track.audioQualityLevel ?: cached?.level ?: currentQualityLevel
+                        audioFormat = resolvedFormat,
+                        audioQualityLevel = resolvedLevel
                     )
                 )
             }
@@ -598,7 +599,62 @@ class SearchRepositoryImpl @Inject constructor(
         private val SUPPORTED_AUDIO_FORMAT_EXTS = setOf(
             "flac", "mp3", "m4a", "aac", "wav", "ogg", "opus", "ape", "dff", "dsf", "wma", "alac"
         )
+        private val LOSSLESS_AUDIO_FORMATS = setOf(
+            "FLAC", "WAV", "APE", "ALAC", "DFF", "DSF"
+        )
+        private val LOSSLESS_QUALITY_LEVELS = setOf(
+            "lossless", "hires", "jymaster"
+        )
         private val SONG_URL_CRYPTO_FALLBACK_ORDER = listOf("weapi", "api", null)
+
+        internal fun extractAudioFormatFromUrl(url: String?): String? {
+            if (url.isNullOrBlank()) return null
+            val pathPart = url.substringBefore('?').substringBefore('#')
+            val fileName = pathPart.substringAfterLast('/', "")
+            val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+            return if (ext in SUPPORTED_AUDIO_FORMAT_EXTS) {
+                ext.uppercase(Locale.ROOT)
+            } else {
+                null
+            }
+        }
+
+        /**
+         * 解析在线流媒体的实际音频格式：
+         * 网易云 `/song/url/v1` 返回 Hi-Res / 无损流时，真实容器在 `url` 后缀与 `type` 中（如 `.flac` / `"flac"`），
+         * 而历史遗留字段 `encodeType` 经常仍返回 `"mp3"`。因此优先以真实 URL 后缀与 `type` 为准，
+         * 仅在二者均缺失时才参考 `encodeType`，并拒绝在无损/高码率流上采信明显矛盾的 `"MP3"`。
+         */
+        internal fun resolveOnlineAudioFormat(
+            url: String?,
+            type: String?,
+            encodeType: String?,
+            level: String?,
+            bitrateKbps: Int?
+        ): String? {
+            val urlFormat = extractAudioFormatFromUrl(url)
+            val typeFormat = type?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+            val encodeFormat = encodeType?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+            val normalizedLevel = level?.trim()?.lowercase(Locale.ROOT)
+            val isLosslessStream = normalizedLevel in LOSSLESS_QUALITY_LEVELS || (bitrateKbps != null && bitrateKbps > 320)
+
+            fun sanitize(candidate: String?): String? {
+                if (candidate == null) return null
+                if (candidate == "MP3" && isLosslessStream) return null
+                return candidate
+            }
+
+            if (urlFormat != null && typeFormat != null) {
+                return when {
+                    urlFormat in LOSSLESS_AUDIO_FORMATS -> urlFormat
+                    typeFormat in LOSSLESS_AUDIO_FORMATS -> typeFormat
+                    else -> sanitize(urlFormat) ?: sanitize(typeFormat)
+                }
+            }
+            sanitize(urlFormat)?.let { return it }
+            sanitize(typeFormat)?.let { return it }
+            return sanitize(encodeFormat)
+        }
 
         internal suspend fun resolveSongUrlWithFallback(
             fetchSongUrlV1: suspend (crypto: String?) -> SongResponse,

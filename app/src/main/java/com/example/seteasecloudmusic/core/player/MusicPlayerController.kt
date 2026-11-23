@@ -3,10 +3,13 @@ package com.example.seteasecloudmusic.core.player
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.net.toUri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.seteasecloudmusic.core.common.runCatchingCancellable
@@ -270,6 +273,48 @@ class MusicPlayerController @Inject constructor(
                 }
                 stopProgressTicker()
                 persistCurrentState()
+            }
+        }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            val selectedAudioFormat = tracks.groups
+                .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                ?.let { group ->
+                    (0 until group.length)
+                        .firstOrNull { group.isTrackSelected(it) }
+                        ?.let { group.getTrackFormat(it) }
+                } ?: return
+
+            val detectedFormat = mapMimeTypeToAudioFormat(
+                sampleMimeType = selectedAudioFormat.sampleMimeType,
+                containerMimeType = selectedAudioFormat.containerMimeType,
+                codecs = selectedAudioFormat.codecs
+            )
+            val detectedSampleRate = selectedAudioFormat.sampleRate.takeIf { it > 0 }
+            if (detectedFormat == null && detectedSampleRate == null) return
+
+            _playbackState.update { state ->
+                val currentTrack = state.currentTrack ?: return@update state
+                val nextFormat = detectedFormat ?: currentTrack.audioFormat
+                val nextSampleRate = currentTrack.audioSampleRateHz ?: detectedSampleRate
+                if (nextFormat == currentTrack.audioFormat && nextSampleRate == currentTrack.audioSampleRateHz) {
+                    return@update state
+                }
+                val updatedTrack = currentTrack.copy(
+                    audioFormat = nextFormat,
+                    audioSampleRateHz = nextSampleRate
+                )
+                val updatedQueue = if (state.currentQueueIndex in state.queueTracks.indices &&
+                    state.queueTracks[state.currentQueueIndex].id == updatedTrack.id
+                ) {
+                    state.queueTracks.toMutableList().apply { this[state.currentQueueIndex] = updatedTrack }
+                } else {
+                    state.queueTracks
+                }
+                state.copy(
+                    currentTrack = updatedTrack,
+                    queueTracks = updatedQueue
+                )
             }
         }
 
@@ -1208,7 +1253,14 @@ class MusicPlayerController @Inject constructor(
     private fun Track.withoutExpiredRemoteUrl(): Track {
         val url = playableUrl ?: return this
         return if (url.startsWith("http://") || url.startsWith("https://")) {
-            copy(playableUrl = null)
+            val isStaleLosslessMp3 = audioFormat.equals("MP3", ignoreCase = true) && (
+                (audioBitrateKbps ?: 0) > 320 ||
+                    audioQualityLevel?.lowercase() in setOf("lossless", "hires", "jymaster")
+                )
+            copy(
+                playableUrl = null,
+                audioFormat = if (isStaleLosslessMp3) null else audioFormat
+            )
         } else {
             this
         }
@@ -1319,6 +1371,37 @@ class MusicPlayerController @Inject constructor(
         private const val SERVICE_RECONNECT_DELAY_MS = 500L
 
         fun playlistQueueSource(playlistId: Long): String = "PLAYLIST:$playlistId"
+
+        internal fun mapMimeTypeToAudioFormat(
+            sampleMimeType: String?,
+            containerMimeType: String? = null,
+            codecs: String? = null
+        ): String? {
+            val sample = sampleMimeType?.trim()?.lowercase()
+            val container = containerMimeType?.trim()?.lowercase()
+            val codec = codecs?.trim()?.lowercase()
+            return when (sample) {
+                MimeTypes.AUDIO_FLAC -> "FLAC"
+                MimeTypes.AUDIO_MPEG -> "MP3"
+                MimeTypes.AUDIO_AAC -> if (container == MimeTypes.AUDIO_MP4) "M4A" else "AAC"
+                MimeTypes.AUDIO_ALAC -> "ALAC"
+                MimeTypes.AUDIO_OPUS -> "OPUS"
+                MimeTypes.AUDIO_VORBIS -> "OGG"
+                MimeTypes.AUDIO_WAV, MimeTypes.AUDIO_RAW -> "WAV"
+                MimeTypes.AUDIO_E_AC3_JOC -> "E-AC-3 (Atmos)"
+                MimeTypes.AUDIO_E_AC3 -> "E-AC-3"
+                MimeTypes.AUDIO_AC3 -> "AC-3"
+                MimeTypes.AUDIO_AC4 -> "AC-4"
+                else -> when {
+                    codec?.startsWith("flac") == true || container == MimeTypes.AUDIO_FLAC -> "FLAC"
+                    codec?.startsWith("mp4a") == true || container == MimeTypes.AUDIO_MP4 -> "M4A"
+                    container == MimeTypes.AUDIO_MPEG -> "MP3"
+                    container == MimeTypes.AUDIO_OGG -> "OGG"
+                    container == MimeTypes.AUDIO_WAV -> "WAV"
+                    else -> null
+                }
+            }
+        }
 
         internal fun shouldReusePlayerMediaItem(activeMediaId: String?, currentTrackId: Long?): Boolean {
             if (activeMediaId.isNullOrBlank() || currentTrackId == null) return false
