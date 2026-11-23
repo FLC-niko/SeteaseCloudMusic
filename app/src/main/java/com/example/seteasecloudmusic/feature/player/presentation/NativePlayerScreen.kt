@@ -1627,10 +1627,6 @@ internal fun resolveTrackAudioDetails(
             ?: currentQuality.levelKey
     }
 
-    val actualFormat = track.audioFormat?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
-        ?: probedFormat?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
-        ?: extractAudioFormatFromPathOrUrl(rawUrl)
-
     val actualFileSizeBytes = track.audioFileSizeBytes?.takeIf { it > 0L }
         ?: probedFileSizeBytes?.takeIf { it > 0L }
     val durationMs = track.durationMs?.takeIf { it > 0L }
@@ -1642,6 +1638,20 @@ internal fun resolveTrackAudioDetails(
         } else {
             null
         }
+
+    val urlFormat = extractAudioFormatFromPathOrUrl(rawUrl)
+    val rawTrackFormat = track.audioFormat?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+    val rawProbedFormat = probedFormat?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+    val isLosslessOnlineStream = !isLocalTrack && (
+        effectiveQualityLevel in setOf("lossless", "hires", "jymaster") ||
+            (actualBitrateKbps != null && actualBitrateKbps > 320)
+        )
+    // 防御旧缓存或网易云 encodeType 误报的 "MP3"：若 URL 明确是无损后缀或码率/档位属于无损流，优先以真实格式为准
+    val actualFormat = when {
+        !isLocalTrack && rawTrackFormat == "MP3" && urlFormat in LosslessAudioFormats -> urlFormat
+        isLosslessOnlineStream && rawTrackFormat == "MP3" -> urlFormat ?: rawProbedFormat?.takeUnless { it == "MP3" }
+        else -> rawTrackFormat ?: rawProbedFormat ?: urlFormat
+    }
 
     val actualSampleRateHz = track.audioSampleRateHz?.takeIf { it > 0 }
         ?: probedSampleRateHz?.takeIf { it > 0 }
