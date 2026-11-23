@@ -80,7 +80,7 @@ internal fun appleMusicArtworkFrame(
     val center = normalBounds.center
     val album = Rect(center.x - halfWidth, center.y - halfHeight, center.x + halfWidth, center.y + halfHeight)
     return PlayerArtworkFrame(
-        playerArtworkRect(album, headerBounds, progress),
+        playerContainerRect(album, headerBounds, progress),
         mix(normalRadius * scale, headerRadius, progress), mix(normalShadow * scale, 0f, progress)
     )
 }
@@ -95,7 +95,11 @@ internal fun Modifier.playerArtworkMotion(frame: () -> PlayerArtworkFrame): Modi
     scaleY = bounds.height / size.height.coerceAtLeast(1f)
 }
 
-internal fun appleMusicLyricSpring() = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 280f)
+internal fun appleMusicLyricSpring() = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = 280f,
+    visibilityThreshold = 0.0005f
+)
 
 @Composable
 internal fun rememberAppleMusicPlaybackScale(isPlaying: Boolean): State<Float> = animateFloatAsState(
