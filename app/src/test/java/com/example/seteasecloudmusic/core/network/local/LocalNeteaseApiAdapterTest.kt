@@ -18,12 +18,13 @@ import org.junit.Test
 class LocalNeteaseApiAdapterTest {
 
     @Test
-    fun registry_coversAll43AppEndpoints() {
+    fun registry_coversAllAppEndpoints() {
         val expectedPaths = setOf(
             "/album", "/artist/album", "/artist/desc", "/artist/detail", "/artist/new/song",
             "/artist/songs", "/artist/sublist", "/artist/top/song", "/captcha/sent", "/cloudsearch",
             "/homepage/block/page", "/like", "/likelist", "/login/cellphone", "/login/qr/check",
             "/login/qr/create", "/login/qr/key", "/logout", "/lyric", "/lyric/new",
+            "/personal/fm/mode", "/personal_fm",
             "/personalized", "/personalized/newsong", "/playlist/create", "/playlist/detail",
             "/playlist/tracks", "/playmode/intelligence/list", "/recommend/resource",
             "/recommend/songs", "/scrobble", "/search/hot", "/search/hot/detail",
@@ -32,8 +33,38 @@ class LocalNeteaseApiAdapterTest {
             "/toplist/detail", "/user/account", "/user/playlist"
         )
 
-        assertEquals(43, expectedPaths.size)
+        assertEquals(45, expectedPaths.size)
         assertEquals(expectedPaths, NeteaseEndpointRegistry.HANDLERS.keys)
+    }
+
+    @Test
+    fun personalFmAndMode_mapToRadioGetWithExpectedCryptoAndParams() {
+        val transport = RecordingTransport { req ->
+            UpstreamHttpResponse(200, """{"code":200,"data":[{"id":101,"name":"DJ Song"}]}""")
+        }
+        val interceptor = buildInterceptor(transport, tokenStore = InMemoryTokenStore(anon = "anon"))
+
+        val fmRes = interceptor.intercept(
+            FakeChain(
+                Request.Builder()
+                    .url("http://57.158.26.135:3000/personal_fm")
+                    .header("Cookie", "MUSIC_U=u")
+                    .build()
+            )
+        )
+        assertEquals(200, fmRes.code)
+        assertEquals("https://music.163.com/weapi/v1/radio/get", transport.requests[0].url)
+
+        val modeRes = interceptor.intercept(
+            FakeChain(
+                Request.Builder()
+                    .url("http://57.158.26.135:3000/personal/fm/mode?mode=AIDJ&limit=10")
+                    .header("Cookie", "MUSIC_U=u")
+                    .build()
+            )
+        )
+        assertEquals(200, modeRes.code)
+        assertEquals("https://interface.music.163.com/eapi/v1/radio/get", transport.requests[1].url)
     }
 
     @Test

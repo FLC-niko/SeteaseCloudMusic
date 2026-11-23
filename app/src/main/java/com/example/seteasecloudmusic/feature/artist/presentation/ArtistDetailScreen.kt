@@ -589,16 +589,6 @@ fun ArtistDetailScreen(
             ) {
                 ProgressiveTopBlur(
                     backdrop = artistBackdrop,
-                    totalHeight = statusBarHeight + 24.dp,
-                    statusBarHeight = statusBarHeight,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    alphaProvider = { 1f - topBlurAlpha },
-                    deepBlurRadius = 16.dp,
-                    mediumBlurRadius = 8.dp,
-                    shallowBlurRadius = 3.dp
-                )
-                ProgressiveTopBlur(
-                    backdrop = artistBackdrop,
                     totalHeight = statusBarHeight + 82.dp,
                     statusBarHeight = statusBarHeight,
                     modifier = Modifier.align(Alignment.TopCenter),

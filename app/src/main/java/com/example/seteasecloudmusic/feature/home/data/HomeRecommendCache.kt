@@ -17,17 +17,33 @@ class HomeRecommendCache @Inject constructor(
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    fun saveDailyRecommend(tracks: List<Track>) {
+    fun saveDailyRecommend(tracks: List<Track>) = saveTrackList(KEY_DAILY_RECOMMEND, tracks)
+
+    fun getDailyRecommend(): List<Track>? = getTrackList(KEY_DAILY_RECOMMEND)
+
+    fun savePrivateDjSongs(tracks: List<Track>) = saveTrackList(KEY_PRIVATE_DJ_SONGS, tracks)
+
+    fun getPrivateDjSongs(): List<Track>? = getTrackList(KEY_PRIVATE_DJ_SONGS)
+
+    fun saveSimiSongs(tracks: List<Track>) = saveTrackList(KEY_SIMI_SONGS, tracks)
+
+    fun getSimiSongs(): List<Track>? = getTrackList(KEY_SIMI_SONGS)
+
+    fun saveHeartModeSongs(tracks: List<Track>) = saveTrackList(KEY_HEART_MODE_SONGS, tracks)
+
+    fun getHeartModeSongs(): List<Track>? = getTrackList(KEY_HEART_MODE_SONGS)
+
+    private fun saveTrackList(key: String, tracks: List<Track>) {
         if (tracks.isEmpty()) return
         runCatching {
             prefs.edit()
-                .putString(KEY_DAILY_RECOMMEND, gson.toJson(tracks))
+                .putString(key, gson.toJson(tracks))
                 .apply()
         }
     }
 
-    fun getDailyRecommend(): List<Track>? {
-        val json = prefs.getString(KEY_DAILY_RECOMMEND, null) ?: return null
+    private fun getTrackList(key: String): List<Track>? {
+        val json = prefs.getString(key, null) ?: return null
         return runCatching {
             val tracks = gson.fromJson<List<Track>>(
                 json,
@@ -45,16 +61,31 @@ class HomeRecommendCache @Inject constructor(
         }.getOrNull()
     }
 
-    fun saveRadarPlaylist(data: com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData) {
+    fun saveRadarPlaylist(data: com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData) =
+        saveRadarData(KEY_RADAR_PLAYLIST, data)
+
+    fun getRadarPlaylist(): com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData? =
+        getRadarData(KEY_RADAR_PLAYLIST)
+
+    fun saveNewSongRadarPlaylist(data: com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData) =
+        saveRadarData(KEY_NEW_SONG_RADAR_PLAYLIST, data)
+
+    fun getNewSongRadarPlaylist(): com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData? =
+        getRadarData(KEY_NEW_SONG_RADAR_PLAYLIST)
+
+    private fun saveRadarData(
+        key: String,
+        data: com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData
+    ) {
         runCatching {
             prefs.edit()
-                .putString(KEY_RADAR_PLAYLIST, gson.toJson(data))
+                .putString(key, gson.toJson(data))
                 .apply()
         }
     }
 
-    fun getRadarPlaylist(): com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData? {
-        val json = prefs.getString(KEY_RADAR_PLAYLIST, null) ?: return null
+    private fun getRadarData(key: String): com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData? {
+        val json = prefs.getString(key, null) ?: return null
         return runCatching {
             gson.fromJson<com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData>(
                 json,
@@ -99,6 +130,10 @@ class HomeRecommendCache @Inject constructor(
         private const val PREF_NAME = "app_data_cache_prefs"
         private const val KEY_DAILY_RECOMMEND = "key_daily_recommend"
         private const val KEY_RADAR_PLAYLIST = "key_radar_playlist"
+        private const val KEY_NEW_SONG_RADAR_PLAYLIST = "key_new_song_radar_playlist"
+        private const val KEY_PRIVATE_DJ_SONGS = "key_private_dj_songs"
+        private const val KEY_SIMI_SONGS = "key_simi_songs"
+        private const val KEY_HEART_MODE_SONGS = "key_heart_mode_songs"
         private const val KEY_FAVORITE_RECOMMEND = "key_favorite_recommend"
     }
 }

@@ -6,7 +6,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
 /**
- * Implements all 43 Netease Cloud Music API endpoints used across the app's Retrofit services,
+ * Implements all 45 Netease Cloud Music API endpoints used across the app's Retrofit services,
  * matching the request mapping and response normalization of `@neteasecloudmusicapienhanced/api`.
  */
 internal class NeteaseEndpointRegistry(
@@ -255,6 +255,19 @@ internal class NeteaseEndpointRegistry(
             addProperty("yrv", 0)
         }
         return client.request("/api/song/lyric/v1", data, q, cookie, NeteaseCryptoMode.EAPI)
+    }
+
+    private fun handlePersonalFm(q: Map<String, String>, cookie: String?): LocalApiResult {
+        return client.request("/api/v1/radio/get", JsonObject(), q, cookie, NeteaseCryptoMode.WEAPI)
+    }
+
+    private fun handlePersonalFmMode(q: Map<String, String>, cookie: String?): LocalApiResult {
+        val data = JsonObject().apply {
+            addProperty("mode", q["mode"]?.ifBlank { null } ?: "DEFAULT")
+            q["submode"]?.takeIf { it.isNotBlank() }?.let { addProperty("subMode", it) }
+            addProperty("limit", q.intOrDefault("limit", 3))
+        }
+        return client.request("/api/v1/radio/get", data, q, cookie, NeteaseCryptoMode.EAPI)
     }
 
     private fun handlePersonalized(q: Map<String, String>, cookie: String?): LocalApiResult {
@@ -545,6 +558,8 @@ internal class NeteaseEndpointRegistry(
                 "/logout" to NeteaseEndpointRegistry::handleLogout,
                 "/lyric" to NeteaseEndpointRegistry::handleLyric,
                 "/lyric/new" to NeteaseEndpointRegistry::handleLyricNew,
+                "/personal/fm/mode" to NeteaseEndpointRegistry::handlePersonalFmMode,
+                "/personal_fm" to NeteaseEndpointRegistry::handlePersonalFm,
                 "/personalized" to NeteaseEndpointRegistry::handlePersonalized,
                 "/personalized/newsong" to NeteaseEndpointRegistry::handlePersonalizedNewsong,
                 "/playlist/create" to NeteaseEndpointRegistry::handlePlaylistCreate,
