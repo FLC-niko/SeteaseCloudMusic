@@ -42,9 +42,9 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -1077,40 +1077,18 @@ private fun SearchHistorySection(
     var showClearDialog by remember { mutableStateOf(false) }
 
     if (showClearDialog) {
-        AlertDialog(
+        AdaptiveAlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = {
-                Text(
-                    text = "清空搜索历史",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
-                    color = PrimaryText
-                )
+            title = "清空搜索历史",
+            text = "确定要清空全部搜索历史吗？",
+            confirmText = "清空",
+            confirmColor = TabActiveBg,
+            onConfirm = {
+                onClearHistory()
+                showClearDialog = false
             },
-            text = {
-                Text(
-                    text = "确定要清空全部搜索历史吗？",
-                    fontSize = 14.sp,
-                    color = SecondaryText
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onClearHistory()
-                        showClearDialog = false
-                    }
-                ) {
-                    Text("清空", color = TabActiveBg, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
-                    Text("取消", color = PrimaryText)
-                }
-            },
-            containerColor = AppTheme.colors.surfaceElevated,
-            shape = RoundedCornerShape(16.dp)
+            dismissText = "取消",
+            onDismiss = { showClearDialog = false }
         )
     }
 

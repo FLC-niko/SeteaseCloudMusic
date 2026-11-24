@@ -328,76 +328,59 @@ fun AddToPlaylistContent(
 
     // 4. 新建歌单对话框
     if (showCreateDialog) {
+        val dismissCreateDialog = {
+            if (!isCreating) {
+                showCreateDialog = false
+                newPlaylistTitle = ""
+            }
+        }
         AdaptiveAlertDialog(
-            onDismissRequest = {
-                if (!isCreating) {
-                    showCreateDialog = false
-                    newPlaylistTitle = ""
-                }
-            },
-            title = {
-                Text(
-                    text = "新建歌单",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "输入歌单标题后将自动创建并收录本首单曲",
-                        style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = newPlaylistTitle,
-                        onValueChange = { newPlaylistTitle = it },
-                        placeholder = { Text("请输入歌单标题") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val title = newPlaylistTitle.trim()
-                        if (title.isBlank() || isCreating) return@TextButton
-                        isCreating = true
-                        scope.launch {
-                            val result = viewModel.createPlaylistAndAddTrack(title, track.id)
-                            isCreating = false
-                            result.fold(
-                                onSuccess = { newPl ->
-                                    Toast.makeText(context, "已创建并收藏到「${newPl.name}」", Toast.LENGTH_SHORT).show()
-                                    onTrackAdded?.invoke(newPl.id, track)
-                                    showCreateDialog = false
-                                    newPlaylistTitle = ""
-                                    onDismiss()
-                                },
-                                onFailure = { err ->
-                                    Toast.makeText(context, err.message ?: "创建失败，请重试", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-                    },
-                    enabled = newPlaylistTitle.isNotBlank() && !isCreating
-                ) {
-                    Text("创建并收藏", color = if (newPlaylistTitle.isNotBlank() && !isCreating) colors.accent else colors.textTertiary)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        if (!isCreating) {
+            onDismissRequest = dismissCreateDialog,
+            title = "新建歌单",
+            confirmText = "创建并收藏",
+            confirmColor = colors.accent,
+            confirmEnabled = newPlaylistTitle.isNotBlank() && !isCreating,
+            dismissEnabled = !isCreating,
+            isConfirmLoading = isCreating,
+            onConfirm = {
+                val title = newPlaylistTitle.trim()
+                if (title.isBlank() || isCreating) return@AdaptiveAlertDialog
+                isCreating = true
+                scope.launch {
+                    val result = viewModel.createPlaylistAndAddTrack(title, track.id)
+                    isCreating = false
+                    result.fold(
+                        onSuccess = { newPl ->
+                            Toast.makeText(context, "已创建并收藏到「${newPl.name}」", Toast.LENGTH_SHORT).show()
+                            onTrackAdded?.invoke(newPl.id, track)
                             showCreateDialog = false
                             newPlaylistTitle = ""
+                            onDismiss()
+                        },
+                        onFailure = { err ->
+                            Toast.makeText(context, err.message ?: "创建失败，请重试", Toast.LENGTH_SHORT).show()
                         }
-                    }
-                ) {
-                    Text("取消", color = colors.textSecondary)
+                    )
                 }
+            },
+            dismissText = "取消",
+            onDismiss = dismissCreateDialog
+        ) {
+            Column {
+                Text(
+                    text = "输入歌单标题后将自动创建并收录本首单曲",
+                    style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = newPlaylistTitle,
+                    onValueChange = { newPlaylistTitle = it },
+                    placeholder = { Text("请输入歌单标题") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-        )
+        }
     }
 }
 
@@ -718,83 +701,62 @@ fun AddToPlaylistBatchSheet(
         }
 
         if (showCreateDialog) {
-            AdaptiveAlertDialog(
-                onDismissRequest = {
-                    if (!isCreating) {
-                        showCreateDialog = false
-                        newPlaylistTitle = ""
-                    }
-                },
-                title = {
-                    Text(
-                        text = "新建歌单",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                text = {
-                    Column {
-                        Text(
-                            text = "输入歌单标题后将自动创建并收录所选歌曲",
-                            style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = newPlaylistTitle,
-                            onValueChange = { newPlaylistTitle = it },
-                            placeholder = { Text("请输入歌单标题") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val title = newPlaylistTitle.trim()
-                            if (title.isBlank() || isCreating) return@TextButton
-                            isCreating = true
-                            scope.launch {
-                                try {
-                                    val result = viewModel.createPlaylistAndAddTracks(title, tracks.map { it.id })
-                                    result.fold(
-                                        onSuccess = { created ->
-                                            Toast.makeText(context, "已创建歌单「${created.name}」并收藏 ${tracks.size} 首歌曲", Toast.LENGTH_SHORT).show()
-                                            onTracksAdded?.invoke(created.id, tracks)
-                                            showCreateDialog = false
-                                            newPlaylistTitle = ""
-                                            onDismiss()
-                                        },
-                                        onFailure = { err ->
-                                            Toast.makeText(context, err.message ?: "新建歌单失败", Toast.LENGTH_SHORT).show()
-                                        }
-                                    )
-                                } finally {
-                                    isCreating = false
-                                }
-                            }
-                        }
-                    ) {
-                        Text(
-                            text = "创建并收藏",
-                            color = colors.accent,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showCreateDialog = false
-                            newPlaylistTitle = ""
-                        }
-                    ) {
-                        Text(
-                            text = "取消",
-                            color = colors.textSecondary
-                        )
-                    }
+            val dismissBatchCreateDialog = {
+                if (!isCreating) {
+                    showCreateDialog = false
+                    newPlaylistTitle = ""
                 }
-            )
+            }
+            AdaptiveAlertDialog(
+                onDismissRequest = dismissBatchCreateDialog,
+                title = "新建歌单",
+                confirmText = "创建并收藏",
+                confirmColor = colors.accent,
+                confirmEnabled = newPlaylistTitle.isNotBlank() && !isCreating,
+                dismissEnabled = !isCreating,
+                isConfirmLoading = isCreating,
+                onConfirm = {
+                    val title = newPlaylistTitle.trim()
+                    if (title.isBlank() || isCreating) return@AdaptiveAlertDialog
+                    isCreating = true
+                    scope.launch {
+                        try {
+                            val result = viewModel.createPlaylistAndAddTracks(title, tracks.map { it.id })
+                            result.fold(
+                                onSuccess = { created ->
+                                    Toast.makeText(context, "已创建歌单「${created.name}」并收藏 ${tracks.size} 首歌曲", Toast.LENGTH_SHORT).show()
+                                    onTracksAdded?.invoke(created.id, tracks)
+                                    showCreateDialog = false
+                                    newPlaylistTitle = ""
+                                    onDismiss()
+                                },
+                                onFailure = { err ->
+                                    Toast.makeText(context, err.message ?: "新建歌单失败", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        } finally {
+                            isCreating = false
+                        }
+                    }
+                },
+                dismissText = "取消",
+                onDismiss = dismissBatchCreateDialog
+            ) {
+                Column {
+                    Text(
+                        text = "输入歌单标题后将自动创建并收录所选歌曲",
+                        style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = newPlaylistTitle,
+                        onValueChange = { newPlaylistTitle = it },
+                        placeholder = { Text("请输入歌单标题") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     }
 }

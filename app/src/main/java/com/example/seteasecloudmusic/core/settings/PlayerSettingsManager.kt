@@ -14,7 +14,7 @@ enum class AppThemeMode(
 ) {
     SYSTEM("跟随系统", "自动匹配系统深浅色外观"),
     LIGHT("浅色模式", "始终使用浅色外观"),
-    DARK("深色模式", "始终使用深色 OLED 外观")
+    DARK("深色模式", "始终使用深色外观")
 }
 
 enum class OnlineAudioQuality(
@@ -25,10 +25,10 @@ enum class OnlineAudioQuality(
     val playerBadgeText: String = badgeText,
     val playerMenuLabel: String = title
 ) {
-    STANDARD("标准", "standard", "标准音质 · 128Kbps", "标准音质", "标准", "标准 MP3"),
-    HIGH("极高", "exhigh", "极高音质 · 320Kbps", "极高音质", "极高", "极高 HQ"),
-    LOSSLESS("无损", "lossless", "SQ 无损音质 · FLAC", "无损音质", "无损", "无损 SQ"),
-    HIRES("Hi-Res", "hires", "Hi-Res 超清母带 · 24bit/96kHz", "Hi-Res", "Hi-Res", "高解析度无损 Hi-Res");
+    STANDARD("标准", "standard", "标准码率 · 128 kbps", "标准音质", "标准", "标准 MP3"),
+    HIGH("极高", "exhigh", "高清码率 · 320 kbps", "极高音质", "极高", "极高 HQ"),
+    LOSSLESS("无损", "lossless", "无损压缩 · FLAC", "无损音质", "无损", "无损 SQ"),
+    HIRES("Hi-Res", "hires", "高解析母带 · 24bit/96kHz", "Hi-Res", "Hi-Res", "高解析度无损 Hi-Res");
 
     companion object {
         val PlayerSelectableQualities: List<OnlineAudioQuality> = listOf(

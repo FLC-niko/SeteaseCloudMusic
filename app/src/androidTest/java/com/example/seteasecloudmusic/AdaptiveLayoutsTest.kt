@@ -62,7 +62,7 @@ class AdaptiveLayoutsTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @Volatile private var windowInfo: AdaptiveWindowInfo? = null
     @Volatile private var currentFontScale = 1f
-    private val pages = listOf("chrome", "native_music", "home", "home_detail", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "account_detail", "offline")
+    private val pages = listOf("chrome", "native_music", "home", "home_detail", "radio", "radio_detail", "mine", "mine_detail", "local", "playlist", "daily", "artist", "search", "discover", "native", "lyrics", "queue", "quality", "account", "settings", "captcha", "qr", "offline")
 
     @Before fun keepEmulatorVisible() {
         compose.activityRule.scenario.onActivity { activity ->
@@ -917,9 +917,9 @@ private fun FixturePage(page: String, tracks: List<Track>, playlistCount: Int = 
                 }
             }
             "offline" -> com.example.seteasecloudmusic.core.ui.components.Ios26NetworkOfflineDialog(true, {}, {})
-            "account", "settings", "captcha", "account_detail" -> {
+            "account", "settings", "captcha" -> {
                 val vm: AuthViewModel = hiltViewModel()
-                LaunchedEffect(page) { if (page == "settings") vm.onAccountDetailsOpened() else if (page == "captcha") vm.onCaptchaPanelOpened() else if (page == "account_detail") vm.onAccountDetailsDestinationOpened(AccountDetailsDestination.SUBSCRIPTIONS) else vm.onBackToMethods() }
+                LaunchedEffect(page) { if (page == "captcha") vm.onCaptchaPanelOpened() else vm.onBackToMethods() }
                 AdaptiveOverlayPane(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                         AccountLoginSheetContent({}, Modifier.widthIn(max = 560.dp).fillMaxSize(), viewModel = vm)

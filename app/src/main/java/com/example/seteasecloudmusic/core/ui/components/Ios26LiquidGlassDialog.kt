@@ -5,8 +5,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,27 +38,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
 
 /**
  * 通用 iOS 26 液态玻璃弹窗 (Liquid Glass Alert)。
@@ -90,193 +80,140 @@ fun Ios26LiquidGlassDialog(
     onPrimaryClick: () -> Unit = {},
     content: (@Composable () -> Unit)? = null
 ) {
-    val cornerRadius = 34.dp
+    val cornerRadius = 32.dp
+    val cardShape = RoundedCornerShape(cornerRadius)
     val isDark = AppTheme.isDark
     val colors = AppTheme.colors
+    val cardBackground = if (isDark) Color.Black else Color.White
+    val borderColor = if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.06f)
+    val centerHeader = content == null
 
     AnimatedVisibility(
         visible = isVisible,
-        enter = fadeIn(animationSpec = tween(220)) + scaleIn(
-            initialScale = 0.86f,
-            animationSpec = spring(dampingRatio = 0.74f, stiffness = 420f)
+        enter = fadeIn(animationSpec = tween(220)) + slideInVertically(
+            initialOffsetY = { it / 4 },
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f)
         ),
-        exit = fadeOut(animationSpec = tween(180)) + scaleOut(
-            targetScale = 0.90f,
-            animationSpec = spring(dampingRatio = 0.88f, stiffness = 500f)
+        exit = fadeOut(animationSpec = tween(160)) + slideOutVertically(
+            targetOffsetY = { it / 4 },
+            animationSpec = spring(dampingRatio = 0.90f, stiffness = 520f)
         )
     ) {
-        // 全屏半透明蒙层（保留背后磨砂与采样）
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = if (isDark) 0.50f else 0.22f))
+                .background(colors.scrim)
                 .pointerInput(Unit) {
                     detectTapGestures {
-                        // 点击蒙层关闭
                         onDismissRequest()
                     }
-                },
-            contentAlignment = Alignment.Center
+                }
         ) {
-            AdaptiveOverlayPane(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
-            // 弹窗主卡片容器（阻止事件穿透）
-            Box(
-                modifier = modifier
-                    .widthIn(max = 360.dp).fillMaxWidth().verticalScroll(rememberScrollState())
-                    .pointerInput(Unit) {
-                        detectTapGestures { /* 拦截点击，防止点击弹窗关闭 */ }
-                    }
-                    // 1. 【底部投影层：尺寸+50px】
-                    .shadow(
-                        elevation = 32.dp,
-                        shape = RoundedCornerShape(cornerRadius),
-                        clip = false,
-                        spotColor = Color(0x4D000000),
-                        ambientColor = Color(0x33000000)
-                    )
-                    .drawIos26DropShadow(cornerRadius = cornerRadius)
-                    // 2. 【玻璃层与中间层（Kyant Backdrop + #F2F2F2 颜色减淡）】
-                    .then(
-                        if (backdrop != null) {
-                            Modifier.drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { RoundedRectangle(cornerRadius) },
-                                highlight = null,
-                                effects = {
-                                    vibrancy()
-                                    blur(6f.dp.toPx())
-                                    noiseDither(GlassDefaults.NoiseDitherCoeff)
-                                    lens(
-                                        refractionHeight = 16f.dp.toPx(),
-                                        refractionAmount = 20f.dp.toPx(),
-                                        chromaticAberration = true
-                                    )
-                                },
-                                onDrawSurface = {
-                                    if (isDark) {
-                                        drawRect(Color(0xFF1C1C1E).copy(alpha = 0.72f))
-                                        drawRect(
-                                            Brush.verticalGradient(
-                                                0.0f to Color.White.copy(alpha = 0.10f),
-                                                0.35f to Color.White.copy(alpha = 0.02f),
-                                                1.0f to Color.White.copy(alpha = 0.06f)
-                                            )
-                                        )
-                                    } else {
-                                        // 中间层：#F2F2F7 通透半透明铺底
-                                        drawRect(Color(0xFFF2F2F7).copy(alpha = 0.58f))
-                                        // 玻璃表面微反射高光渐变
-                                        drawRect(
-                                            Brush.verticalGradient(
-                                                0.0f to Color.White.copy(alpha = 0.28f),
-                                                0.35f to Color.White.copy(alpha = 0.08f),
-                                                1.0f to Color.White.copy(alpha = 0.18f)
-                                            )
-                                        )
-                                    }
-                                }
-                            )
-                        } else {
-                            Modifier
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.0f to (if (isDark) Color(0xFF242428) else Color(0xFFF7F7FA)).copy(alpha = if (isDark) 0.96f else 0.94f),
-                                        1.0f to (if (isDark) Color(0xFF1A1A1E) else Color(0xFFEDEDF2)).copy(alpha = if (isDark) 0.96f else 0.94f)
-                                    ),
-                                    RoundedCornerShape(cornerRadius)
-                                )
-                        }
-                    )
-                    // 重力联动 3D SDF 棱边高光（BloomStroke）
-                    .bloomStroke(
-                        cornerRadius = cornerRadius,
-                        style = if (isDark) BloomStrokeDefaults.DialogDark else BloomStrokeDefaults.DialogLight,
-                        extraDegrees = -45f
-                    )
-                    .clip(RoundedCornerShape(cornerRadius))
-                    .padding(horizontal = 22.dp, vertical = 24.dp)
+            AdaptiveOverlayPane(
+                Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .imePadding()
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.Start
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    // Title 标题（靠左，加粗黑体）
-                    if (!title.isNullOrBlank()) {
-                        Text(
-                            text = title,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary,
-                            letterSpacing = (-0.4).sp,
-                            lineHeight = 22.sp
-                        )
-                    }
-
-                    // Description 描述说明（靠左，灰色完成句子）
-                    if (!description.isNullOrBlank()) {
-                        if (!title.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                        }
-                        Text(
-                            text = description,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = if (isDark) Color(0xFFAEAEB2) else Color(0xFF48484A),
-                            lineHeight = 19.sp
-                        )
-                    }
-
-                    // 【可选内容槽位：例如输入框卡片 / 状态卡片】
-                    if (content != null) {
-                        Spacer(modifier = Modifier.height(18.dp))
-                        content()
-                    }
-
-                    // 按钮上间距
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // 【底部药丸双按钮：Secondary & Primary】
-                    if (!secondaryButtonText.isNullOrBlank()) {
-                        Row(
+                    Box(
+                        modifier = modifier
+                            .widthIn(max = 440.dp)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .pointerInput(Unit) {
+                                detectTapGestures { /* 拦截点击，防止点击弹窗关闭 */ }
+                            }
+                            .shadow(
+                                elevation = if (isDark) 24.dp else 18.dp,
+                                shape = cardShape,
+                                clip = false,
+                                spotColor = Color.Black.copy(alpha = if (isDark) 0.55f else 0.18f),
+                                ambientColor = Color.Black.copy(alpha = if (isDark) 0.35f else 0.10f)
+                            )
+                            .background(cardBackground, cardShape)
+                            .border(0.5.dp, borderColor, cardShape)
+                            .clip(cardShape)
+                            .padding(horizontal = 22.dp, vertical = 22.dp)
+                    ) {
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalAlignment = if (centerHeader) Alignment.CenterHorizontally else Alignment.Start
                         ) {
-                            // Secondary 按钮（左边浅灰色药丸胶囊）
-                            Ios26CapsuleButton(
-                                text = secondaryButtonText,
-                                isPrimary = false,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onSecondaryClick?.invoke() }
-                            )
+                            if (!title.isNullOrBlank()) {
+                                Text(
+                                    text = title,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textPrimary,
+                                    textAlign = if (centerHeader) TextAlign.Center else TextAlign.Start,
+                                    lineHeight = 24.sp
+                                )
+                            }
 
-                            // Primary 按钮（右边高饱和经典 iOS 蓝药丸胶囊）
-                            Ios26CapsuleButton(
-                                text = primaryButtonText,
-                                isPrimary = true,
-                                backgroundColor = primaryButtonColor,
-                                isLoading = isPrimaryLoading,
-                                modifier = Modifier.weight(1f),
-                                onClick = onPrimaryClick
-                            )
+                            if (!description.isNullOrBlank()) {
+                                if (!title.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+                                Text(
+                                    text = description,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = colors.textSecondary,
+                                    textAlign = if (centerHeader) TextAlign.Center else TextAlign.Start,
+                                    lineHeight = 20.sp
+                                )
+                            }
+
+                            if (content != null) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                content()
+                            }
+
+                            Spacer(modifier = Modifier.height(22.dp))
+
+                            if (!secondaryButtonText.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Ios26CapsuleButton(
+                                        text = secondaryButtonText,
+                                        isPrimary = false,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { onSecondaryClick?.invoke() }
+                                    )
+
+                                    Ios26CapsuleButton(
+                                        text = primaryButtonText,
+                                        isPrimary = true,
+                                        backgroundColor = primaryButtonColor,
+                                        isLoading = isPrimaryLoading,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = onPrimaryClick
+                                    )
+                                }
+                            } else {
+                                Ios26CapsuleButton(
+                                    text = primaryButtonText,
+                                    isPrimary = true,
+                                    backgroundColor = primaryButtonColor,
+                                    isLoading = isPrimaryLoading,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = onPrimaryClick
+                                )
+                            }
                         }
-                    } else {
-                        // 单按钮模式
-                        Ios26CapsuleButton(
-                            text = primaryButtonText,
-                            isPrimary = true,
-                            backgroundColor = primaryButtonColor,
-                            isLoading = isPrimaryLoading,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onPrimaryClick
-                        )
                     }
                 }
             }
         }
-    }
-    }
     }
 }
 
@@ -492,54 +429,31 @@ private fun Ios26CapsuleButton(
     text: String,
     isPrimary: Boolean,
     modifier: Modifier = Modifier,
-    backgroundColor: Color = if (isPrimary) AppTheme.colors.accentBlue else if (AppTheme.isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.065f),
+    backgroundColor: Color = if (isPrimary) AppTheme.colors.accentBlue else if (AppTheme.isDark) Color(0xFF1C1C1E) else Color(0xFFF2F2F7),
     isLoading: Boolean = false,
     onClick: () -> Unit
 ) {
-    val isDark = AppTheme.isDark
     val colors = AppTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val scale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 620f),
         label = "ios26ButtonScale"
     )
 
-    val buttonShape = RoundedCornerShape(23.dp)
+    val buttonShape = RoundedCornerShape(24.dp)
 
     Box(
         modifier = modifier
-            .height(46.dp)
+            .height(48.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
             .clip(buttonShape)
             .background(backgroundColor)
-            .interactiveGlassHighlight(
-                shape = buttonShape,
-                isDarkSurface = isPrimary || isDark
-            )
-            .then(
-                if (isPrimary) {
-                    Modifier.border(
-                        0.5.dp,
-                        Brush.verticalGradient(
-                            0f to Color.White.copy(alpha = 0.40f),
-                            1f to Color.Transparent
-                        ),
-                        buttonShape
-                    )
-                } else {
-                    Modifier.border(
-                        0.5.dp,
-                        if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f),
-                        buttonShape
-                    )
-                }
-            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -551,56 +465,17 @@ private fun Ios26CapsuleButton(
     ) {
         if (isLoading) {
             CircularProgressIndicator(
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(18.dp),
                 color = Color.White,
-                strokeWidth = 2.2.dp
+                strokeWidth = 2.dp
             )
         } else {
             Text(
                 text = text,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isPrimary) Color.White else colors.textPrimary,
-                letterSpacing = (-0.2).sp
+                color = if (isPrimary) Color.White else colors.textPrimary
             )
         }
-    }
-}
-
-/**
- * 绘制符合解析图标注的【底部投影：尺寸+50px】的大范围软弥散环境光阴影。
- */
-private fun Modifier.drawIos26DropShadow(cornerRadius: Dp): Modifier = drawBehind {
-    val spreadPx = 25f.dp.toPx() // +50px spread
-    val blurRadiusPx = 36f.dp.toPx()
-
-    drawIntoCanvas { canvas ->
-        val paint = Paint().apply {
-            asFrameworkPaint().apply {
-                color = android.graphics.Color.argb(55, 0, 0, 0)
-                isAntiAlias = true
-                maskFilter = android.graphics.BlurMaskFilter(
-                    blurRadiusPx,
-                    android.graphics.BlurMaskFilter.Blur.NORMAL
-                )
-            }
-        }
-
-        // 外扩 50px 绘制阴影层
-        val left = -spreadPx / 2
-        val top = 10f.dp.toPx() - spreadPx / 2
-        val right = size.width + spreadPx / 2
-        val bottom = size.height + 10f.dp.toPx() + spreadPx / 2
-        val cornerPx = cornerRadius.toPx()
-
-        canvas.drawRoundRect(
-            left = left,
-            top = top,
-            right = right,
-            bottom = bottom,
-            radiusX = cornerPx + 8.dp.toPx(),
-            radiusY = cornerPx + 8.dp.toPx(),
-            paint = paint
-        )
     }
 }

@@ -1121,51 +1121,46 @@ private fun ChangeLocalDirectoryDialog(
 
     AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "设置音乐扫描目录", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "请输入存放音频文件的完整目录路径（支持递归扫描子目录）：",
-                    style = MaterialTheme.typography.bodySmall.copy(color = MineTextSecondary)
+        title = "设置音乐扫描目录",
+        confirmText = "确定并扫描",
+        confirmColor = MineAccentRed,
+        onConfirm = { onConfirm(inputPath.trim()) },
+        dismissText = "取消",
+        onDismiss = onDismiss
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "请输入存放音频文件的完整目录路径（支持递归扫描子目录）：",
+                style = MaterialTheme.typography.bodySmall.copy(color = MineTextSecondary)
+            )
+            OutlinedTextField(
+                value = inputPath,
+                onValueChange = { inputPath = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("/storage/emulated/0/Music") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MineAccentRed,
+                    cursorColor = MineAccentRed
                 )
-                OutlinedTextField(
-                    value = inputPath,
-                    onValueChange = { inputPath = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("/storage/emulated/0/Music") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MineAccentRed,
-                        cursorColor = MineAccentRed
+            )
+            Text(
+                text = "常用快捷目录：",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                quickPaths.take(3).forEach { path ->
+                    SuggestionChip(
+                        onClick = { inputPath = path },
+                        label = { Text(path.substringAfterLast("/"), fontSize = 11.sp) }
                     )
-                )
-                Text(
-                    text = "常用快捷目录：",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    quickPaths.take(3).forEach { path ->
-                        SuggestionChip(
-                            onClick = { inputPath = path },
-                            label = { Text(path.substringAfterLast("/"), fontSize = 11.sp) }
-                        )
-                    }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(inputPath.trim()) },
-                colors = ButtonDefaults.buttonColors(containerColor = MineAccentRed)
-            ) { Text("确定并扫描") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = MineTextSecondary) }
         }
-    )
+    }
 }
 
 @Composable

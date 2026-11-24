@@ -68,7 +68,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.AlertDialog
+import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -857,48 +857,23 @@ fun PlaylistDetailScreen(
                     "确定要从歌单「${currentDetail.name}」中删除选中的 ${selectedTrackIds.size} 首歌曲吗？"
                 }
 
-                AlertDialog(
+                AdaptiveAlertDialog(
                     onDismissRequest = { showDeleteConfirmDialog = false },
-                    containerColor = AppTheme.colors.surfaceElevated,
-                    title = {
-                        Text(
-                            text = "删除歌曲",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                    title = "删除歌曲",
+                    text = deleteMessage,
+                    confirmText = "删除",
+                    confirmColor = PlaylistAccentColor,
+                    onConfirm = {
+                        val count = selectedTrackIds.size
+                        onDeleteTracks?.invoke(selectedTrackIds)
+                        localTracks = localTracks.filterNot { it.id in selectedTrackIds }
+                        selectedTrackIds = emptySet()
+                        isEditMode = false
+                        showDeleteConfirmDialog = false
+                        Toast.makeText(context, "已删除 $count 首歌曲", Toast.LENGTH_SHORT).show()
                     },
-                    text = {
-                        Text(
-                            text = deleteMessage,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                val count = selectedTrackIds.size
-                                onDeleteTracks?.invoke(selectedTrackIds)
-                                localTracks = localTracks.filterNot { it.id in selectedTrackIds }
-                                selectedTrackIds = emptySet()
-                                isEditMode = false
-                                showDeleteConfirmDialog = false
-                                Toast.makeText(context, "已删除 $count 首歌曲", Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Text(
-                                text = "删除",
-                                color = PlaylistAccentColor,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                            Text(
-                                text = "取消",
-                                color = PlaylistTextSecondary
-                            )
-                        }
-                    }
+                    dismissText = "取消",
+                    onDismiss = { showDeleteConfirmDialog = false }
                 )
             }
 
