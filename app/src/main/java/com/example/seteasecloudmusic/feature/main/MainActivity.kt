@@ -1,10 +1,15 @@
 package com.example.seteasecloudmusic.feature.main
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
@@ -31,6 +36,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var mineRepository: MineRepository
 
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
+
     /**
      * 创建页面并挂载应用导航。
      */
@@ -40,6 +48,7 @@ class MainActivity : ComponentActivity() {
         FavoriteTracksManager.setLikeApiHandler { trackId, like ->
             mineRepository.likeTrack(trackId, like)
         }
+        requestNotificationPermissionOnceIfNeeded()
         enableEdgeToEdge()
 
         // P1a：这台小米默认跑 144Hz（帧预算仅 6.9ms），而常驻动效
@@ -68,6 +77,20 @@ class MainActivity : ComponentActivity() {
             com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
                 AppNavigation()
             }
+        }
+    }
+
+    private fun requestNotificationPermissionOnceIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val prefs = getSharedPreferences("app_permissions", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("post_notifications_requested", false)) {
+            prefs.edit().putBoolean("post_notifications_requested", true).apply()
+            requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

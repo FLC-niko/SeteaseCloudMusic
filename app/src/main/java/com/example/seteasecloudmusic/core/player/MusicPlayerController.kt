@@ -218,9 +218,14 @@ class MusicPlayerController @Inject constructor(
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             val c = activePlayer() ?: return
-            val currentStatus = _playbackState.value.status
-            if (playbackState == Player.STATE_IDLE &&
-                (currentStatus == PlayerStatus.BUFFERING || currentStatus == PlayerStatus.ERROR)
+            val state = _playbackState.value
+            val currentStatus = state.status
+            if (shouldIgnoreStalePlayerStateEvent(
+                    playbackState = playbackState,
+                    currentStatus = currentStatus,
+                    activeMediaId = c.currentMediaItem?.mediaId,
+                    currentTrackId = state.currentTrack?.id
+                )
             ) {
                 return
             }
@@ -894,7 +899,7 @@ class MusicPlayerController @Inject constructor(
                     val url = newTrack.playableUrl
                     if (!url.isNullOrBlank()) {
                         val item = buildMediaItem(newTrack, url)
-                        val c = controller
+                        val c = activePlayer()
                         if (c != null) {
                             if (pos > 0) {
                                 c.setMediaItem(item, pos.toLong())
@@ -1010,30 +1015,48 @@ class MusicPlayerController @Inject constructor(
         // 起播时立即上报 PLV 会话建立
         triggerScrobbleStart(track)
 
-        playJob = scope.launch {
-            _playbackState.update {
-                it.copy(
-                    status = PlayerStatus.BUFFERING,
-                    currentTrack = track,
-                    currentQueueIndex = index,
-                    currentPositionMs = initialSeekMs,
-                    errorMessage = null
+        // 同步切到 BUFFERING 状态，确保切歌间隙 MediaSession / 通知栏立即感知到连续播放意图，防止降级退出前台服务
+        _playbackState.update {
+            it.copy(
+                status = PlayerStatus.BUFFERING,
+                currentTrack = track,
+                currentQueueIndex = index,
+                currentPositionMs = initialSeekMs,
+                errorMessage = null
+            )
+        }
+
+        val directUrl = track.playableUrl?.takeIf {
+            it.isNotBlank() && track.isPlayable && !trackPlaybackPreparer.isStreamUrlExpired(it)
+        }
+        val needsEnrichment = directUrl != null &&
+            track.audioBitrateKbps == null &&
+            track.audioSourceLabel == null
+        val hasImmediatePlayableUrl = directUrl != null && !needsEnrichment
+
+        // 切歌准备期仅在原曲目仍在播放且需要异步解析新直链时暂停原曲目，绝不调用 stop()/clearMediaItems() 清空时间线与释放前台状态
+        val isDifferentTrack = prevTrack != null &&
+            (prevTrack.id != track.id || prevTrack.playableUrl != track.playableUrl)
+        if (isDifferentTrack) {
+            pendingPlayItem = null
+            activePlayer()?.let { player ->
+                val action = resolveTrackSwitchPreparationAction(
+                    isDifferentTrack = true,
+                    hasImmediatePlayableUrl = hasImmediatePlayableUrl,
+                    currentPlayerState = player.playbackState,
+                    isPlayerPlaying = player.isPlaying,
+                    isPlayerPlayWhenReady = player.playWhenReady
                 )
-            }
-
-            // 切换到另一首曲目时先停掉并清空上一首的媒体项，避免切换至非本地曲目解析期间或解析失败时继续播放原本地音频。
-            if (prevTrack != null && (prevTrack.id != track.id || prevTrack.playableUrl != track.playableUrl)) {
-                activePlayer()?.let { player ->
-                    player.stop()
-                    player.clearMediaItems()
+                if (action == TrackSwitchPreparationAction.PAUSE_PREVIOUS) {
+                    player.pause()
                 }
-                pendingPlayItem = null
             }
+        }
 
+        playJob = scope.launch {
             // 0. 若曲目已带有可用且未过期的直链（预加载命中），立即 0ms 起播，无需等待任何网络！
-            val directUrl = track.playableUrl
-            if (!directUrl.isNullOrBlank() && track.isPlayable && !trackPlaybackPreparer.isStreamUrlExpired(directUrl)) {
-                val enrichedTrack = if (track.audioBitrateKbps == null && track.audioSourceLabel == null) {
+            if (directUrl != null) {
+                val enrichedTrack = if (needsEnrichment) {
                     val preparedTrack = withContext(ioDispatcher) {
                         runCatchingCancellable { trackPlaybackPreparer(track) }.getOrNull()?.getOrNull()
                     }
@@ -1366,6 +1389,11 @@ class MusicPlayerController @Inject constructor(
         prefetchJob = null
     }
 
+    internal enum class TrackSwitchPreparationAction {
+        NONE,
+        PAUSE_PREVIOUS
+    }
+
     companion object {
         const val QUEUE_SOURCE_PRIVATE_DJ = "PRIVATE_DJ"
         private const val SERVICE_RECONNECT_DELAY_MS = 500L
@@ -1401,6 +1429,46 @@ class MusicPlayerController @Inject constructor(
                     else -> null
                 }
             }
+        }
+
+        internal fun resolveTrackSwitchPreparationAction(
+            isDifferentTrack: Boolean,
+            hasImmediatePlayableUrl: Boolean,
+            currentPlayerState: Int,
+            isPlayerPlaying: Boolean,
+            isPlayerPlayWhenReady: Boolean
+        ): TrackSwitchPreparationAction {
+            if (!isDifferentTrack || hasImmediatePlayableUrl) {
+                return TrackSwitchPreparationAction.NONE
+            }
+            if (currentPlayerState == Player.STATE_ENDED || currentPlayerState == Player.STATE_IDLE) {
+                return TrackSwitchPreparationAction.NONE
+            }
+            return if (isPlayerPlaying || isPlayerPlayWhenReady) {
+                TrackSwitchPreparationAction.PAUSE_PREVIOUS
+            } else {
+                TrackSwitchPreparationAction.NONE
+            }
+        }
+
+        internal fun shouldIgnoreStalePlayerStateEvent(
+            playbackState: Int,
+            currentStatus: PlayerStatus,
+            activeMediaId: String?,
+            currentTrackId: Long?
+        ): Boolean {
+            if (playbackState == Player.STATE_IDLE &&
+                (currentStatus == PlayerStatus.BUFFERING || currentStatus == PlayerStatus.ERROR)
+            ) {
+                return true
+            }
+            if ((currentStatus == PlayerStatus.BUFFERING || currentStatus == PlayerStatus.ERROR) &&
+                playbackState != Player.STATE_ENDED &&
+                !shouldReusePlayerMediaItem(activeMediaId, currentTrackId)
+            ) {
+                return true
+            }
+            return false
         }
 
         internal fun shouldReusePlayerMediaItem(activeMediaId: String?, currentTrackId: Long?): Boolean {

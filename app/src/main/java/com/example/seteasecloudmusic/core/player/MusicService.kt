@@ -1,17 +1,24 @@
 package com.example.seteasecloudmusic.core.player
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.annotation.OptIn
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -21,12 +28,13 @@ import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaStyleNotificationHelper
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.feature.player.domain.GetLyricsUseCase
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
 import com.google.common.util.concurrent.ListenableFuture
@@ -155,6 +163,11 @@ class MusicService : MediaSessionService() {
     private var currentArtworkBitmap: Bitmap? = null
     private var cachedSessionCompat: androidx.media3.session.legacy.MediaSessionCompat? = null
     private var sessionCompatReflectionFailed: Boolean = false
+    private var lastNotificationRenderKey: NotificationRenderKey? = null
+    private var lastPlatformMetadataKey: PlatformMetadataKey? = null
+    private var lastObservedStatus: PlayerStatus? = null
+    private var lastObservedTitle: String? = null
+    private var lastObservedCoverUrl: String? = null
 
     // 服务级持久唤醒锁与网络锁：跨越单曲 STATE_ENDED 到下一首 URL 解析起播的空窗期，防止切歌瞬间被系统挂起或断网
     private var serviceWakeLock: android.os.PowerManager.WakeLock? = null
@@ -204,15 +217,45 @@ class MusicService : MediaSessionService() {
 
     inner class MusicForwardingPlayer(player: Player) : ForwardingPlayer(player) {
         private val playerListeners = java.util.concurrent.CopyOnWriteArraySet<Player.Listener>()
+        private val wrappedListeners = java.util.concurrent.ConcurrentHashMap<Player.Listener, Player.Listener>()
         private var dynamicMetadata: MediaMetadata? = null
 
         override fun addListener(listener: Player.Listener) {
-            super.addListener(listener)
+            val wrapped = object : Player.Listener by listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    val mapped = mapExposedPlaybackState(
+                        rawState = playbackState,
+                        controllerStatus = musicPlayerController.playbackState.value.status
+                    )
+                    listener.onPlaybackStateChanged(mapped)
+                }
+
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    val mapped = mapExposedPlayWhenReady(
+                        rawPlayWhenReady = playWhenReady,
+                        controllerStatus = musicPlayerController.playbackState.value.status
+                    )
+                    listener.onPlayWhenReadyChanged(mapped, reason)
+                }
+
+                @Deprecated("Deprecated in Java")
+                @Suppress("DEPRECATION")
+                override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
+                    val status = musicPlayerController.playbackState.value.status
+                    listener.onPlayerStateChanged(
+                        mapExposedPlayWhenReady(playWhenReady, status),
+                        mapExposedPlaybackState(playbackState, status)
+                    )
+                }
+            }
+            wrappedListeners[listener] = wrapped
+            super.addListener(wrapped)
             playerListeners.add(listener)
         }
 
         override fun removeListener(listener: Player.Listener) {
-            super.removeListener(listener)
+            val wrapped = wrappedListeners.remove(listener) ?: listener
+            super.removeListener(wrapped)
             playerListeners.remove(listener)
         }
 
@@ -254,28 +297,25 @@ class MusicService : MediaSessionService() {
         }
 
         override fun getPlaybackState(): Int {
-            val rawState = super.getPlaybackState()
-            val controllerStatus = musicPlayerController.playbackState.value.status
-            // 关键防护：切歌间隙底层 ExoPlayer 处于 STATE_ENDED/STATE_IDLE 时，若控制器正在拉取下一首直链或处于播放态，
-            // 强制向 MediaSession / MediaNotificationManager 报告 STATE_BUFFERING，防止异步通知回调调用 stopForeground()！
-            if ((rawState == Player.STATE_ENDED || rawState == Player.STATE_IDLE) &&
-                (controllerStatus == PlayerStatus.BUFFERING || controllerStatus == PlayerStatus.PLAYING)
-            ) {
-                return Player.STATE_BUFFERING
-            }
-            return rawState
+            return mapExposedPlaybackState(
+                rawState = super.getPlaybackState(),
+                controllerStatus = musicPlayerController.playbackState.value.status
+            )
         }
 
         override fun getPlayWhenReady(): Boolean {
-            val controllerStatus = musicPlayerController.playbackState.value.status
-            if (controllerStatus == PlayerStatus.BUFFERING || controllerStatus == PlayerStatus.PLAYING) {
-                return true
-            }
-            return super.getPlayWhenReady()
+            return mapExposedPlayWhenReady(
+                rawPlayWhenReady = super.getPlayWhenReady(),
+                controllerStatus = musicPlayerController.playbackState.value.status
+            )
         }
 
         override fun play() {
-            if (this@MusicService.player?.mediaItemCount == 0) {
+            val p = this@MusicService.player
+            val currentTrackId = musicPlayerController.playbackState.value.currentTrack?.id
+            if (p == null || p.mediaItemCount == 0 ||
+                !MusicPlayerController.shouldReusePlayerMediaItem(p.currentMediaItem?.mediaId, currentTrackId)
+            ) {
                 musicPlayerController.resume()
             } else {
                 super.play()
@@ -306,6 +346,87 @@ class MusicService : MediaSessionService() {
     companion object {
         const val CHANNEL_ID = "playback_channel_id"
         const val NOTIFICATION_ID = 1001
+        private const val MEDIA_NOTIFICATION_GROUP_KEY = "media3_group_key"
+
+        internal data class NotificationRenderKey(
+            val trackId: Long?,
+            val title: String,
+            val text: String,
+            val isPlaying: Boolean,
+            val artworkIdentity: Int
+        )
+
+        internal data class PlatformMetadataKey(
+            val trackId: Long?,
+            val displayTitle: String,
+            val displayArtist: String,
+            val albumTitle: String,
+            val rawLrc: String,
+            val durationMs: Long,
+            val artworkIdentity: Int
+        )
+
+        internal fun mapExposedPlaybackState(
+            rawState: Int,
+            controllerStatus: PlayerStatus
+        ): Int {
+            // 关键防护：切歌间隙底层 ExoPlayer 处于 STATE_ENDED/STATE_IDLE 时，若控制器正在拉取下一首直链或处于播放态，
+            // 强制向 MediaSession 暴露 STATE_BUFFERING，保证系统媒体状态连续。
+            if ((rawState == Player.STATE_ENDED || rawState == Player.STATE_IDLE) &&
+                (controllerStatus == PlayerStatus.BUFFERING || controllerStatus == PlayerStatus.PLAYING)
+            ) {
+                return Player.STATE_BUFFERING
+            }
+            return rawState
+        }
+
+        internal fun mapExposedPlayWhenReady(
+            rawPlayWhenReady: Boolean,
+            controllerStatus: PlayerStatus
+        ): Boolean {
+            if (controllerStatus == PlayerStatus.BUFFERING) {
+                return true
+            }
+            return rawPlayWhenReady
+        }
+
+        internal fun shouldShowPauseAction(
+            playerPlayWhenReady: Boolean,
+            controllerStatus: PlayerStatus
+        ): Boolean {
+            return playerPlayWhenReady || controllerStatus == PlayerStatus.BUFFERING
+        }
+
+        internal fun shouldReleasePlaybackLocks(
+            playerPlayWhenReady: Boolean,
+            controllerStatus: PlayerStatus
+        ): Boolean {
+            return !playerPlayWhenReady && controllerStatus != PlayerStatus.BUFFERING
+        }
+
+        internal fun shouldKeepServiceAliveOnTaskRemoved(
+            hasPlayer: Boolean,
+            playerPlayWhenReady: Boolean,
+            playerMediaItemCount: Int,
+            controllerStatus: PlayerStatus,
+            hasCurrentTrack: Boolean
+        ): Boolean {
+            return hasPlayer &&
+                (playerPlayWhenReady ||
+                    controllerStatus == PlayerStatus.PLAYING ||
+                    controllerStatus == PlayerStatus.BUFFERING) &&
+                (playerMediaItemCount > 0 || hasCurrentTrack)
+        }
+
+        internal fun shouldExitForegroundForIdleEmptyQueue(
+            state: PlaybackState,
+            isPlayerPlaying: Boolean
+        ): Boolean {
+            return state.currentTrack == null &&
+                state.queueTracks.isEmpty() &&
+                state.status == PlayerStatus.IDLE &&
+                !isPlayerPlaying
+        }
     }
 
     private fun createNotificationChannel() {
@@ -368,11 +489,16 @@ class MusicService : MediaSessionService() {
                     SuperLyricHelper.registerPublisher()
                     lastBroadcastLyric = ""
                     startLyricTicker()
+                    mediaSession?.let { postOrUpdateForegroundNotification(it, allowStartForeground = true) }
+                    val track = musicPlayerController.playbackState.value.currentTrack
+                    if (track != null) {
+                        updateMetadataAndNotification(track, "")
+                    }
                 } else {
                     stopLyricTicker()
                     SuperLyricHelper.sendStop()
                     val state = musicPlayerController.playbackState.value
-                    if (state.status != PlayerStatus.BUFFERING && state.status != PlayerStatus.PLAYING) {
+                    if (shouldReleasePlaybackLocks(exoPlayer.playWhenReady, state.status)) {
                         releasePlaybackLocks()
                     }
                     val track = state.currentTrack
@@ -401,19 +527,12 @@ class MusicService : MediaSessionService() {
         val forwardingPlayer = MusicForwardingPlayer(exoPlayer)
         this.musicForwardingPlayer = forwardingPlayer
 
-        // 5. 创建公开通知渠道，配置 CoilBitmapLoader 与 DefaultMediaNotificationProvider，并绑定纯白单色通知图标
+        // 5. 创建公开通知渠道与 BitmapLoader（通知与前台服务生命周期由 MusicService 直接接管）
         createNotificationChannel()
         val bitmapLoader = CoilBitmapLoader(this)
-        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
-            .setNotificationId(NOTIFICATION_ID)
-            .setChannelId(CHANNEL_ID)
-            .setChannelName(R.string.playback_notification_channel_name)
-            .build()
-        notificationProvider.setSmallIcon(R.drawable.ic_notification_music)
-        setMediaNotificationProvider(notificationProvider)
 
         // 6. 创建 MediaSession 并配置副屏/系统播控可用指令集与 BitmapLoader
-        mediaSession = MediaSession.Builder(this, forwardingPlayer)
+        val session = MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)
             .setBitmapLoader(bitmapLoader)
             .setCallback(object : MediaSession.Callback {
@@ -440,14 +559,50 @@ class MusicService : MediaSessionService() {
                 }
             })
             .build()
+        mediaSession = session
+        addSession(session)
 
-        // 7. 实时监听 MusicPlayerController 曲目变化，加载歌词并触发元数据与通知同步
+        // 7. 实时监听 MusicPlayerController 曲目与状态变化，按需同步歌词、元数据与前台通知（跳过 500ms 进度空转）
         serviceScope.launch {
             musicPlayerController.playbackState.collect { state ->
+                if (shouldExitForegroundForIdleEmptyQueue(state, player?.isPlaying == true)) {
+                    currentTrackId = null
+                    lastObservedStatus = state.status
+                    lastObservedTitle = null
+                    lastObservedCoverUrl = null
+                    currentLyricJob?.cancel()
+                    stopLyricTicker()
+                    SuperLyricHelper.sendStop()
+                    currentLyricLines = emptyList()
+                    rawLrcContent = ""
+                    lastBroadcastLyric = ""
+                    currentArtworkBitmap = null
+                    lastPlatformMetadataKey = null
+                    releasePlaybackLocks()
+                    exitForegroundAndRemoveNotification()
+                    return@collect
+                }
+
                 val track = state.currentTrack
                 if (track != null) {
                     val trackChanged = track.id != currentTrackId
+                    val statusChanged = state.status != lastObservedStatus
+                    val metaChanged = track.title != lastObservedTitle || track.coverUrl != lastObservedCoverUrl
                     currentTrackId = track.id
+                    lastObservedStatus = state.status
+                    lastObservedTitle = track.title
+                    lastObservedCoverUrl = track.coverUrl
+
+                    if (!isForegroundServiceStarted &&
+                        (state.status == PlayerStatus.PLAYING || state.status == PlayerStatus.BUFFERING)
+                    ) {
+                        acquirePlaybackLocks()
+                        mediaSession?.let {
+                            postOrUpdateForegroundNotification(it, allowStartForeground = true)
+                        }
+                    } else if (state.status == PlayerStatus.PAUSED && player?.playWhenReady != true) {
+                        releasePlaybackLocks()
+                    }
 
                     if (trackChanged) {
                         currentLyricJob?.cancel()
@@ -461,7 +616,9 @@ class MusicService : MediaSessionService() {
                         fetchLyricsForTrack(track.id)
                     }
 
-                    updateMetadataAndNotification(track, lastBroadcastLyric)
+                    if (trackChanged || statusChanged || metaChanged) {
+                        updateMetadataAndNotification(track, lastBroadcastLyric)
+                    }
                 }
             }
         }
@@ -526,6 +683,17 @@ class MusicService : MediaSessionService() {
         artworkBitmap: Bitmap?,
         artworkUri: String?
     ) {
+        val metadataKey = PlatformMetadataKey(
+            trackId = currentTrackId,
+            displayTitle = displayTitle,
+            displayArtist = displayArtist,
+            albumTitle = albumTitle,
+            rawLrc = lyricLrc,
+            durationMs = duration,
+            artworkIdentity = System.identityHashCode(artworkBitmap)
+        )
+        if (metadataKey == lastPlatformMetadataKey) return
+
         try {
             val compat = getMediaSessionCompat() ?: return
             val compatBuilder = androidx.media3.session.legacy.MediaMetadataCompat.Builder()
@@ -553,6 +721,7 @@ class MusicService : MediaSessionService() {
                 compatBuilder.putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_ART_URI, artworkUri)
             }
             compat.setMetadata(compatBuilder.build())
+            lastPlatformMetadataKey = metadataKey
         } catch (e: Throwable) {
             android.util.Log.e("MusicService", "updatePlatformMediaSession failed", e)
         }
@@ -679,6 +848,15 @@ class MusicService : MediaSessionService() {
             artworkBitmap = currentArtworkBitmap,
             artworkUri = track.coverUrl
         )
+
+        // 3. 主动同步前台媒体通知，确保封面加载、歌词变化与状态切换实时且去重刷新
+        val controllerStatus = musicPlayerController.playbackState.value.status
+        val allowStartFgs = isForegroundServiceStarted ||
+            player?.isPlaying == true ||
+            player?.playWhenReady == true ||
+            controllerStatus == PlayerStatus.PLAYING ||
+            controllerStatus == PlayerStatus.BUFFERING
+        mediaSession?.let { postOrUpdateForegroundNotification(it, allowStartForeground = allowStartFgs) }
     }
 
     private fun sendSuperLyric(
@@ -744,42 +922,182 @@ class MusicService : MediaSessionService() {
 
     private var isForegroundServiceStarted = false
 
-    /**
-     * 系统媒体通知与前台服务生命周期维护：
-     *
-     * 核心防护机制：
-     * 1. 正常起播时，Media3 传入 startInForegroundRequired = true，将服务升级为 Foreground Service。
-     * 2. 在切歌间隙（单曲播放结束进入 Player.STATE_ENDED，等待下一首起播）、缓冲或暂停时，Media3 默认会传入 false 并尝试 stopForeground() 将服务降级为后台普通服务。
-     * 3. 在 Android 14+ / 16 (targetSdkVersion 36) 下，后台进程严禁再次启动前台服务（BFGS 限制）。一旦在后台切歌间隙丢掉前台身份，后续调用 startForeground() 将被系统直接拒绝（报错：Background started FGS: Disallowed / Service.startForeground() not allowed）。
-     * 4. 失去前台身份后，进程优先级骤降为 CACHED（adj 710，procState 16），持有的一切 CPU WakeLock 被系统停用（PowerManager disabled wakeLock reason: Process Priority），最终在几分钟内被小米澎湃 OS/MIUI 的内存回收器（ProcessKillerForUMMS umms_selfcheck）直接杀掉！
-     *
-     * 解决策略：
-     * 一旦前台服务成功启动，强制保持 startInForegroundRequired = true，杜绝中途降级，确保连续后台播放几十首歌也能坚挺存活！
-     */
-    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
-        if (startInForegroundRequired) {
-            isForegroundServiceStarted = true
+    private fun createMediaButtonPendingIntent(keyCode: Int, useForegroundService: Boolean): PendingIntent {
+        val intent = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            component = ComponentName(this@MusicService, MusicService::class.java)
+            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
         }
-        val shouldStayInForeground = startInForegroundRequired || isForegroundServiceStarted
-        try {
-            super.onUpdateNotification(session, shouldStayInForeground)
-        } catch (e: Exception) {
-            android.util.Log.e("MusicService", "Failed to maintain foreground notification", e)
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        return if (useForegroundService) {
+            PendingIntent.getForegroundService(this, keyCode, intent, flags)
+        } else {
+            PendingIntent.getService(this, keyCode, intent, flags)
         }
     }
 
+    private fun buildPlaybackNotification(
+        session: MediaSession,
+        title: String,
+        text: String,
+        isPlaying: Boolean
+    ): Notification {
+        val prevIntent = createMediaButtonPendingIntent(KeyEvent.KEYCODE_MEDIA_PREVIOUS, useForegroundService = false)
+        val playPauseIntent = createMediaButtonPendingIntent(
+            keyCode = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            useForegroundService = !isPlaying && !isForegroundServiceStarted
+        )
+        val nextIntent = createMediaButtonPendingIntent(KeyEvent.KEYCODE_MEDIA_NEXT, useForegroundService = false)
+
+        val playPauseIcon = if (isPlaying) {
+            androidx.media3.session.R.drawable.media3_icon_pause
+        } else {
+            androidx.media3.session.R.drawable.media3_icon_play
+        }
+        val playPauseLabel = if (isPlaying) "暂停" else "播放"
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_music)
+            .setContentTitle(title.ifBlank { getString(R.string.app_name) })
+            .setContentText(text)
+            .setContentIntent(session.sessionActivity)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setOngoing(isPlaying)
+            .setGroup(MEDIA_NOTIFICATION_GROUP_KEY)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .addAction(androidx.media3.session.R.drawable.media3_icon_previous, "上一首", prevIntent)
+            .addAction(playPauseIcon, playPauseLabel, playPauseIntent)
+            .addAction(androidx.media3.session.R.drawable.media3_icon_next, "下一首", nextIntent)
+            .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2))
+
+        currentArtworkBitmap?.let { builder.setLargeIcon(it) }
+
+        val notification = builder.build()
+        notification.extras.putParcelable(Notification.EXTRA_MEDIA_SESSION, session.platformToken)
+        return notification
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun postOrUpdateForegroundNotification(
+        session: MediaSession,
+        allowStartForeground: Boolean,
+        forcePost: Boolean = false
+    ) {
+        val state = musicPlayerController.playbackState.value
+        val track = state.currentTrack
+        val dynamicMetadata = musicForwardingPlayer?.mediaMetadata
+        val artistFallback = track?.artists?.joinToString(" / ") { it.name }?.ifBlank { "未知歌手" }.orEmpty()
+        val title = dynamicMetadata?.displayTitle?.toString()?.takeIf { it.isNotBlank() }
+            ?: dynamicMetadata?.title?.toString()?.takeIf { it.isNotBlank() }
+            ?: track?.title?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.app_name)
+        val text = dynamicMetadata?.artist?.toString()?.takeIf { it.isNotBlank() }
+            ?: dynamicMetadata?.subtitle?.toString()?.takeIf { it.isNotBlank() }
+            ?: artistFallback
+        val showPauseIcon = shouldShowPauseAction(
+            playerPlayWhenReady = player?.playWhenReady == true,
+            controllerStatus = state.status
+        )
+
+        val renderKey = NotificationRenderKey(
+            trackId = track?.id,
+            title = title,
+            text = text,
+            isPlaying = showPauseIcon,
+            artworkIdentity = System.identityHashCode(currentArtworkBitmap)
+        )
+
+        if (!isForegroundServiceStarted) {
+            if (!allowStartForeground) return
+            val notification = buildPlaybackNotification(session, title, text, showPauseIcon)
+            try {
+                ContextCompat.startForegroundService(this, Intent(this, MusicService::class.java))
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+                isForegroundServiceStarted = true
+                lastNotificationRenderKey = renderKey
+            } catch (e: Exception) {
+                android.util.Log.e("MusicService", "Failed to start foreground service", e)
+                runCatching {
+                    NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+                }
+            }
+            return
+        }
+
+        if (!forcePost && renderKey == lastNotificationRenderKey) {
+            return
+        }
+
+        val notification = buildPlaybackNotification(session, title, text, showPauseIcon)
+        runCatching {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            lastNotificationRenderKey = renderKey
+        }.onFailure { e ->
+            android.util.Log.w("MusicService", "Failed to update playback notification", e)
+        }
+    }
+
+    private fun exitForegroundAndRemoveNotification() {
+        if (isForegroundServiceStarted) {
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            isForegroundServiceStarted = false
+        }
+        lastNotificationRenderKey = null
+        runCatching { NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID) }
+    }
+
+    /**
+     * 系统媒体通知与前台服务生命周期接管：
+     *
+     * Media3 内部的 MediaNotificationManager 只要在切歌/清空瞬间检测到 STATE_IDLE 或空 Timeline，
+     * 就会直接调用 stopForeground(STOP_FOREGROUND_REMOVE) 并取消通知，导致 Android 14+/16+ 后台再次拉起
+     * 前台服务触发 Background started FGS: Disallowed 并在随后被系统杀后台。
+     * 因此本方法不再转发给 super.onUpdateNotification，而是由 MusicService 全权管理 startForeground / notify / stopForeground。
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        val controllerStatus = musicPlayerController.playbackState.value.status
+        val shouldStartFgs = startInForegroundRequired ||
+            player?.playWhenReady == true ||
+            controllerStatus == PlayerStatus.PLAYING ||
+            controllerStatus == PlayerStatus.BUFFERING
+        postOrUpdateForegroundNotification(session, allowStartForeground = shouldStartFgs)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == Intent.ACTION_MEDIA_BUTTON && !isForegroundServiceStarted) {
+            mediaSession?.let { postOrUpdateForegroundNotification(it, allowStartForeground = true, forcePost = true) }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    override fun isPlaybackOngoing(): Boolean = isForegroundServiceStarted
+
     /**
      * 用户在系统多任务列表（Recents）划掉应用时的处理：
-     * 1. 若当前正在播放音乐（playWhenReady == true），保留前台播放服务，音乐绝不中断；
-     * 2. 若当前已暂停或没有播放内容，立即释放前台服务与通知栏，避免无意义常驻耗电。
+     * 1. 若当前正在播放或切歌缓冲中，保留前台播放服务，不调用 super.onTaskRemoved；
+     * 2. 若当前已暂停或没有播放内容，主动退出前台服务并移除通知栏。
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         val p = player
-        if (p == null || !p.playWhenReady || p.mediaItemCount == 0) {
-            isForegroundServiceStarted = false
+        val state = musicPlayerController.playbackState.value
+        val keepAlive = shouldKeepServiceAliveOnTaskRemoved(
+            hasPlayer = p != null,
+            playerPlayWhenReady = p?.playWhenReady == true,
+            playerMediaItemCount = p?.mediaItemCount ?: 0,
+            controllerStatus = state.status,
+            hasCurrentTrack = state.currentTrack != null
+        )
+        if (!keepAlive) {
+            exitForegroundAndRemoveNotification()
             stopSelf()
+            super.onTaskRemoved(rootIntent)
         }
-        super.onTaskRemoved(rootIntent)
     }
 
     /**
@@ -794,7 +1112,7 @@ class MusicService : MediaSessionService() {
         musicPlayerController.onServiceDestroyed(shouldReconnect)
         musicPlayerController.unbindServicePlayer(player)
         releasePlaybackLocks()
-        isForegroundServiceStarted = false
+        exitForegroundAndRemoveNotification()
         stopLyricTicker()
         SuperLyricHelper.sendStop()
         SuperLyricHelper.unregisterPublisher()
@@ -802,6 +1120,7 @@ class MusicService : MediaSessionService() {
         currentLyricLines = emptyList()
         rawLrcContent = ""
         cachedSessionCompat = null
+        lastPlatformMetadataKey = null
         currentArtworkBitmap = null
         musicForwardingPlayer = null
         serviceScope.cancel()
