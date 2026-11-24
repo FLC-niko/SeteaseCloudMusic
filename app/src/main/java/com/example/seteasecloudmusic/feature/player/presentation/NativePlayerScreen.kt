@@ -377,6 +377,10 @@ internal fun NativePlayerContent(
     val albumInfoAlpha = remember { derivedStateOf { appleMusicAlbumInfoAlpha(lyricAnimFraction.value) } }
     val headerInfoAlpha = remember { derivedStateOf { appleMusicHeaderInfoAlpha(lyricAnimFraction.value) } }
     val lyricsLayerAlpha = remember { derivedStateOf { appleMusicLyricsAlpha(lyricAnimFraction.value) } }
+    val showAlbumInfo by remember { derivedStateOf { albumInfoAlpha.value > 0.001f } }
+    val showHeaderInfo by remember { derivedStateOf { headerInfoAlpha.value > 0.001f } }
+    val showLyricsLayer by remember { derivedStateOf { lyricsLayerAlpha.value > 0.001f } }
+    val pastLyricMidpoint by remember { derivedStateOf { lyricAnimFraction.value > 0.5f } }
 
     // 独立预览/测试模式（未注入外层容器拖拽回调时）仅响应顶部小白条的本地下拉回弹
     val fallbackScope = rememberCoroutineScope()
@@ -484,7 +488,7 @@ internal fun NativePlayerContent(
         val settledRootBounds = settledTargetFrame.bounds.translate(rootOriginInWindow)
         val targetCornerDp = if (currentPage == NativePlayerPage.LYRIC) 8.dp else 14.dp
         val targetShadowDp = if (currentPage == NativePlayerPage.LYRIC) 0.dp else (26.dp * settledTargetScale)
-        val trackContainerTop = currentPage == NativePlayerPage.LYRIC || lyricAnimFraction.value > 0.5f
+        val trackContainerTop = currentPage == NativePlayerPage.LYRIC || pastLyricMidpoint
 
         SideEffect {
             if (settledRootBounds.width > 1f && settledRootBounds.height > 1f) {
@@ -545,7 +549,7 @@ internal fun NativePlayerContent(
                     lyricViewportTop = lyricViewportTopPx
                 )
             }
-            if (currentPage == NativePlayerPage.LYRIC || lyricsLayerAlpha.value > 0.001f) {
+            if (currentPage == NativePlayerPage.LYRIC || showLyricsLayer) {
                 Box(
                     modifier = Modifier
                         .zIndex(0f)
@@ -628,7 +632,7 @@ internal fun NativePlayerContent(
             val headerTextLeftPx = horizontalPaddingPx + headerCoverSizePx + with(density) { 14.dp.toPx() }
             val headerTextOrigin = Offset(headerTextLeftPx, headerTopPx)
 
-            if (albumInfoAlpha.value > 0.001f) {
+            if (showAlbumInfo) {
                 Row(
                     modifier = Modifier
                         .zIndex(1f)
@@ -730,7 +734,7 @@ internal fun NativePlayerContent(
             }
 
             // ── 3. 截图 2 / 3 / 4 歌词页顶部紧凑 Header 信息与收藏/更多按钮 ──
-            if (headerInfoAlpha.value > 0.001f) {
+            if (showHeaderInfo) {
                 val headerTextWidthDp = viewportWidthDp - with(density) { headerTextLeftPx.toDp() } - horizontalPaddingDp
                 Row(
                     modifier = Modifier
