@@ -14,6 +14,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.core.ui.components.ProvideDeviceTilt
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 
 /**
@@ -74,8 +75,10 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
-                AppNavigation()
+            ProvideDeviceTilt {
+                com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
+                    AppNavigation()
+                }
             }
         }
     }

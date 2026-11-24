@@ -51,12 +51,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.*
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 internal data class SelectedArtist(
     val id: Long,
@@ -106,11 +109,12 @@ internal fun MusicNavigationRail(
         BottomNavItem("我的", R.drawable.ic_nav_mine, R.drawable.ic_nav_mine_filled)
     ) }
     val window = LocalAdaptiveWindow.current
-    var dragOffset by remember { mutableStateOf<Float?>(null) }
-    var pressed by remember { mutableStateOf(false) }
     var overflow by remember { mutableStateOf(false) }
-    val pressScale by animateFloatAsState(if (pressed) 1.035f else 1f,
-        spring(dampingRatio = 0.8f, stiffness = 500f), label = "dockPress")
+    val activeTabIndex = selectedIndex.coerceAtMost(2)
+    val segmentState = rememberLiquidSegmentState(itemCount = items.size, selectedIndex = activeTabIndex)
+    val tabsBackdrop = rememberLayerBackdrop()
+    val combinedTabBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
+    val railAlphaProvider: () -> Float = { if (selectedIndex == 3) 0f else 1f }
     BoxWithConstraints(modifier.width(window.sideControlWidth).fillMaxHeight()
         .systemBarsPadding().imePadding().padding(vertical = 8.dp).testTag("expanded_glass_dock")) {
         val collapsed = maxHeight < 480.dp
@@ -126,9 +130,11 @@ internal fun MusicNavigationRail(
             Spacer(Modifier.height(12.dp))
             if (collapsed) {
                 Box {
-                    IconButton({ overflow = true }, Modifier.size(48.dp).liquidGlass(backdrop, 24.dp)
+                    IconButton({ overflow = true }, Modifier.size(48.dp)
+                        .liquidGlass(backdrop, 24.dp)
+                        .interactiveGlassHighlight(RoundedRectangle(24.dp))
                         .testTag("glass_dock_overflow")) {
-                        Icon(painterResource(items[selectedIndex.coerceAtMost(2)].selectedIconRes), "更多导航", tint = Color(0xFFFA233B))
+                        Icon(painterResource(items[activeTabIndex].selectedIconRes), "更多导航", tint = Color(0xFFFA233B))
                     }
                     DropdownMenu(overflow, { overflow = false }) {
                         items.forEachIndexed { index, item ->
@@ -140,32 +146,136 @@ internal fun MusicNavigationRail(
                     }
                 }
             } else {
-                Box(Modifier.width(dockWidth).height(groupHeight)
-                    .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
-                    .liquidGlass(backdrop, dockWidth / 2).glassBorder(dockWidth / 2, width = 0.5.dp)
-                    .glassSegmentDrag(items.size, { dragOffset = it }, onSelect, { pressed = it }, orientation = Orientation.Vertical)) {
-                    val geometry = rememberGlassThumbGeometry(groupHeight, items.size,
-                        selectedIndex.coerceAtMost(2), dragOffset, dockWidth, dockWidth / 2)
-                    GlassThumb(backdrop, geometry, alpha = if (selectedIndex == 3) 0f else 1f, orientation = Orientation.Vertical)
+                val railCorner = dockWidth / 2
+                val railShape = remember(railCorner) { RoundedRectangle(railCorner) }
+                val railLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
+                    val p = segmentState.pressProgress.value.coerceIn(0f, 1f)
+                    if (size.height > 0f) {
+                        val maxScale = (size.height + 10.dp.toPx()) / size.height
+                        val s = lerp(1f, maxScale, p)
+                        scaleX = s
+                        scaleY = s
+                    }
+                }
+                val railSelectedContent: @Composable BoxScope.() -> Unit = {
                     Column(Modifier.fillMaxSize()) {
-                        items.forEachIndexed { index, item ->
-                            val selected = index == selectedIndex
-                            val tint by animateColorAsState(if (selected) Color(0xFFFA233B) else Color(0xFF494950),
-                                spring(stiffness = 500f), label = "dockTint")
-                            Column(Modifier.fillMaxWidth().height(extent)
-                                .selectable(selected, indication = null, interactionSource = remember { MutableInteractionSource() },
-                                    role = Role.Tab, onClick = { onSelect(index) })
-                                .semantics { contentDescription = item.title }.testTag("glass_dock_$index"),
-                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Icon(painterResource(if (selected) item.selectedIconRes else item.iconRes), null, Modifier.size(23.dp), tint = tint)
+                        items.forEach { item ->
+                            Column(
+                                Modifier.fillMaxWidth().height(extent),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painterResource(item.selectedIconRes),
+                                    null,
+                                    Modifier.size(23.dp),
+                                    tint = Color(0xFFFA233B)
+                                )
                                 if (showLabels) {
                                     Spacer(Modifier.height(3.dp))
-                                    Text(item.title, color = tint, fontSize = 11.sp, lineHeight = 14.sp,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+                                    Text(
+                                        item.title,
+                                        color = Color(0xFFFA233B),
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }
                     }
+                }
+                Box(Modifier.width(dockWidth).height(groupHeight)) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .liquidGlass(
+                                backdrop = backdrop,
+                                cornerRadius = railCorner,
+                                bloomExtraDegrees = -45f,
+                                layerBlock = railLayerBlock
+                            )
+                            .interactiveGlassHighlight(shape = railShape)
+                            .liquidSegmentDrag(
+                                state = segmentState,
+                                itemCount = items.size,
+                                selectedIndex = activeTabIndex,
+                                onSettle = onSelect,
+                                orientation = Orientation.Vertical
+                            )
+                    ) {
+                        LiquidGlassDualColorTabs(
+                            state = segmentState,
+                            containerWidth = dockWidth,
+                            containerHeight = groupHeight,
+                            cornerRadius = railCorner,
+                            alphaProvider = railAlphaProvider,
+                            orientation = Orientation.Vertical,
+                            unselectedContent = {
+                                Column(Modifier.fillMaxSize()) {
+                                    items.forEachIndexed { index, item ->
+                                        val selected = index == selectedIndex
+                                        Column(
+                                            Modifier.fillMaxWidth().height(extent)
+                                                .selectable(
+                                                    selected,
+                                                    indication = null,
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    role = Role.Tab,
+                                                    onClick = { onSelect(index) }
+                                                )
+                                                .semantics { contentDescription = item.title }
+                                                .testTag("glass_dock_$index"),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                painterResource(item.iconRes),
+                                                null,
+                                                Modifier.size(23.dp),
+                                                tint = Color(0xFF1C1C1E)
+                                            )
+                                            if (showLabels) {
+                                                Spacer(Modifier.height(3.dp))
+                                                Text(
+                                                    item.title,
+                                                    color = Color(0xFF1C1C1E),
+                                                    fontSize = 11.sp,
+                                                    lineHeight = 14.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            selectedContent = railSelectedContent
+                        )
+                    }
+
+                    LiquidGlassActiveTabsRecorder(
+                        pageBackdrop = backdrop,
+                        activeTabsBackdrop = tabsBackdrop,
+                        state = segmentState,
+                        containerWidth = dockWidth,
+                        containerHeight = groupHeight,
+                        cornerRadius = railCorner,
+                        layerBlock = railLayerBlock,
+                        alphaProvider = railAlphaProvider,
+                        modifier = Modifier.align(Alignment.TopStart),
+                        selectedContent = railSelectedContent
+                    )
+
+                    LiquidGlassActiveDroplet(
+                        combinedBackdrop = combinedTabBackdrop,
+                        state = segmentState,
+                        containerWidth = dockWidth,
+                        containerHeight = groupHeight,
+                        cornerRadius = railCorner,
+                        maxPressScale = GlassSliderDefaults.CompactMaxPressScale,
+                        alphaProvider = railAlphaProvider,
+                        orientation = Orientation.Vertical,
+                        modifier = Modifier.align(Alignment.TopStart)
+                    )
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -173,9 +283,14 @@ internal fun MusicNavigationRail(
             val searchPressed by searchInteractions.collectIsPressedAsState()
             val searchScale by animateFloatAsState(if (searchPressed) 1.06f else 1f,
                 spring(dampingRatio = 0.8f, stiffness = 500f), label = "dockSearchPress")
-            Box(Modifier.size(48.dp).graphicsLayer { scaleX = searchScale; scaleY = searchScale }
-                .liquidGlass(backdrop, 24.dp, surfaceAlpha = if (selectedIndex == 3) 0.58f else GlassDefaults.SurfaceAlphaBright)
-                .glassBorder(24.dp, width = 0.5.dp)
+            Box(Modifier.size(48.dp)
+                .liquidGlass(
+                    backdrop = backdrop,
+                    cornerRadius = 24.dp,
+                    surfaceAlpha = if (selectedIndex == 3) 0.58f else GlassDefaults.SurfaceAlphaBright,
+                    layerBlock = { scaleX = searchScale; scaleY = searchScale }
+                )
+                .interactiveGlassHighlight(RoundedRectangle(24.dp))
                 .selectable(selectedIndex == 3, interactionSource = searchInteractions, indication = null,
                     role = Role.Tab, onClick = { onSelect(3) })
                 .semantics { contentDescription = "搜索" }.testTag("glass_dock_search"), contentAlignment = Alignment.Center) {
@@ -203,7 +318,8 @@ internal fun SideMiniPlayer(
     val status = state.second
     val shared = LocalPlayerArtwork.current
     val artwork = track?.coverUrl ?: track?.album?.coverUrl
-    Column(Modifier.width(56.dp).liquidGlass(backdrop, 28.dp).glassBorder(28.dp, width = 0.5.dp)
+    Column(Modifier.width(56.dp).liquidGlass(backdrop, 28.dp, enableNoiseDither = true)
+        .interactiveGlassHighlight(RoundedRectangle(28.dp))
         .padding(vertical = 6.dp).onGloballyPositioned { onBounds(it.boundsInRoot()) }.testTag("side_mini_player"),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(44.dp).clip(RoundedRectangle(12.dp))

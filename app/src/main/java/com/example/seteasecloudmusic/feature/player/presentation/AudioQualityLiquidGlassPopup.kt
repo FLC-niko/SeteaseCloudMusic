@@ -3,7 +3,6 @@ package com.example.seteasecloudmusic.feature.player.presentation
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -13,15 +12,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -33,11 +31,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -56,21 +52,26 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
+import com.example.seteasecloudmusic.core.ui.components.BloomStrokeDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
-import com.example.seteasecloudmusic.core.ui.components.GlassThumb
-import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassActiveDroplet
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassActiveTabsRecorder
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassDualColorTabs
+import com.example.seteasecloudmusic.core.ui.components.bloomStroke
+import com.example.seteasecloudmusic.core.ui.components.interactiveGlassHighlight
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
-import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
+import com.example.seteasecloudmusic.core.ui.components.liquidSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.rememberLiquidSegmentState
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.shapes.RoundedRectangle
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -221,7 +222,6 @@ internal fun AudioQualityLiquidGlassCard(
         qualities.indexOf(currentQuality).coerceAtLeast(0)
     }
     var selectedIndex by remember { mutableIntStateOf(initialIndex) }
-    var dragOffsetY by remember { mutableStateOf<Float?>(null) }
     var isCommitting by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentQuality) {
@@ -239,10 +239,12 @@ internal fun AudioQualityLiquidGlassCard(
 
     val shape = remember(cornerRadius) { RoundedRectangle(cornerRadius) }
     val haptics = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
-    val pressProgress = remember { Animatable(0f) }
-    val pressSpringSpec = remember {
-        spring<Float>(dampingRatio = 0.65f, stiffness = 500f)
+    val segmentState = rememberLiquidSegmentState(itemCount = qualities.size, selectedIndex = selectedIndex)
+    val optionsBackdrop = rememberLayerBackdrop()
+    val combinedBackdrop = if (backdrop != null) {
+        rememberCombinedBackdrop(backdrop, optionsBackdrop)
+    } else {
+        null
     }
 
     LaunchedEffect(isCommitting, selectedIndex) {
@@ -254,20 +256,6 @@ internal fun AudioQualityLiquidGlassCard(
         }
     }
 
-    val activeVisualIndex = dragOffsetY?.let { offsetPx ->
-        val slotPx = with(density) { slotHeight.toPx() }.coerceAtLeast(1f)
-        (offsetPx / slotPx).toInt().coerceIn(0, qualities.lastIndex)
-    } ?: selectedIndex
-
-    val geometry = rememberGlassThumbGeometry(
-        containerWidth = popupHeight,
-        itemCount = qualities.size,
-        selectedIndex = selectedIndex,
-        dragOffsetX = dragOffsetY,
-        barHeight = popupWidth,
-        cornerRadius = cornerRadius
-    )
-
     val commitSelection: (Int) -> Unit = { settledIndex ->
         if (!isCommitting) {
             isCommitting = true
@@ -277,89 +265,19 @@ internal fun AudioQualityLiquidGlassCard(
         }
     }
 
-    Box(
-        modifier = modifier
-            .testTag("audio_quality_liquid_glass_popup")
-            .width(popupWidth)
-            .height(popupHeight)
-            .graphicsLayer {
-                val progress = pressProgress.value
-                val maxScale = (size.width + 8f.dp.toPx()) / size.width
-                val scale = lerp(1f, maxScale, progress)
-                scaleX = scale
-                scaleY = scale
-            }
-            .then(
-                if (backdrop != null) {
-                    Modifier.liquidGlass(
-                        backdrop = backdrop,
-                        cornerRadius = cornerRadius,
-                        layerBlock = {
-                            val progress = pressProgress.value
-                            val maxScale = (size.width + 8f.dp.toPx()) / size.width
-                            val scale = lerp(1f, maxScale, progress)
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                    )
-                } else {
-                    Modifier
-                        .background(
-                            color = Color(0xFF23232A).copy(alpha = 0.84f),
-                            shape = shape
-                        )
-                        .border(
-                            width = 0.75.dp,
-                            color = Color.White.copy(alpha = 0.36f),
-                            shape = shape
-                        )
-                }
-            )
-            .clip(shape)
-            .glassSegmentDrag(
-                itemCount = qualities.size,
-                onDragOffsetChange = { dragOffsetY = it },
-                onSettle = commitSelection,
-                onPressChanged = { pressed ->
-                    scope.launch {
-                        pressProgress.animateTo(if (pressed) 1f else 0f, pressSpringSpec)
-                    }
-                },
-                enabled = !isCommitting,
-                orientation = Orientation.Vertical
-            )
-    ) {
-        if (backdrop != null) {
-            GlassThumb(
-                backdrop = backdrop,
-                geometry = geometry,
-                surfaceAlpha = GlassSliderDefaults.ThumbSurfaceAlpha,
-                orientation = Orientation.Vertical,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-        } else {
-            val thumbShape = remember { RoundedRectangle(geometry.innerCornerRadius) }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset { IntOffset(0, geometry.offsetX.roundToPx()) }
-                    .graphicsLayer {
-                        scaleY = geometry.stretchScale
-                        transformOrigin = TransformOrigin(0.5f, if (geometry.anchorAtEnd) 1f else 0f)
-                    }
-                    .size(geometry.height, geometry.width)
-                    .background(Color.White.copy(alpha = 0.88f), thumbShape)
-            )
+    val outerLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
+        val progress = segmentState.pressProgress.value.coerceIn(0f, 1f)
+        if (size.width > 0f) {
+            val maxScale = (size.width + 8f.dp.toPx()) / size.width
+            val scale = lerp(1f, maxScale, progress)
+            scaleX = scale
+            scaleY = scale
         }
+    }
 
+    val selectedOptionsContent: @Composable BoxScope.() -> Unit = {
         Column(modifier = Modifier.fillMaxSize()) {
-            qualities.forEachIndexed { index, quality ->
-                val isSelected = index == activeVisualIndex
-                val textColor by animateColorAsState(
-                    targetValue = if (isSelected) Color(0xFFFA233B) else Color.White.copy(alpha = 0.92f),
-                    animationSpec = spring(stiffness = Spring.StiffnessMedium),
-                    label = "qualityOptionTextColor"
-                )
+            qualities.forEach { quality ->
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -371,17 +289,8 @@ internal fun AudioQualityLiquidGlassCard(
                         text = quality.playerMenuLabel,
                         style = TextStyle(
                             fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = textColor,
-                            shadow = if (isSelected) {
-                                null
-                            } else {
-                                Shadow(
-                                    color = Color.Black.copy(alpha = 0.24f),
-                                    offset = Offset(0f, 1f),
-                                    blurRadius = 4f
-                                )
-                            }
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFA233B)
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -389,5 +298,119 @@ internal fun AudioQualityLiquidGlassCard(
                 }
             }
         }
+    }
+
+    Box(
+        modifier = modifier
+            .testTag("audio_quality_liquid_glass_popup")
+            .width(popupWidth)
+            .height(popupHeight)
+    ) {
+        // 1. 外框暗色液态玻璃弹窗（不裁剪兄弟节点，保持水滴放大镜自由溢出边缘）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (backdrop != null) {
+                        Modifier.liquidGlass(
+                            backdrop = backdrop,
+                            cornerRadius = cornerRadius,
+                            isDarkSurface = true,
+                            enableNoiseDither = true,
+                            layerBlock = outerLayerBlock
+                        )
+                    } else {
+                        Modifier
+                            .graphicsLayer(outerLayerBlock)
+                            .background(
+                                color = Color(0xFF23232A).copy(alpha = 0.84f),
+                                shape = shape
+                            )
+                            .bloomStroke(
+                                cornerRadius = cornerRadius,
+                                style = BloomStrokeDefaults.OuterDark
+                            )
+                    }
+                )
+                .interactiveGlassHighlight(
+                    shape = shape,
+                    enabled = !isCommitting,
+                    isDarkSurface = true
+                )
+                .liquidSegmentDrag(
+                    state = segmentState,
+                    itemCount = qualities.size,
+                    selectedIndex = selectedIndex,
+                    onSettle = commitSelection,
+                    enabled = !isCommitting,
+                    orientation = Orientation.Vertical
+                )
+        ) {
+            LiquidGlassDualColorTabs(
+                state = segmentState,
+                containerWidth = popupWidth,
+                containerHeight = popupHeight,
+                cornerRadius = cornerRadius,
+                isDarkSurface = true,
+                orientation = Orientation.Vertical,
+                unselectedContent = {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        qualities.forEach { quality ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(slotHeight)
+                                    .padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = quality.playerMenuLabel,
+                                    style = TextStyle(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.White.copy(alpha = 0.88f),
+                                        shadow = Shadow(
+                                            color = Color.Black.copy(alpha = 0.24f),
+                                            offset = Offset(0f, 1f),
+                                            blurRadius = 4f
+                                        )
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                },
+                selectedContent = selectedOptionsContent
+            )
+        }
+
+        // 2. 激活态暗色背景 + 高亮音质文字录制器
+        LiquidGlassActiveTabsRecorder(
+            pageBackdrop = backdrop,
+            activeTabsBackdrop = optionsBackdrop,
+            state = segmentState,
+            containerWidth = popupWidth,
+            containerHeight = popupHeight,
+            cornerRadius = cornerRadius,
+            isDarkSurface = true,
+            layerBlock = outerLayerBlock,
+            modifier = Modifier.align(Alignment.TopStart),
+            selectedContent = selectedOptionsContent
+        )
+
+        // 3. 激活态纵向 3D 水滴放大镜（采样页面 + 高亮音质文字双层背景）
+        LiquidGlassActiveDroplet(
+            combinedBackdrop = combinedBackdrop,
+            state = segmentState,
+            containerWidth = popupWidth,
+            containerHeight = popupHeight,
+            cornerRadius = cornerRadius,
+            maxPressScale = GlassSliderDefaults.CompactMaxPressScale,
+            isDarkSurface = true,
+            orientation = Orientation.Vertical,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
     }
 }

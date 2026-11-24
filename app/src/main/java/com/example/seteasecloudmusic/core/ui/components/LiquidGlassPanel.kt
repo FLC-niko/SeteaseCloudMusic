@@ -14,11 +14,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpOffset
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.RoundedRectangle
 
 /** Overlay sampling source. Content inside this source must use a separate background layer. */
@@ -33,32 +35,64 @@ fun Modifier.liquidGlassPanel(
 ): Modifier {
     val dark = containerColor.luminance() < 0.5f
     val shape = RoundedRectangle(cornerRadius)
-    val highlights = Brush.verticalGradient(
-        listOf(Color.White.copy(alpha = if (dark) 0.28f else 0.82f),
-            Color.White.copy(alpha = if (dark) 0.04f else 0.16f),
-            Color.White.copy(alpha = if (dark) 0.14f else 0.48f))
-    )
     return this
-        .shadow(shadowElevation, shape, clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.10f), spotColor = Color.Black.copy(alpha = 0.18f))
-        .then(if (backdrop != null) Modifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { shape },
-            shadow = null,
-            effects = {
-                vibrancy()
-                blur(18.dp.toPx())
-                lens(8.dp.toPx(), 18.dp.toPx(), chromaticAberration = true)
-            },
-            onDrawSurface = {
-                drawRect(containerColor.copy(alpha = if (dark) 0.78f else 0.64f))
-                drawRect(Brush.verticalGradient(listOf(
-                    Color.White.copy(alpha = if (dark) 0.03f else 0.20f), Color.Transparent,
-                    Color.White.copy(alpha = if (dark) 0.02f else 0.06f))))
+        .then(
+            if (backdrop != null) {
+                Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { shape },
+                    highlight = null,
+                    shadow = {
+                        Shadow(
+                            radius = shadowElevation,
+                            offset = DpOffset(0.dp, 2.dp),
+                            color = Color.Black.copy(alpha = if (dark) 0.14f else 0.18f)
+                        )
+                    },
+                    effects = {
+                        vibrancy()
+                        blur(6.dp.toPx())
+                        noiseDither(GlassDefaults.NoiseDitherCoeff)
+                        lens(16.dp.toPx(), 20.dp.toPx(), chromaticAberration = true)
+                    },
+                    onDrawSurface = {
+                        drawRect(containerColor.copy(alpha = if (dark) 0.66f else 0.50f))
+                        drawRect(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = if (dark) 0.03f else 0.20f),
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = if (dark) 0.02f else 0.06f)
+                                )
+                            )
+                        )
+                    }
+                )
+            } else {
+                Modifier
+                    .shadow(
+                        shadowElevation,
+                        shape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.10f),
+                        spotColor = Color.Black.copy(alpha = 0.18f)
+                    )
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                containerColor.copy(alpha = 0.96f),
+                                containerColor.copy(alpha = 0.90f)
+                            )
+                        ),
+                        shape
+                    )
             }
-        ) else Modifier.background(Brush.verticalGradient(listOf(
-            containerColor.copy(alpha = 0.96f), containerColor.copy(alpha = 0.90f))), shape))
-        .border(0.75.dp, highlights, shape)
+        )
+        .bloomStroke(
+            cornerRadius = cornerRadius,
+            style = if (dark) BloomStrokeDefaults.PanelDark else BloomStrokeDefaults.PanelLight,
+            extraDegrees = -45f
+        )
         .clip(shape)
 }
 

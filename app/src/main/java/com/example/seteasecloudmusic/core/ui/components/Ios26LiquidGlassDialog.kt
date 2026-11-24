@@ -139,24 +139,26 @@ fun Ios26LiquidGlassDialog(
                             Modifier.drawBackdrop(
                                 backdrop = backdrop,
                                 shape = { RoundedRectangle(cornerRadius) },
+                                highlight = null,
                                 effects = {
                                     vibrancy()
-                                    blur(18f.dp.toPx())
+                                    blur(6f.dp.toPx())
+                                    noiseDither(GlassDefaults.NoiseDitherCoeff)
                                     lens(
-                                        refractionHeight = 8f.dp.toPx(),
-                                        refractionAmount = 18f.dp.toPx(),
+                                        refractionHeight = 16f.dp.toPx(),
+                                        refractionAmount = 20f.dp.toPx(),
                                         chromaticAberration = true
                                     )
                                 },
                                 onDrawSurface = {
-                                    // 中间层：#F2F2F2 减淡色半透明铺底
-                                    drawRect(Color(0xFFF2F2F7).copy(alpha = 0.78f))
+                                    // 中间层：#F2F2F7 通透半透明铺底
+                                    drawRect(Color(0xFFF2F2F7).copy(alpha = 0.58f))
                                     // 玻璃表面微反射高光渐变
                                     drawRect(
                                         Brush.verticalGradient(
-                                            0.0f to Color.White.copy(alpha = 0.65f),
-                                            0.35f to Color.White.copy(alpha = 0.25f),
-                                            1.0f to Color.White.copy(alpha = 0.45f)
+                                            0.0f to Color.White.copy(alpha = 0.28f),
+                                            0.35f to Color.White.copy(alpha = 0.08f),
+                                            1.0f to Color.White.copy(alpha = 0.18f)
                                         )
                                     )
                                 }
@@ -172,15 +174,11 @@ fun Ios26LiquidGlassDialog(
                                 )
                         }
                     )
-                    // 细致高光边缘（各向异性棱边）
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            0.0f to Color.White.copy(alpha = 0.85f),
-                            0.45f to Color.White.copy(alpha = 0.25f),
-                            1.0f to Color.White.copy(alpha = 0.60f)
-                        ),
-                        shape = RoundedCornerShape(cornerRadius)
+                    // 重力联动 3D SDF 棱边高光（BloomStroke）
+                    .bloomStroke(
+                        cornerRadius = cornerRadius,
+                        style = BloomStrokeDefaults.DialogLight,
+                        extraDegrees = -45f
                     )
                     .clip(RoundedCornerShape(cornerRadius))
                     .padding(horizontal = 22.dp, vertical = 24.dp)
@@ -494,6 +492,10 @@ private fun Ios26CapsuleButton(
             }
             .clip(buttonShape)
             .background(backgroundColor)
+            .interactiveGlassHighlight(
+                shape = buttonShape,
+                isDarkSurface = isPrimary
+            )
             .then(
                 if (isPrimary) {
                     Modifier.border(

@@ -104,14 +104,11 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
-import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSurface
-import com.example.seteasecloudmusic.core.ui.components.GlassThumb
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassSegmentedBar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
-import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
-import com.example.seteasecloudmusic.core.ui.components.liquidGlass
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
-import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
@@ -656,7 +653,7 @@ private fun LocalMusicDirectoryBar(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 18.dp,
-        surfaceAlpha = 0.40f
+        surfaceAlpha = 0.26f
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
@@ -746,7 +743,8 @@ private fun UserProfileCenterpiece(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onAccountClick),
         cornerRadius = 28.dp,
-        surfaceAlpha = 0.47f
+        surfaceAlpha = 0.30f,
+        interactiveHighlight = true
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(
@@ -827,22 +825,12 @@ private fun GlassIconButton(
     enabled: Boolean = true,
     overlay: @Composable BoxScope.() -> Unit = {}
 ) {
-    Box(
-        modifier = Modifier
-            .size(38.dp)
-            .clip(CircleShape)
-            // 小尺寸控件用更克制的玻璃参数：折射更浅、铺底更淡
-            .liquidGlass(
-                backdrop = backdrop,
-                cornerRadius = 19.dp,
-                surfaceAlpha = 0.32f,
-                blurRadius = 1.5f.dp,
-                refractionHeight = 8.dp,
-                refractionAmount = 16.dp
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.56f), CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
+    LiquidGlassCircleButton(
+        onClick = onClick,
+        backdrop = backdrop,
+        size = 38.dp,
+        enabled = enabled,
+        contentDescription = contentDescription
     ) {
         Icon(
             imageVector = icon,
@@ -901,7 +889,7 @@ private fun MineLoggedOutView(
             backdrop = backdrop,
             modifier = Modifier.fillMaxWidth(),
             cornerRadius = 30.dp,
-            surfaceAlpha = 0.50f
+            surfaceAlpha = 0.32f
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
@@ -963,7 +951,8 @@ private fun LikedSongsHeroCard(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         cornerRadius = 26.dp,
-        surfaceAlpha = 0.40f
+        surfaceAlpha = 0.26f,
+        interactiveHighlight = true
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -1048,97 +1037,46 @@ private fun MinePlaylistTabs(
     val currentSelectedTab by rememberUpdatedState(selectedTab)
     val selectedIndex = tabs.indexOfFirst { it.first == currentSelectedTab }.coerceAtLeast(0)
 
-    val navBarHeight = 50.dp
-    val cornerRadius = navBarHeight / 2
-    val thumbPadding = GlassSliderDefaults.ThumbPadding
-
-    val animationScope = rememberCoroutineScope()
-    val pressAnimation = remember { Animatable(0f) }
-    val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
-
-    var dragOffsetX by remember { mutableStateOf<Float?>(null) }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(navBarHeight)
-            .graphicsLayer {
-                val progress = pressAnimation.value
-                val maxScale = (size.width + 8f.dp.toPx()) / size.width
-                val scale = lerp(1f, maxScale, progress)
-                scaleX = scale
-                scaleY = scale
-            }
-            .liquidGlass(
-                backdrop = backdrop,
-                cornerRadius = cornerRadius
-            )
-            .glassSegmentDrag(
-                itemCount = tabs.size,
-                onDragOffsetChange = { dragOffsetX = it },
-                onSettle = { settledIndex -> currentOnTabSelected(tabs[settledIndex].first) },
-                onPressChanged = { pressed ->
-                    animationScope.launch {
-                        pressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
-                    }
+    LiquidGlassSegmentedBar(
+        backdrop = backdrop,
+        itemCount = tabs.size,
+        selectedIndex = selectedIndex,
+        onSelect = { settledIndex -> currentOnTabSelected(tabs[settledIndex].first) },
+        modifier = modifier.fillMaxWidth(),
+        barHeight = 50.dp,
+        cornerRadius = 25.dp
+    ) { isInsideSlider ->
+        Row(modifier = Modifier.fillMaxSize()) {
+            tabs.forEach { (tab, title) ->
+                val itemModifier = if (!isInsideSlider) {
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            currentOnTabSelected(tab)
+                        }
+                } else {
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize()
                 }
-            )
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = thumbPadding),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            // 与底栏共用同一套滑块几何 + Gooey 拉伸实现
-            val geometry = rememberGlassThumbGeometry(
-                containerWidth = maxWidth,
-                itemCount = tabs.size,
-                selectedIndex = selectedIndex,
-                dragOffsetX = dragOffsetX,
-                barHeight = navBarHeight,
-                cornerRadius = cornerRadius
-            )
-
-            GlassThumb(
-                backdrop = backdrop,
-                geometry = geometry,
-                surfaceColor = MineAccentRed,
-                surfaceAlpha = 0.95f
-            )
-
-            // 文字层（各项具备独立点击保障与高亮指示）
-            Row(modifier = Modifier.fillMaxSize()) {
-                tabs.forEachIndexed { index, (tab, title) ->
-                    val isSelected = index == selectedIndex
-                    val textColor by animateColorAsState(
-                        targetValue = if (isSelected) Color.White else MineTextSecondary,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "mineTabTextColor"
+                Box(
+                    modifier = itemModifier,
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = if (isInsideSlider) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isInsideSlider) MineAccentRed else MineTextPrimary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                currentOnTabSelected(tab)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 13.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = textColor
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
             }
         }

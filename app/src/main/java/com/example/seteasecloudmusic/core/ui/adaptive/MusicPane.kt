@@ -26,7 +26,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
+import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.shapes.RoundedRectangle
@@ -44,12 +46,16 @@ fun RetainedMusicFeed(visible: Boolean, content: @Composable () -> Unit) {
 
 @Composable
 fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Unit)? = null, onMore: (() -> Unit)? = null) {
+    val backdrop = LocalGlassBackdrop.current
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         val sideControls = LocalAdaptiveWindow.current.useNavigationRail && !LocalAdaptiveWindow.current.sideControlsAtStart
         val back: @Composable () -> Unit = {
-            IconButton(onClick = { onClose?.invoke() }, modifier = Modifier.size(44.dp)
-                .background(Color.White.copy(alpha = 0.6f), RoundedRectangle(22.dp))
-                .border(0.75.dp, Color.White.copy(alpha = 0.85f), RoundedRectangle(22.dp))) {
+            LiquidGlassCircleButton(
+                onClick = { onClose?.invoke() },
+                backdrop = backdrop,
+                size = 44.dp,
+                contentDescription = "返回"
+            ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color(0xFF393941), modifier = Modifier.size(22.dp))
             }
         }
@@ -63,9 +69,12 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
         }
         if (onMore != null) {
             Spacer(Modifier.width(8.dp))
-            IconButton(onMore, Modifier.size(44.dp)
-                .background(Color.White.copy(alpha = 0.6f), RoundedRectangle(22.dp))
-                .border(0.75.dp, Color.White.copy(alpha = 0.85f), RoundedRectangle(22.dp))) {
+            LiquidGlassCircleButton(
+                onClick = onMore,
+                backdrop = backdrop,
+                size = 44.dp,
+                contentDescription = "更多操作"
+            ) {
                 Icon(Icons.Filled.MoreHoriz, "更多操作", Modifier.size(22.dp), tint = Color(0xFF393941))
             }
         }

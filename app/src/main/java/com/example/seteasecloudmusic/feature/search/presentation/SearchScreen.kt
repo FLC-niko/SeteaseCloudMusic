@@ -93,12 +93,9 @@ import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
-import com.example.seteasecloudmusic.core.ui.components.GlassThumb
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassSegmentedBar
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
-import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
-import com.example.seteasecloudmusic.core.ui.components.liquidGlass
-import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
@@ -495,95 +492,47 @@ private fun SearchTabsRow(
     val currentSelectedTab by rememberUpdatedState(selectedTab)
     val selectedIndex = tabs.indexOf(currentSelectedTab).coerceAtLeast(0)
 
-    val navBarHeight = 44.dp
-    val cornerRadius = navBarHeight / 2
-    val thumbPadding = GlassSliderDefaults.ThumbPadding
-
-    val animationScope = rememberCoroutineScope()
-    val pressAnimation = remember { Animatable(0f) }
-    val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
-
-    var dragOffsetX by remember { mutableStateOf<Float?>(null) }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(navBarHeight)
-            .graphicsLayer {
-                val progress = pressAnimation.value
-                val maxScale = (size.width + 6f.dp.toPx()) / size.width
-                val scale = lerp(1f, maxScale, progress)
-                scaleX = scale
-                scaleY = scale
-            }
-            .liquidGlass(
-                backdrop = backdrop,
-                cornerRadius = cornerRadius
-            )
-            .glassSegmentDrag(
-                itemCount = tabs.size,
-                onDragOffsetChange = { dragOffsetX = it },
-                onSettle = { settledIndex -> currentOnSelect(tabs[settledIndex]) },
-                onPressChanged = { pressed ->
-                    animationScope.launch {
-                        pressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
-                    }
+    LiquidGlassSegmentedBar(
+        backdrop = backdrop,
+        itemCount = tabs.size,
+        selectedIndex = selectedIndex,
+        onSelect = { settledIndex -> currentOnSelect(tabs[settledIndex]) },
+        modifier = modifier.fillMaxWidth(),
+        barHeight = 44.dp,
+        cornerRadius = 22.dp,
+        maxPressScale = GlassSliderDefaults.CompactMaxPressScale
+    ) { isInsideSlider ->
+        Row(modifier = Modifier.fillMaxSize()) {
+            tabs.forEach { tab ->
+                val itemModifier = if (!isInsideSlider) {
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            currentOnSelect(tab)
+                        }
+                } else {
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize()
                 }
-            )
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = thumbPadding),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            val geometry = rememberGlassThumbGeometry(
-                containerWidth = maxWidth,
-                itemCount = tabs.size,
-                selectedIndex = selectedIndex,
-                dragOffsetX = dragOffsetX,
-                barHeight = navBarHeight,
-                cornerRadius = cornerRadius
-            )
-
-            GlassThumb(
-                backdrop = backdrop,
-                geometry = geometry,
-                surfaceColor = TabActiveBg,
-                surfaceAlpha = 0.95f
-            )
-
-            Row(modifier = Modifier.fillMaxSize()) {
-                tabs.forEachIndexed { index, tab ->
-                    val isSelected = index == selectedIndex
-                    val textColor by animateColorAsState(
-                        targetValue = if (isSelected) TabActiveText else SecondaryText,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "searchTabTextColor"
+                Box(
+                    modifier = itemModifier,
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = tab.title,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = if (isInsideSlider) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isInsideSlider) TabActiveBg else PrimaryText
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                currentOnSelect(tab)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = tab.title,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 13.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = textColor
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
             }
         }

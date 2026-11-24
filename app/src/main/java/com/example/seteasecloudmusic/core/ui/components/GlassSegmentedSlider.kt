@@ -1,51 +1,86 @@
 package com.example.seteasecloudmusic.core.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.drawPlainBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.RoundedRectangle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.absoluteValue
 
 /**
- * 玻璃分段滑块（Glass Segmented Slider）的共用几何与手势实现。
+ * 液态玻璃分段滑块（LSPosed 阻尼水滴物理 + 双层采样透镜）统一参数与组件。
  *
- * 底栏「首页 / 电台 / 我的」与「我的」页「创建 / 收藏 / 本地」两处使用的是同一套
- * 分段滑块视觉：等分词条 + 跟手玻璃滑块 + 松手吸附，以及苹果风格的
- * Gooey Stretch（运动时按位移差拉长滑块，产生“拉丝”弹性）。
- *
- * 由于两处的容器布局结构不同（底栏的滑块是覆盖在导航条之上的独立图层，
- * 「我的」页的滑块位于容器内部），这里只抽取**完全一致**的两部分：
- * 1. 滑块几何计算与 Gooey 拉伸渲染 —— [rememberGlassThumbGeometry] + [GlassThumb]
- * 2. 拖拽手势与松手吸附 —— [Modifier.glassSegmentDrag]
- *
- * 容器本身的玻璃背景与按压动画由调用方各自组装。
+ * - **静息态**：轻量半透明柔和胶囊，零额外透镜/色散 GPU 开销。
+ * - **按压/拖动激活态**：弹起放大（1.22x~1.35x）、速度耦合果冻拉伸/挤压、
+ *   球面 `depthEffect` + 7 光谱色散折射底层文字与图标（`CombinedBackdrop`）、
+ *   `InnerShadow` 内阴影厚度感与 `+90°` 重力旋转 `BloomStroke` 高光。
  */
 object GlassSliderDefaults {
     /** 滑块与容器内壁的间距 */
     val ThumbPadding: Dp = 4.dp
 
-    /** 选中项滑块白色铺底透明度（选中的透明度调低，呈现显眼高亮白色滑块） */
+    /** 兼容旧调用的透明度默认值 */
     const val ThumbSurfaceAlpha: Float = 0.6f
 
     /** 跟手时的弹簧：偏硬，保证滑块紧贴手指 */
@@ -56,32 +91,858 @@ object GlassSliderDefaults {
     const val SETTLE_STIFFNESS = 300f
     const val SETTLE_DAMPING = 0.6f
 
-    /** Gooey 拉伸强度：0f 关闭拉丝效果 */
+    /** 兼容旧 API 的拉伸系数 */
     const val STRETCH_FACTOR = 0.35f
 
-    /** 滑块的高斯模糊半径：略高于底部导航栏的模糊度（底栏为 1.dp），保持透通感同时略带磨砂 */
+    /** 兼容旧 API 的模糊半径 */
     val BlurRadius: Dp = 3.dp
+
+    /** 底部主导航栏水滴按压最大放大倍率（接近 LSPosed 1.3929x 并兼顾边缘留白） */
+    const val MaxPressScale: Float = 1.35f
+
+    /** 紧凑分段条/弹出菜单水滴按压最大放大倍率 */
+    const val CompactMaxPressScale: Float = 1.22f
+
+    /** 激活态水滴凸透镜折射高度与折射量 */
+    val DropletRefractionHeight: Dp = 12.dp
+    val DropletRefractionAmount: Dp = 18.dp
+
+    /** 激活态水滴内阴影半径 */
+    val DropletInnerShadowRadius: Dp = 8.dp
+
+    /** 静息态半透明胶囊底色透明度 */
+    const val RestingPillAlphaLight: Float = 0.135f
+    const val RestingPillAlphaDark: Float = 0.19f
 }
 
 /**
- * 滑块在一帧内的完整几何描述。
+ * 根据按压进度 [pressProgress] 与主轴速度 [velocity]（单位：槽位/秒）计算阻尼果冻形变缩放比例。
  *
- * 关键设计：**节点尺寸恒定**，拉伸与位移全部交给 draw 阶段的 `graphicsLayer` 变换。
- *
- * 实测对比（144Hz、帧预算 6.94ms）：若让 `.size()` 随拉伸每帧变化，
- * UI 线程会在 `postAndWait` 上阻塞约 9.4ms/帧（等 RenderThread 重录 backdrop 图层），
- * doFrame 中位数达到 8~14ms；改为恒定尺寸后 doFrame 中位数降至约 5ms、
- * `postAndWait` 降至 0.33ms，超预算帧从约 30% 降到 5~10%。
- * 且距离越长原本的拉伸量越大、重录代价越高，这正是「跨格切换比相邻切换更卡」的原因。
- *
- * @property width 静止宽度（节点尺寸，恒定）
- * @property offsetX 未拉伸的位移；拉伸带来的视觉偏移由 [stretchScale] + [anchorAtEnd] 表达
- * @property stretchScale 水平拉伸比例（Gooey 拉丝），1f 表示未拉伸
- * @property anchorAtEnd 拉伸锚点：true = 右端固定（向左运动），false = 左端固定（向右运动）
- * @property height 滑块高度
- * @property innerCornerRadius 滑块内部圆角（容器圆角减去内边距）
- * @property isTracking 当前是否处于跟手拖拽状态
+ * 按下时整体水滴等比弹起至 [maxPressScale]，高速拖动时沿运动方向拉伸、垂直方向轻微压缩，
+ * 最大形变量钳制在 20% 内以保证形状与物理真实感。
  */
+internal fun computeJellyScale(
+    pressProgress: Float,
+    velocity: Float,
+    maxPressScale: Float,
+    orientation: Orientation
+): Pair<Float, Float> {
+    val p = pressProgress.coerceIn(0f, 1f)
+    val baseScale = lerp(1f, maxPressScale, p)
+    val vNorm = velocity / 10f
+    val stretch = (0.75f * abs(vNorm)).coerceIn(0f, 0.20f)
+    val squish = (0.25f * abs(vNorm)).coerceIn(0f, 0.20f)
+    val primaryScale = baseScale / (1f - stretch)
+    val crossScale = baseScale * (1f - squish)
+    return if (orientation == Orientation.Vertical) {
+        crossScale to primaryScale
+    } else {
+        primaryScale to crossScale
+    }
+}
+
+/**
+ * 滑块胶囊当前所在像素区域，用于驱动静息态与拖拽过程中的双色精确裁剪分割。
+ */
+internal data class SegmentPillBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+)
+
+/**
+ * 计算滑块当前（或插值滑动中）胶囊在容器内的精确像素矩形。
+ */
+internal fun computeSegmentPillBounds(
+    offsetFraction: Float,
+    itemCount: Int,
+    containerWidthPx: Float,
+    containerHeightPx: Float,
+    thumbPaddingPx: Float,
+    orientation: Orientation
+): SegmentPillBounds {
+    if (itemCount <= 0 || containerWidthPx <= 0f || containerHeightPx <= 0f) {
+        return SegmentPillBounds(0f, 0f, 0f, 0f)
+    }
+    val clampedOffset = offsetFraction.coerceIn(0f, (itemCount - 1).toFloat())
+    val pad = thumbPaddingPx.coerceAtLeast(0f)
+    val left: Float
+    val top: Float
+    val width: Float
+    val height: Float
+    if (orientation == Orientation.Vertical) {
+        val slotH = containerHeightPx / itemCount.toFloat()
+        left = pad
+        top = pad + clampedOffset * slotH
+        width = (containerWidthPx - pad * 2f).coerceAtLeast(0f)
+        height = (slotH - pad * 2f).coerceAtLeast(0f)
+    } else {
+        val slotW = containerWidthPx / itemCount.toFloat()
+        left = pad + clampedOffset * slotW
+        top = pad
+        width = (slotW - pad * 2f).coerceAtLeast(0f)
+        height = (containerHeightPx - pad * 2f).coerceAtLeast(0f)
+    }
+    return SegmentPillBounds(
+        left = left,
+        top = top,
+        right = left + width,
+        bottom = top + height
+    )
+}
+
+/**
+ * LSPosed 阻尼水滴拖拽状态机：位置、按压进度、速度全部托管在 [Animatable] 中，
+ * 仅在 Draw/Layer 阶段读取，拖拽和动画期间零重组。
+ */
+@Stable
+class LiquidSegmentState(
+    internal val itemCount: Int,
+    initialIndex: Int,
+    private val scope: CoroutineScope
+) {
+    private val maxIndex: Int = (itemCount - 1).coerceAtLeast(0)
+    private var activeTargetIndex: Int = initialIndex.coerceIn(0, maxIndex)
+
+    val offsetFraction = Animatable(activeTargetIndex.toFloat())
+    val pressProgress = Animatable(0f)
+    val velocity = Animatable(0f)
+
+    internal var isDragging by mutableStateOf(false)
+        private set
+
+    private var pressJob: Job? = null
+    private var settleJob: Job? = null
+    private val pressSpring = spring<Float>(dampingRatio = 0.65f, stiffness = 420f)
+    private val tapPopSpring = spring<Float>(dampingRatio = 0.65f, stiffness = 480f)
+    private val releaseTween = tween<Float>(durationMillis = 150, easing = FastOutSlowInEasing)
+    private val trackingSpring = spring<Float>(
+        dampingRatio = GlassSliderDefaults.TRACKING_DAMPING,
+        stiffness = GlassSliderDefaults.TRACKING_STIFFNESS
+    )
+    private val settleSpring = spring<Float>(
+        dampingRatio = GlassSliderDefaults.SETTLE_DAMPING,
+        stiffness = GlassSliderDefaults.SETTLE_STIFFNESS
+    )
+    private val velocitySpring = spring<Float>(dampingRatio = 0.7f, stiffness = 250f)
+
+    fun onPressStart() {
+        settleJob?.cancel()
+        pressJob?.cancel()
+        pressJob = scope.launch {
+            pressProgress.animateTo(1f, pressSpring)
+        }
+    }
+
+    fun onDragToFraction(fraction: Float, velocitySlotsPerSec: Float) {
+        settleJob?.cancel()
+        isDragging = true
+        val clamped = fraction.coerceIn(0f, maxIndex.toFloat())
+        scope.launch {
+            launch { offsetFraction.animateTo(clamped, trackingSpring) }
+            launch { velocity.animateTo(velocitySlotsPerSec, velocitySpring) }
+        }
+    }
+
+    fun onSettleTo(index: Int) {
+        val clampedIndex = index.coerceIn(0, maxIndex)
+        val target = clampedIndex.toFloat()
+        val wasDragging = isDragging
+        isDragging = false
+        activeTargetIndex = clampedIndex
+        val travelDistance = abs(offsetFraction.value - target)
+        settleJob?.cancel()
+
+        if (travelDistance > 0.05f) {
+            settleJob = scope.launch {
+                pressJob?.cancel()
+                pressJob = launch {
+                    pressProgress.animateTo(1f, tapPopSpring)
+                }
+                launch {
+                    offsetFraction.animateTo(target, settleSpring) {
+                        if (!wasDragging) {
+                            val currentVel = this.velocity * 0.45f
+                            launch { this@LiquidSegmentState.velocity.snapTo(currentVel) }
+                        }
+                    }
+                    if (!wasDragging) {
+                        velocity.animateTo(0f, velocitySpring)
+                    }
+                }
+                if (wasDragging) {
+                    launch { velocity.animateTo(0f, velocitySpring) }
+                }
+                if (!wasDragging) {
+                    delay(110L)
+                }
+                snapshotFlow { offsetFraction.value }.first { abs(it - target) <= 0.12f }
+                pressJob?.cancel()
+                pressJob = launch {
+                    pressProgress.animateTo(0f, releaseTween)
+                }
+            }
+        } else {
+            pressJob?.cancel()
+            pressJob = scope.launch {
+                pressProgress.animateTo(0f, releaseTween)
+            }
+            scope.launch {
+                velocity.animateTo(0f, velocitySpring)
+            }
+        }
+    }
+
+    fun onCancel(fallbackIndex: Int) {
+        onSettleTo(fallbackIndex)
+    }
+
+    suspend fun syncSelectedIndex(selectedIndex: Int) {
+        val clampedIndex = selectedIndex.coerceIn(0, maxIndex)
+        if (!isDragging && clampedIndex != activeTargetIndex) {
+            onSettleTo(clampedIndex)
+        } else if (!isDragging && settleJob?.isActive != true) {
+            val target = clampedIndex.toFloat()
+            if (abs(offsetFraction.value - target) > 0.001f) {
+                offsetFraction.animateTo(target, settleSpring)
+            }
+        }
+    }
+}
+
+@Composable
+fun rememberLiquidSegmentState(
+    itemCount: Int,
+    selectedIndex: Int,
+    coroutineScope: CoroutineScope = rememberCoroutineScope()
+): LiquidSegmentState {
+    val state = remember(itemCount, coroutineScope) {
+        LiquidSegmentState(itemCount = itemCount, initialIndex = selectedIndex, scope = coroutineScope)
+    }
+    LaunchedEffect(selectedIndex, itemCount) {
+        state.syncSelectedIndex(selectedIndex)
+    }
+    return state
+}
+
+/**
+ * LSPosed 阻尼水滴分段交互手势：
+ * 按下立即触发水滴弹起（`pressProgress → 1f`），支持单击直接切换与越过 `touchSlop` 后的跟手拖动，
+ * 结合 [VelocityTracker] 实时驱动果冻拉丝形变，松手吸附提交 [onSettle]。
+ */
+fun Modifier.liquidSegmentDrag(
+    state: LiquidSegmentState,
+    itemCount: Int,
+    selectedIndex: Int,
+    onSettle: (Int) -> Unit,
+    onHoverIndexChange: ((Int?) -> Unit)? = null,
+    enabled: Boolean = true,
+    orientation: Orientation = Orientation.Horizontal
+): Modifier = this.pointerInput(state, itemCount, enabled, orientation) {
+    if (!enabled || itemCount <= 0) return@pointerInput
+
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val totalAxisPx = (if (orientation == Orientation.Vertical) size.height else size.width).toFloat()
+        val slotAxisPx = if (itemCount > 0) totalAxisPx / itemCount.toFloat() else 0f
+        val downAxis = if (orientation == Orientation.Vertical) down.position.y else down.position.x
+        var currentAxis = downAxis
+        var dragging = false
+        var released = false
+        val touchSlop = viewConfiguration.touchSlop
+        val velocityTracker = VelocityTracker()
+        velocityTracker.addPosition(down.uptimeMillis, down.position)
+
+        try {
+            state.onPressStart()
+            if (slotAxisPx > 0f) {
+                onHoverIndexChange?.invoke((downAxis / slotAxisPx).toInt().coerceIn(0, itemCount - 1))
+            }
+
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
+                if (change == null) {
+                    break
+                } else if (change.pressed) {
+                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+                    if (!dragging && (change.position - down.position).getDistance() > touchSlop) {
+                        dragging = true
+                    }
+                    if (dragging && slotAxisPx > 0f) {
+                        currentAxis = if (orientation == Orientation.Vertical) change.position.y else change.position.x
+                        val targetFraction = ((currentAxis / slotAxisPx) - 0.5f)
+                            .coerceIn(0f, (itemCount - 1).toFloat())
+                        val velPx = velocityTracker.calculateVelocity()
+                        val axisVelPx = if (orientation == Orientation.Vertical) velPx.y else velPx.x
+                        val velSlotsPerSec = axisVelPx / slotAxisPx
+                        state.onDragToFraction(targetFraction, velSlotsPerSec)
+                        onHoverIndexChange?.invoke((currentAxis / slotAxisPx).toInt().coerceIn(0, itemCount - 1))
+                        change.consume()
+                    }
+                } else {
+                    released = true
+                    break
+                }
+            }
+        } finally {
+            onHoverIndexChange?.invoke(null)
+            if (!released) {
+                state.onCancel(selectedIndex)
+            }
+        }
+
+        if (released && slotAxisPx > 0f) {
+            val settleAxis = if (dragging) currentAxis else downAxis
+            val settledIndex = (settleAxis / slotAxisPx).toInt().coerceIn(0, itemCount - 1)
+            state.onSettleTo(settledIndex)
+            onSettle(settledIndex)
+        } else {
+            state.onCancel(selectedIndex)
+        }
+    }
+}
+
+/**
+ * 静息态底层柔和半透明胶囊：置于外框容器内、Tab 图标与文字之下。
+ *
+ * 随着 [LiquidSegmentState.pressProgress] 从 0→1 自动淡出，由顶层 [LiquidGlassActiveDroplet] 接管。
+ * 静息时零折射、零模糊、零阴影开销。
+ */
+@Composable
+fun LiquidGlassRestingThumb(
+    state: LiquidSegmentState,
+    containerWidth: Dp,
+    containerHeight: Dp,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
+    isDarkSurface: Boolean = false,
+    pillColor: Color = if (isDarkSurface) Color.White else Color.Black,
+    pillAlpha: Float = if (isDarkSurface) GlassSliderDefaults.RestingPillAlphaDark else GlassSliderDefaults.RestingPillAlphaLight,
+    alphaProvider: (() -> Float)? = null,
+    orientation: Orientation = Orientation.Horizontal
+) {
+    if (state.itemCount <= 0 || containerWidth <= 0.dp || containerHeight <= 0.dp) return
+
+    val innerCornerRadius = (cornerRadius - thumbPadding).coerceAtLeast(0.dp)
+    val thumbShape = remember(innerCornerRadius) { RoundedRectangle(innerCornerRadius) }
+    val slotWidth = if (orientation == Orientation.Vertical) containerWidth else containerWidth / state.itemCount
+    val slotHeight = if (orientation == Orientation.Vertical) containerHeight / state.itemCount else containerHeight
+    val thumbWidth = (slotWidth - thumbPadding * 2).coerceAtLeast(0.dp)
+    val thumbHeight = (slotHeight - thumbPadding * 2).coerceAtLeast(0.dp)
+
+    if (thumbWidth <= 0.dp || thumbHeight <= 0.dp) return
+
+    Box(
+        modifier = modifier
+            .drawWithContent {
+                val outerAlpha = alphaProvider?.invoke() ?: 1f
+                val restingAlpha = (1f - state.pressProgress.value).coerceIn(0f, 1f) * outerAlpha
+                if (restingAlpha > 0.005f) {
+                    drawContent()
+                }
+            }
+            .graphicsLayer {
+                val outerAlpha = alphaProvider?.invoke() ?: 1f
+                alpha = ((1f - state.pressProgress.value).coerceIn(0f, 1f) * outerAlpha).coerceIn(0f, 1f)
+                val padPx = thumbPadding.toPx()
+                if (orientation == Orientation.Vertical) {
+                    translationX = padPx
+                    translationY = padPx + state.offsetFraction.value * slotHeight.toPx()
+                } else {
+                    translationX = padPx + state.offsetFraction.value * slotWidth.toPx()
+                    translationY = padPx
+                }
+            }
+            .size(thumbWidth, thumbHeight)
+            .background(color = pillColor.copy(alpha = pillAlpha), shape = thumbShape)
+    )
+}
+
+/**
+ * LSPosed 风格像素级双色滑块内容容器：
+ * 1. [unselectedContent] 通过 `ClipOp.Difference` 裁剪掉滑块胶囊内部区域，在胶囊外渲染普通深/浅色图标与文字；
+ * 2. 中间渲染轻量半透明静息胶囊 [LiquidGlassRestingThumb]（按下时平滑淡出）；
+ * 3. [selectedContent] 通过 `ClipOp.Intersect` 仅在胶囊内部渲染高亮强调色（即使滑块半跨某个图标/文字也能精确分割双色）。
+ */
+@Composable
+fun LiquidGlassDualColorTabs(
+    state: LiquidSegmentState,
+    containerWidth: Dp,
+    containerHeight: Dp,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
+    isDarkSurface: Boolean = false,
+    pillColor: Color = if (isDarkSurface) Color.White else Color.Black,
+    pillAlpha: Float = if (isDarkSurface) GlassSliderDefaults.RestingPillAlphaDark else GlassSliderDefaults.RestingPillAlphaLight,
+    alphaProvider: (() -> Float)? = null,
+    orientation: Orientation = Orientation.Horizontal,
+    unselectedContent: @Composable BoxScope.() -> Unit,
+    selectedContent: @Composable BoxScope.() -> Unit
+) {
+    val pillPath = remember { Path() }
+    val innerCornerRadius = (cornerRadius - thumbPadding).coerceAtLeast(0.dp)
+
+    fun ContentDrawScope.populatePillPath() {
+        val bounds = computeSegmentPillBounds(
+            offsetFraction = state.offsetFraction.value,
+            itemCount = state.itemCount,
+            containerWidthPx = size.width,
+            containerHeightPx = size.height,
+            thumbPaddingPx = thumbPadding.toPx(),
+            orientation = orientation
+        )
+        val rPx = innerCornerRadius.toPx().coerceAtLeast(0f)
+        pillPath.rewind()
+        pillPath.addRoundRect(
+            RoundRect(
+                left = bounds.left,
+                top = bounds.top,
+                right = bounds.right,
+                bottom = bounds.bottom,
+                cornerRadius = CornerRadius(rPx, rPx)
+            )
+        )
+    }
+
+    Box(modifier = modifier.size(containerWidth, containerHeight)) {
+        // 1. 胶囊外部：普通态图标与文字（裁剪掉胶囊覆盖区域，杜绝穿透叠色）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    val outerAlpha = alphaProvider?.invoke() ?: 1f
+                    if (outerAlpha > 0.005f) {
+                        populatePillPath()
+                        clipPath(pillPath, clipOp = ClipOp.Difference) {
+                            this@drawWithContent.drawContent()
+                        }
+                    } else {
+                        drawContent()
+                    }
+                },
+            content = unselectedContent
+        )
+
+        // 2. 静息态半透明胶囊
+        LiquidGlassRestingThumb(
+            state = state,
+            containerWidth = containerWidth,
+            containerHeight = containerHeight,
+            cornerRadius = cornerRadius,
+            thumbPadding = thumbPadding,
+            isDarkSurface = isDarkSurface,
+            pillColor = pillColor,
+            pillAlpha = pillAlpha,
+            alphaProvider = alphaProvider,
+            orientation = orientation,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+
+        // 3. 胶囊内部（静息与交叉淡入阶段）：精准裁剪渲染高亮激活色图标与文字
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (alphaProvider != null) {
+                        Modifier.graphicsLayer {
+                            alpha = alphaProvider().coerceIn(0f, 1f)
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .drawWithContent {
+                    val outerAlpha = alphaProvider?.invoke() ?: 1f
+                    if (outerAlpha > 0.005f && state.pressProgress.value < 0.995f) {
+                        populatePillPath()
+                        clipPath(pillPath, clipOp = ClipOp.Intersect) {
+                            this@drawWithContent.drawContent()
+                        }
+                    }
+                },
+            content = selectedContent
+        )
+    }
+}
+
+/**
+ * LSPosed 同款离屏激活层录制器（对应 `Lyl0` 模式，作为外框与水滴之间的隐形同级节点）：
+ * 仅在按压或拖动阶段将「圆角微模糊玻璃底板 + 清晰高亮激活色 Tab 内容」一起录制进 [activeTabsBackdrop]，
+ * 供上层 [LiquidGlassActiveDroplet] 通过 `CombinedBackdrop` 折射放大，彻底避免水滴内部“全透漏底”。
+ * 静息时直接跳过录制，保持零 GPU 开销。
+ */
+@Composable
+fun LiquidGlassActiveTabsRecorder(
+    pageBackdrop: Backdrop?,
+    activeTabsBackdrop: LayerBackdrop,
+    state: LiquidSegmentState,
+    containerWidth: Dp,
+    containerHeight: Dp,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    isDarkSurface: Boolean = false,
+    surfaceAlpha: Float = GlassDefaults.SurfaceAlpha,
+    surfaceColor: Color = if (isDarkSurface) Color(0xFF1C1C24) else Color(0xFFF7F7FA),
+    layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
+    alphaProvider: (() -> Float)? = null,
+    selectedContent: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .size(containerWidth, containerHeight)
+            .drawWithContent {
+                val outerAlpha = alphaProvider?.invoke() ?: 1f
+                if (state.pressProgress.value * outerAlpha > 0.005f) {
+                    drawContent()
+                }
+            }
+            .graphicsLayer { alpha = 0f }
+            .layerBackdrop(activeTabsBackdrop)
+            .then(
+                if (pageBackdrop != null) {
+                    Modifier.drawPlainBackdrop(
+                        backdrop = pageBackdrop,
+                        shape = { RoundedRectangle(cornerRadius) },
+                        layerBlock = layerBlock,
+                        effects = {
+                            vibrancy()
+                            blur(GlassDefaults.BlurRadius.toPx())
+                        },
+                        onDrawSurface = {
+                            val effectiveAlpha = if (isRenderEffectSupported()) {
+                                surfaceAlpha
+                            } else {
+                                maxOf(surfaceAlpha, if (isDarkSurface) 0.72f else 0.76f)
+                            }
+                            if (effectiveAlpha > 0f) {
+                                drawRect(color = surfaceColor.copy(alpha = effectiveAlpha))
+                            }
+                        }
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        content = selectedContent
+    )
+}
+
+/**
+ * 激活态 3D 放大镜水滴滑块：作为外框玻璃条的**同级兄弟节点**覆盖在其上方（不被外框裁剪）。
+ *
+ * 采样双层合成背景 [combinedBackdrop]（底层页面 + [LiquidGlassActiveTabsRecorder] 录制的高亮 Tab 与玻璃表面），在按下/拖动时：
+ * 1. 弹起放大至 [maxPressScale] 并叠加速度耦合果冻形变
+ * 2. 启用球面 `depthEffect` + 7 光谱色散透镜，真实扭曲放大下方高亮图标与文字
+ * 3. 叠加晶莹玻璃光泽表面、`InnerShadow` 厚度感与 `+90°` 重力旋转 `BloomStroke` 高光
+ * 4. 静息时（`pressProgress <= 0.005f`）跳过整棵子树绘制，实现零 GPU 开销。
+ */
+@Composable
+fun LiquidGlassActiveDroplet(
+    combinedBackdrop: Backdrop?,
+    state: LiquidSegmentState,
+    containerWidth: Dp,
+    containerHeight: Dp,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
+    maxPressScale: Float = GlassSliderDefaults.MaxPressScale,
+    isDarkSurface: Boolean = false,
+    alphaProvider: (() -> Float)? = null,
+    orientation: Orientation = Orientation.Horizontal
+) {
+    if (state.itemCount <= 0 || containerWidth <= 0.dp || containerHeight <= 0.dp) return
+
+    val innerCornerRadius = (cornerRadius - thumbPadding).coerceAtLeast(0.dp)
+    val shape = remember(innerCornerRadius) { RoundedRectangle(innerCornerRadius) }
+    val slotWidth = if (orientation == Orientation.Vertical) containerWidth else containerWidth / state.itemCount
+    val slotHeight = if (orientation == Orientation.Vertical) containerHeight / state.itemCount else containerHeight
+    val thumbWidth = (slotWidth - thumbPadding * 2).coerceAtLeast(0.dp)
+    val thumbHeight = (slotHeight - thumbPadding * 2).coerceAtLeast(0.dp)
+
+    if (thumbWidth <= 0.dp || thumbHeight <= 0.dp) return
+
+    val dropletLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
+        val outerAlpha = (alphaProvider?.invoke() ?: 1f).coerceIn(0f, 1f)
+        val p = state.pressProgress.value.coerceIn(0f, 1f)
+        alpha = (p * outerAlpha).coerceIn(0f, 1f)
+        val padPx = thumbPadding.toPx()
+        if (orientation == Orientation.Vertical) {
+            translationX = padPx
+            translationY = padPx + state.offsetFraction.value * slotHeight.toPx()
+        } else {
+            translationX = padPx + state.offsetFraction.value * slotWidth.toPx()
+            translationY = padPx
+        }
+        val (sx, sy) = computeJellyScale(
+            pressProgress = p,
+            velocity = state.velocity.value,
+            maxPressScale = maxPressScale,
+            orientation = orientation
+        )
+        scaleX = sx
+        scaleY = sy
+        transformOrigin = TransformOrigin.Center
+    }
+
+    val dropletBloomStyle = remember(isDarkSurface) {
+        if (isDarkSurface) {
+            BloomStrokeDefaults.DropletPill.copy(lightSurfaceSubtleOutlineAlpha = 0f)
+        } else {
+            BloomStrokeDefaults.DropletPill
+        }
+    }
+
+    val visibilityModifier = modifier.drawWithContent {
+        val outerAlpha = alphaProvider?.invoke() ?: 1f
+        val p = state.pressProgress.value
+        if (p * outerAlpha > 0.005f) {
+            drawContent()
+        }
+    }
+
+    if (combinedBackdrop != null) {
+        Box(
+            modifier = visibilityModifier
+                .drawBackdrop(
+                    backdrop = combinedBackdrop,
+                    shape = { shape },
+                    highlight = null,
+                    shadow = {
+                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        if (p > 0.01f) {
+                            Shadow(
+                                radius = 10.dp * p,
+                                offset = DpOffset(0.dp, 3.dp),
+                                color = Color.Black.copy(alpha = 0.16f * p)
+                            )
+                        } else null
+                    },
+                    innerShadow = {
+                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        if (p > 0.01f) {
+                            InnerShadow(
+                                radius = GlassSliderDefaults.DropletInnerShadowRadius * p,
+                                offset = DpOffset(0.dp, 1.dp),
+                                color = Color.Black.copy(alpha = 0.14f),
+                                alpha = p
+                            )
+                        } else null
+                    },
+                    effects = {
+                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        if (p > 0.01f) {
+                            val rawHeightPx = (GlassSliderDefaults.DropletRefractionHeight * p).toPx()
+                            val effectiveHeightPx = clampLensRefractionHeightPx(rawHeightPx, size.minDimension)
+                            if (effectiveHeightPx > 0f) {
+                                val scaleRatio = (effectiveHeightPx / rawHeightPx).coerceIn(0f, 1f)
+                                lens(
+                                    refractionHeight = effectiveHeightPx,
+                                    refractionAmount = (GlassSliderDefaults.DropletRefractionAmount * p).toPx() * scaleRatio,
+                                    depthEffect = true,
+                                    chromaticAberration = true
+                                )
+                            }
+                        }
+                    },
+                    layerBlock = dropletLayerBlock,
+                    onDrawSurface = {
+                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        if (p > 0.01f) {
+                            if (isDarkSurface) {
+                                drawRect(Color.White.copy(alpha = 0.09f * p))
+                                drawRect(
+                                    Brush.verticalGradient(
+                                        0f to Color.White.copy(alpha = 0.18f * p),
+                                        0.5f to Color.Transparent,
+                                        1f to Color.White.copy(alpha = 0.07f * p)
+                                    )
+                                )
+                            } else {
+                                drawRect(Color.White.copy(alpha = 0.16f * p))
+                                drawRect(
+                                    Brush.verticalGradient(
+                                        0f to Color.White.copy(alpha = 0.28f * p),
+                                        0.48f to Color.Transparent,
+                                        1f to Color.White.copy(alpha = 0.12f * p)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                )
+                .bloomStroke(
+                    cornerRadius = innerCornerRadius,
+                    style = dropletBloomStyle,
+                    extraDegrees = 90f,
+                    alphaProvider = {
+                        val outerAlpha = (alphaProvider?.invoke() ?: 1f).coerceIn(0f, 1f)
+                        (state.pressProgress.value * outerAlpha).coerceIn(0f, 1f)
+                    }
+                )
+                .size(thumbWidth, thumbHeight)
+        )
+    } else {
+        Box(
+            modifier = visibilityModifier
+                .graphicsLayer(dropletLayerBlock)
+                .size(thumbWidth, thumbHeight)
+                .background(Color.White.copy(alpha = 0.28f), shape)
+                .bloomStroke(
+                    cornerRadius = innerCornerRadius,
+                    style = dropletBloomStyle,
+                    extraDegrees = 90f
+                )
+        )
+    }
+}
+
+/**
+ * 通用 LSPosed 风格液态玻璃分段条容器（适用于页面内水平/垂直分段切换条）。
+ *
+ * 自动组装无递归的双层采样架构与像素级双色切割：
+ * - 外框玻璃条（`pageBackdrop` + `BloomStroke(-45°)` + `interactiveGlassHighlight` + 呼吸缩放）
+ * - [LiquidGlassDualColorTabs]：静息态按胶囊精确裁剪分割未选中（`isInsideSlider = false`）与高亮选中（`isInsideSlider = true`）双色内容
+ * - 同级隐形激活录制层（[LiquidGlassActiveTabsRecorder]，将通透微模糊底板 + 高亮色 Tab 写入 `tabsBackdrop`）
+ * - 同级覆盖水滴滑块（[LiquidGlassActiveDroplet]，采样 `CombinedBackdrop(pageBackdrop, tabsBackdrop)`，`+90°` 重力棱光）
+ */
+@Composable
+fun LiquidGlassSegmentedBar(
+    backdrop: Backdrop?,
+    itemCount: Int,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    barHeight: Dp = 48.dp,
+    cornerRadius: Dp = barHeight / 2,
+    thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
+    maxPressScale: Float = GlassSliderDefaults.CompactMaxPressScale,
+    isDarkSurface: Boolean = false,
+    surfaceAlpha: Float = GlassDefaults.SurfaceAlpha,
+    orientation: Orientation = Orientation.Horizontal,
+    content: @Composable BoxScope.(isInsideSlider: Boolean) -> Unit
+) {
+    val segmentState = rememberLiquidSegmentState(itemCount = itemCount, selectedIndex = selectedIndex)
+    val tabsBackdrop = rememberLayerBackdrop()
+    val combinedBackdrop = if (backdrop != null) {
+        rememberCombinedBackdrop(backdrop, tabsBackdrop)
+    } else {
+        null
+    }
+    val currentOnSelect by rememberUpdatedState(onSelect)
+
+    BoxWithConstraints(
+        modifier = modifier
+    ) {
+        val containerWidth = maxWidth
+        val containerHeight = if (orientation == Orientation.Vertical) maxHeight else barHeight
+        val outerShape = remember(cornerRadius) { RoundedRectangle(cornerRadius) }
+
+        val outerLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
+            val progress = segmentState.pressProgress.value.coerceIn(0f, 1f)
+            if (size.width > 0f) {
+                val maxScale = (size.width + 8.dp.toPx()) / size.width
+                val s = lerp(1f, maxScale, progress)
+                scaleX = s
+                scaleY = s
+            }
+        }
+
+        // 1. 外框玻璃容器（带背景采样、呼吸微放大、指尖聚光灯与 -45° 重力棱边高光）
+        Box(
+            modifier = Modifier
+                .size(containerWidth, containerHeight)
+                .then(
+                    if (backdrop != null) {
+                        Modifier.liquidGlass(
+                            backdrop = backdrop,
+                            cornerRadius = cornerRadius,
+                            surfaceAlpha = surfaceAlpha,
+                            isDarkSurface = isDarkSurface,
+                            layerBlock = outerLayerBlock,
+                            enableShadow = true,
+                            enableBloomStroke = true,
+                            bloomExtraDegrees = -45f
+                        )
+                    } else {
+                        Modifier
+                            .graphicsLayer(outerLayerBlock)
+                            .background(
+                                color = if (isDarkSurface) Color(0xFF23232A).copy(alpha = 0.84f)
+                                else Color(0xFFF2F2F7).copy(alpha = 0.88f),
+                                shape = outerShape
+                            )
+                            .bloomStroke(
+                                cornerRadius = cornerRadius,
+                                style = if (isDarkSurface) BloomStrokeDefaults.OuterDark else BloomStrokeDefaults.OuterLight,
+                                extraDegrees = -45f
+                            )
+                    }
+                )
+                .interactiveGlassHighlight(
+                    shape = outerShape,
+                    isDarkSurface = isDarkSurface
+                )
+                .liquidSegmentDrag(
+                    state = segmentState,
+                    itemCount = itemCount,
+                    selectedIndex = selectedIndex,
+                    onSettle = { currentOnSelect(it) },
+                    orientation = orientation
+                )
+        ) {
+            LiquidGlassDualColorTabs(
+                state = segmentState,
+                containerWidth = containerWidth,
+                containerHeight = containerHeight,
+                cornerRadius = cornerRadius,
+                thumbPadding = thumbPadding,
+                isDarkSurface = isDarkSurface,
+                orientation = orientation,
+                unselectedContent = { content(false) },
+                selectedContent = { content(true) }
+            )
+        }
+
+        // 2. 激活态高亮层录制器（同级隐形层，拖动/按压时为水滴提供玻璃表面 + 高亮内容）
+        LiquidGlassActiveTabsRecorder(
+            pageBackdrop = backdrop,
+            activeTabsBackdrop = tabsBackdrop,
+            state = segmentState,
+            containerWidth = containerWidth,
+            containerHeight = containerHeight,
+            cornerRadius = cornerRadius,
+            isDarkSurface = isDarkSurface,
+            surfaceAlpha = surfaceAlpha,
+            layerBlock = outerLayerBlock,
+            modifier = Modifier.align(Alignment.TopStart)
+        ) {
+            content(true)
+        }
+
+        // 3. 激活态 3D 水滴放大镜（同级兄弟层，不被外框裁剪）
+        LiquidGlassActiveDroplet(
+            combinedBackdrop = combinedBackdrop,
+            state = segmentState,
+            containerWidth = containerWidth,
+            containerHeight = containerHeight,
+            cornerRadius = cornerRadius,
+            thumbPadding = thumbPadding,
+            maxPressScale = maxPressScale,
+            isDarkSurface = isDarkSurface,
+            orientation = orientation,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+    }
+}
+
+// =============================================================================
+// 兼容层：保留既有 API 签名以防外部或测试过渡期依赖
+// =============================================================================
+
 data class GlassThumbGeometry(
     val width: Dp,
     val offsetX: Dp,
@@ -92,20 +953,6 @@ data class GlassThumbGeometry(
     val isTracking: Boolean
 )
 
-/**
- * 计算分段滑块的位置与尺寸，并自动处理 Gooey 拉伸。
- *
- * 拖拽中（[dragOffsetX] 非空）滑块中心跟随手指，并夹在容器可用范围内；
- * 松手后吸附到 [selectedIndex] 对应的分格中心，两个阶段使用不同的弹簧参数。
- *
- * @param containerWidth 可用宽度（不含 [thumbPadding]，由调用方传入 `maxWidth`）
- * @param itemCount 分段数量
- * @param selectedIndex 当前选中项，用于计算静止时的落位
- * @param dragOffsetX 拖拽中手指的 X 坐标（px，相对容器左侧）；null 表示未拖拽
- * @param barHeight 容器高度
- * @param cornerRadius 容器圆角
- * @param thumbPadding 滑块与容器内壁的间距
- */
 @Composable
 fun rememberGlassThumbGeometry(
     containerWidth: Dp,
@@ -127,7 +974,6 @@ fun rememberGlassThumbGeometry(
 
     val density = LocalDensity.current
     val targetThumbOffsetX = if (dragOffsetX != null) {
-        // 跟手：以手指为中心，夹在容器内壁之间，避免滑块溢出
         val fingerXDp = with(density) { dragOffsetX.toDp() }
         val halfThumb = targetThumbWidth / 2
         (fingerXDp - halfThumb)
@@ -143,31 +989,11 @@ fun rememberGlassThumbGeometry(
         spring<Dp>(stiffness = GlassSliderDefaults.SETTLE_STIFFNESS, dampingRatio = GlassSliderDefaults.SETTLE_DAMPING)
     }
 
-    val animatedThumbWidth by animateDpAsState(
-        targetValue = targetThumbWidth,
-        animationSpec = springSpec,
-        label = "glassThumbWidth"
-    )
-    val animatedThumbOffsetX by animateDpAsState(
-        targetValue = targetThumbOffsetX,
-        animationSpec = springSpec,
-        label = "glassThumbOffset"
-    )
-
-    // Gooey Stretch：按“目标位置 - 当前位置”的差值拉长滑块，
-    // 向左运动时左端前探、向右运动时右端后延，形成被液体拖拽的观感。
-    //
-    // 这里不改变节点尺寸，而是换算成「拉伸后宽度 / 静止宽度」的缩放比例，
-    // 配合锚点即可精确复现原来的外形：
-    //   向右（offsetDiff ≥ 0）：左端固定，右端外扩 |offsetDiff| * factor
-    //   向左（offsetDiff < 0）：右端固定，左端外伸 |offsetDiff| * factor
+    val animatedThumbWidth by animateDpAsState(targetValue = targetThumbWidth, animationSpec = springSpec, label = "glassThumbWidth")
+    val animatedThumbOffsetX by animateDpAsState(targetValue = targetThumbOffsetX, animationSpec = springSpec, label = "glassThumbOffset")
     val offsetDiff = targetThumbOffsetX - animatedThumbOffsetX
     val stretchAmount = offsetDiff.value.absoluteValue.dp * GlassSliderDefaults.STRETCH_FACTOR
-    val stretchScale = if (animatedThumbWidth.value > 0f) {
-        1f + (stretchAmount / animatedThumbWidth)
-    } else {
-        1f
-    }
+    val stretchScale = if (animatedThumbWidth.value > 0f) 1f + (stretchAmount / animatedThumbWidth) else 1f
 
     return GlassThumbGeometry(
         width = animatedThumbWidth,
@@ -180,14 +1006,6 @@ fun rememberGlassThumbGeometry(
     )
 }
 
-/**
- * 分段滑块的可视滑块本体：只保留透镜折射，不带表面铺底，因此能“透出”下方内容。
- *
- * 位移与拉伸全部在 `graphicsLayer`（draw 阶段）完成，节点尺寸恒定：
- * 每帧既不触发测量/布局，也不会让 backdrop 图层重录尺寸。
- *
- * @param alpha 整体透明度（例如搜索态下隐藏主滑块）
- */
 @Composable
 fun GlassThumb(
     backdrop: Backdrop,
@@ -211,27 +1029,10 @@ fun GlassThumb(
                     drawContent()
                 }
             }
-            .graphicsLayer {
-                this.alpha = (alphaProvider?.invoke() ?: alpha).coerceIn(0f, 1f)
-                if (orientation == Orientation.Vertical) {
-                    translationY = geometry.offsetX.toPx()
-                    scaleY = geometry.stretchScale
-                } else {
-                    translationX = geometry.offsetX.toPx()
-                    scaleX = geometry.stretchScale
-                }
-                // 拉伸锚点随运动方向切换，保证“前导边外伸、尾部边固定”
-                transformOrigin = if (orientation == Orientation.Vertical) {
-                    TransformOrigin(0.5f, if (geometry.anchorAtEnd) 1f else 0f)
-                } else if (geometry.anchorAtEnd) {
-                    TransformOrigin(1f, 0.5f)
-                } else {
-                    TransformOrigin(0f, 0.5f)
-                }
-            }
             .drawBackdrop(
                 backdrop = backdrop,
                 shape = { RoundedRectangle(innerCornerRadius) },
+                highlight = null,
                 shadow = null,
                 effects = {
                     vibrancy()
@@ -239,10 +1040,28 @@ fun GlassThumb(
                         blur(blurRadius.toPx())
                     }
                     lens(
-                        refractionHeight = 8f.dp.toPx(),
-                        refractionAmount = 16f.dp.toPx(),
+                        refractionHeight = GlassSliderDefaults.DropletRefractionHeight.toPx(),
+                        refractionAmount = GlassSliderDefaults.DropletRefractionAmount.toPx(),
+                        depthEffect = true,
                         chromaticAberration = true
                     )
+                },
+                layerBlock = {
+                    this.alpha = (alphaProvider?.invoke() ?: alpha).coerceIn(0f, 1f)
+                    if (orientation == Orientation.Vertical) {
+                        translationY = geometry.offsetX.toPx()
+                        scaleY = geometry.stretchScale
+                    } else {
+                        translationX = geometry.offsetX.toPx()
+                        scaleX = geometry.stretchScale
+                    }
+                    transformOrigin = if (orientation == Orientation.Vertical) {
+                        TransformOrigin(0.5f, if (geometry.anchorAtEnd) 1f else 0f)
+                    } else if (geometry.anchorAtEnd) {
+                        TransformOrigin(1f, 0.5f)
+                    } else {
+                        TransformOrigin(0f, 0.5f)
+                    }
                 },
                 onDrawSurface = {
                     if (surfaceAlpha > 0f) {
@@ -254,6 +1073,12 @@ fun GlassThumb(
                     }
                 }
             )
+            .bloomStroke(
+                cornerRadius = innerCornerRadius,
+                style = BloomStrokeDefaults.DropletPill,
+                extraDegrees = 90f,
+                alphaProvider = alphaProvider ?: { alpha }
+            )
             .size(
                 if (orientation == Orientation.Vertical) geometry.height else geometry.width,
                 if (orientation == Orientation.Vertical) geometry.width else geometry.height
@@ -261,24 +1086,6 @@ fun GlassThumb(
     )
 }
 
-/**
- * 分段滑块的拖拽手势：按下即跟手，松开才把最终停留位置通过 [onSettle] 提交。
- *
- * 拖动过程中只回调 [onDragOffsetChange]（用于滑块视觉跟随），不会触发选中项变更，
- * 因此页面/列表内容不会在拖拽期间被反复重组。
- *
- * 只有位移越过 touch slop 才开始跟手：单纯点击不会先让滑块飞到手指、再吸附回目标分格，
- * 一次点击只产生一段滑块动画，省掉一整段透镜折射渲染，点击切换时明显更顺。
- *
- * 视觉复位写在 `finally` 中：手势被取消（例如 pointerInput 的 key 变化）时也能回位。
- * 而 [onSettle] 的提交刻意放在 `finally` 之后 —— 手势被打断时不应提交选中变更。
- *
- * @param itemCount 分段数量
- * @param onDragOffsetChange 手指 X 坐标变化（px）；null 表示拖拽结束
- * @param onSettle 松手后落在第几段（已夹在 `0 until itemCount`）
- * @param onPressChanged 按下 / 抬起状态变化，供调用方驱动按压动画
- * @param enabled 为 false 时不响应拖动（例如底栏在搜索展开态下交给 clickable 处理）
- */
 fun Modifier.glassSegmentDrag(
     itemCount: Int,
     onDragOffsetChange: (Float?) -> Unit,
@@ -325,11 +1132,9 @@ fun Modifier.glassSegmentDrag(
             onPressChanged(false)
         }
 
-        // 只有正常抬手才提交选中变更（手势被打断时不提交）
         if (released) {
             val slotWidthPx = (if (orientation == Orientation.Vertical) size.height else size.width).toFloat() / itemCount.toFloat()
             if (slotWidthPx > 0f) {
-                // 点击用按下位置判定目标分格，拖动用抬起位置
                 val settleX = if (dragging) currentX else downAxis
                 onSettle((settleX / slotWidthPx).toInt().coerceIn(0, itemCount - 1))
             }

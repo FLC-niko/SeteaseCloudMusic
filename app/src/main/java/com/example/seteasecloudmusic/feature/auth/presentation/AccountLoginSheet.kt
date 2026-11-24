@@ -81,7 +81,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.example.seteasecloudmusic.core.ui.components.BloomStrokeDefaults
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
+import com.example.seteasecloudmusic.core.ui.components.bloomStroke
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -778,14 +780,13 @@ private fun LiquidGlassSwitch(
         label = "liquidSwitchThumbOffset"
     )
     val thumbScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 850f),
+        targetValue = if (isPressed) 1.12f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 700f),
         label = "liquidSwitchThumbScale"
     )
 
     val baseModifier = modifier
         .size(trackWidth, trackHeight)
-        .clip(CircleShape)
         .clickable(
             enabled = enabled,
             interactionSource = interactionSource,
@@ -795,24 +796,37 @@ private fun LiquidGlassSwitch(
         }
 
     val decoratedModifier = if (backdrop != null) {
-        baseModifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { RoundedRectangle(trackHeight / 2) },
-            effects = {
-                vibrancy()
-                blur(1.2f.dp.toPx())
-                lens(
-                    refractionHeight = 2.2f.dp.toPx(),
-                    refractionAmount = 4.5f.dp.toPx(),
-                    chromaticAberration = false
-                )
-            },
-            onDrawSurface = {
-                drawRect(trackColor)
-            }
-        )
+        baseModifier
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedRectangle(trackHeight / 2) },
+                highlight = null,
+                effects = {
+                    vibrancy()
+                    blur(1.2f.dp.toPx())
+                    lens(
+                        refractionHeight = 2.2f.dp.toPx(),
+                        refractionAmount = 4.5f.dp.toPx(),
+                        chromaticAberration = false
+                    )
+                },
+                onDrawSurface = {
+                    drawRect(trackColor)
+                }
+            )
+            .bloomStroke(
+                cornerRadius = trackHeight / 2,
+                style = BloomStrokeDefaults.CompactControl,
+                extraDegrees = -45f
+            )
     } else {
-        baseModifier.background(trackColor, CircleShape)
+        baseModifier
+            .background(trackColor, CircleShape)
+            .bloomStroke(
+                cornerRadius = trackHeight / 2,
+                style = BloomStrokeDefaults.CompactControl,
+                extraDegrees = -45f
+            )
     }
 
     Box(
@@ -828,11 +842,25 @@ private fun LiquidGlassSwitch(
                     scaleY = thumbScale
                 }
                 .shadow(
-                    elevation = if (isPressed) 1.dp else 2.dp,
+                    elevation = if (isPressed) 3.dp else 2.dp,
                     shape = CircleShape,
                     clip = false
                 )
-                .background(Color.White, CircleShape)
+                .background(
+                    color = Color.White.copy(alpha = if (isPressed) 0.88f else 1f),
+                    shape = CircleShape
+                )
+                .then(
+                    if (isPressed) {
+                        Modifier.bloomStroke(
+                            cornerRadius = thumbSize / 2,
+                            style = BloomStrokeDefaults.DropletPill,
+                            extraDegrees = 90f
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
         )
     }
 }

@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -14,73 +13,80 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.RoundedRectangle
 
 /**
- * 液态玻璃（Liquid Glass）统一参数中心。
+ * 液态玻璃（Liquid Glass）统一光学参数中心，对齐 LSPosed v2.2.1 液态玻璃底栏效果。
  *
- * 本项目的玻璃质感由 [com.kyant.backdrop] 驱动，包含“模糊 + 鲜艳度 + 透镜折射”三段效果组合，
- * 以及表面半透明白色铺底。这些参数在底栏、搜索栏、迷你播放条、我的页卡片等十余处重复出现，
- * 因此统一收敛到这里，避免各处以魔法数字各写一遍导致质感漂移。
+ * 采用「vibrancy 提鲜 + 4.dp 高斯模糊 + 可选噪点抖动 + 边缘透镜折射 + 柔弥散外阴影 +
+ * 重力联动 3D SDF 棱边高光（BloomStroke）」构成完整物理玻璃质感。
  */
 object GlassDefaults {
-    /** 基础模糊半径：让底层的色块变成磨砂质感 */
-    val BlurRadius: Dp = 2.dp
+    /** 基础模糊半径：对齐 LSPosed 外框 RenderEffect sigma (4.dp * 0.45 ≈ 1.8.dp)，保持通透清澈 */
+    val BlurRadius: Dp = 1.8.dp
 
     /** 透镜折射高度（越大边缘的玻璃厚度感越强） */
-    val LensRefractionHeight: Dp = 16.dp
+    val LensRefractionHeight: Dp = 24.dp
 
-    /** 透镜折射量（越大内容扭曲越明显） */
-    val LensRefractionAmount: Dp = 32.dp
+    /** 透镜折射量（越大边缘内容扭曲越明显） */
+    val LensRefractionAmount: Dp = 24.dp
 
-    /** 表面白色铺底透明度：主导航条/卡片的主用值（调高透明度，更通透） */
-    const val SurfaceAlpha: Float = 0.20f
+    /** 表面半透明铺底透明度：主导航条/卡片的主用值 */
+    const val SurfaceAlpha: Float = 0.14f
 
-    /** 搜索栏、播放栏等面板（调高透明度） */
-    const val SurfaceAlphaBright: Float = 0.22f
+    /** 搜索栏、播放栏等亮面玻璃面板铺底透明度 */
+    const val SurfaceAlphaBright: Float = 0.20f
 
-    /** 玻璃边缘高光描边透明度 */
+    /** 兼容保留的描边透明度常量 */
     const val BorderAlpha: Float = 0.62f
+
+    /** 外阴影弥散半径 */
+    val OuterShadowRadius: Dp = 10.dp
+
+    /** 浅色背景玻璃外阴影透明度 */
+    const val OuterShadowAlphaLight: Float = 0.16f
+
+    /** 深色背景玻璃外阴影透明度 */
+    const val OuterShadowAlphaDark: Float = 0.10f
+
+    /** 模糊后像素防色带高频抖动系数 */
+    const val NoiseDitherCoeff: Float = 0.0045f
 }
 
 /**
- * 为任意 Modifier 叠加液态玻璃背景（模糊 + 鲜艳度 + 透镜折射 + 表面铺底）。
- *
- * 用法：
- * ```
- * Modifier
- *     .size(56.dp)
- *     .liquidGlass(backdrop = backdrop, cornerRadius = 28.dp)
- * ```
- *
- * @param backdrop 底层采样源，通常由 `rememberLayerBackdrop` 提供
- * @param cornerRadius G² 连续圆角半径（使用 [RoundedRectangle] 实现 squircle）
- * @param surfaceAlpha 表面白色铺底透明度；传 0f 表示只要折射不要铺底
- * @param refractionHeight 透镜折射高度
- * @param refractionAmount 透镜折射量
- * @param blurRadius 模糊半径
- * @param layerBlock 采样层的额外绘制变换（例如底栏按下放大时，需要让被采样的内容同步缩放）。
- *                   与外部 `graphicsLayer` 作用对象不同：后者作用于组件本身，前者作用于 backdrop 采样层。
+ * 钳制透镜折射高度，确保高度不超过组件短边 40%（`0.40 * minDimension < 0.50 * minDimension`），
+ * 防止较窄胶囊条因中心线处 `sign(centeredCoord.y)` 突变出现横向折痕。
+ */
+internal fun clampLensRefractionHeightPx(desiredPx: Float, minDimensionPx: Float): Float {
+    if (desiredPx <= 0f || minDimensionPx <= 0f) return 0f
+    return minOf(desiredPx, minDimensionPx * 0.40f)
+}
+
+/**
+ * 为任意 Modifier 叠加 LSPosed 风格液态玻璃背景：
+ * 色彩提鲜 + 高斯模糊 + 可选防色带噪点 + 透镜折射 + 柔阴影 + 3D 重力棱边高光（BloomStroke）。
  */
 fun Modifier.liquidGlass(
     backdrop: Backdrop,
@@ -89,45 +95,103 @@ fun Modifier.liquidGlass(
     refractionHeight: Dp = GlassDefaults.LensRefractionHeight,
     refractionAmount: Dp = GlassDefaults.LensRefractionAmount,
     blurRadius: Dp = GlassDefaults.BlurRadius,
-    layerBlock: (GraphicsLayerScope.() -> Unit)? = null
-): Modifier = this.drawBackdrop(
-    backdrop = backdrop,
-    shape = { RoundedRectangle(cornerRadius) },
-    effects = {
-        vibrancy()
-        blur(blurRadius.toPx())
-        lens(refractionHeight.toPx(), refractionAmount.toPx())
-    },
-    layerBlock = layerBlock ?: {},
-    onDrawSurface = {
-        if (surfaceAlpha > 0f) {
-            val rPx = cornerRadius.toPx()
-            drawRoundRect(
-                color = Color.White.copy(alpha = surfaceAlpha),
-                cornerRadius = CornerRadius(rPx, rPx)
+    layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
+    isDarkSurface: Boolean = false,
+    surfaceColor: Color = if (isDarkSurface) Color(0xFF1C1C24) else Color(0xFFF7F7FA),
+    enableShadow: Boolean = true,
+    shadowRadius: Dp = GlassDefaults.OuterShadowRadius,
+    enableBloomStroke: Boolean = true,
+    bloomExtraDegrees: Float = -45f,
+    bloomStyle: BloomStrokeStyle = if (isDarkSurface) BloomStrokeDefaults.OuterDark else BloomStrokeDefaults.OuterLight,
+    enableNoiseDither: Boolean = false,
+    depthEffect: Boolean = false,
+    chromaticAberration: Boolean = false,
+    exportedBackdrop: LayerBackdrop? = null
+): Modifier {
+    val shadowSpec = if (enableShadow && shadowRadius > 0.dp) {
+        Shadow(
+            radius = shadowRadius,
+            offset = DpOffset(0.dp, 2.dp),
+            color = Color.Black.copy(
+                alpha = if (isDarkSurface) GlassDefaults.OuterShadowAlphaDark else GlassDefaults.OuterShadowAlphaLight
             )
-        }
-    }
-)
+        )
+    } else null
+
+    return this
+        .drawBackdrop(
+            backdrop = backdrop,
+            shape = { RoundedRectangle(cornerRadius) },
+            highlight = null,
+            shadow = if (shadowSpec != null) ({ shadowSpec }) else null,
+            effects = {
+                vibrancy()
+                if (blurRadius > 0.dp) {
+                    blur(blurRadius.toPx())
+                }
+                if (enableNoiseDither) {
+                    noiseDither(GlassDefaults.NoiseDitherCoeff)
+                }
+                if (refractionHeight > 0.dp && refractionAmount > 0.dp) {
+                    val rawHeightPx = refractionHeight.toPx()
+                    val effectiveHeightPx = clampLensRefractionHeightPx(rawHeightPx, size.minDimension)
+                    if (effectiveHeightPx > 0f) {
+                        val scaleRatio = (effectiveHeightPx / rawHeightPx).coerceIn(0f, 1f)
+                        lens(
+                            refractionHeight = effectiveHeightPx,
+                            refractionAmount = refractionAmount.toPx() * scaleRatio,
+                            depthEffect = depthEffect,
+                            chromaticAberration = chromaticAberration
+                        )
+                    }
+                }
+            },
+            layerBlock = layerBlock,
+            exportedBackdrop = exportedBackdrop,
+            onDrawSurface = {
+                val effectiveAlpha = if (isRenderEffectSupported()) {
+                    surfaceAlpha
+                } else {
+                    maxOf(surfaceAlpha, if (isDarkSurface) 0.72f else 0.76f)
+                }
+                if (effectiveAlpha > 0f) {
+                    drawRect(color = surfaceColor.copy(alpha = effectiveAlpha))
+                }
+            }
+        )
+        .then(
+            if (enableBloomStroke) {
+                Modifier.bloomStroke(
+                    cornerRadius = cornerRadius,
+                    style = bloomStyle,
+                    extraDegrees = bloomExtraDegrees
+                )
+            } else {
+                Modifier
+            }
+        )
+}
 
 /**
- * 与 [liquidGlass] 配套的高光描边：模拟玻璃边缘的棱边反光。
+ * 与 [liquidGlass] 配套的 3D 重力高光棱边描边（升级自原先平铺白边，接入全局重力扫光）。
  */
 fun Modifier.glassBorder(
     cornerRadius: Dp,
     width: Dp = 1.dp,
-    color: Color = Color.White.copy(alpha = GlassDefaults.BorderAlpha)
-): Modifier = this.border(width, color, RoundedCornerShape(cornerRadius))
+    color: Color = Color.White.copy(alpha = 0.14f),
+    isDarkSurface: Boolean = false,
+    extraDegrees: Float = -45f
+): Modifier {
+    val base = if (isDarkSurface) BloomStrokeDefaults.OuterDark else BloomStrokeDefaults.OuterLight
+    return this.bloomStroke(
+        cornerRadius = cornerRadius,
+        style = base.copy(strokeWidth = width, strokeColor = color),
+        extraDegrees = extraDegrees
+    )
+}
 
 /**
- * 液态玻璃卡片容器：玻璃背景 + 可选高光描边 + 内容槽位。
- *
- * 这是「我的」页各卡片与播放列表 Tab 的统一外壳，替代原先散落在页面内的 drawBackdrop 重复写法。
- *
- * @param cornerRadius 圆角半径
- * @param surfaceAlpha 表面铺底透明度
- * @param borderWidth 描边宽度；传 0.dp 可关闭描边
- * @param content 卡片内容
+ * 液态玻璃卡片容器：玻璃背景 + 防色带噪点 + 重力 3D 棱边高光 + 可选指尖聚光灯 + 内容槽位。
  */
 @Composable
 fun GlassSurface(
@@ -136,24 +200,34 @@ fun GlassSurface(
     cornerRadius: Dp = 24.dp,
     surfaceAlpha: Float = GlassDefaults.SurfaceAlpha,
     borderWidth: Dp = 1.dp,
+    isDarkSurface: Boolean = false,
+    interactiveHighlight: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val baseBloom = if (isDarkSurface) BloomStrokeDefaults.OuterDark else BloomStrokeDefaults.OuterLight
     Box(
         modifier = modifier
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
-                surfaceAlpha = surfaceAlpha
+                surfaceAlpha = surfaceAlpha,
+                isDarkSurface = isDarkSurface,
+                enableShadow = true,
+                enableBloomStroke = borderWidth > 0.dp,
+                bloomStyle = if (borderWidth > 0.dp) baseBloom.copy(strokeWidth = borderWidth) else baseBloom,
+                enableNoiseDither = true
             )
-            .then(
-                if (borderWidth > 0.dp) Modifier.glassBorder(cornerRadius, borderWidth) else Modifier
+            .interactiveGlassHighlight(
+                shape = RoundedRectangle(cornerRadius),
+                enabled = interactiveHighlight,
+                isDarkSurface = isDarkSurface
             ),
         content = content
     )
 }
 
 /**
- * 圆形液态玻璃图标按钮（折射 + 模糊 + 鲜艳度 + 高光描边 + 按压微缩回弹）。
+ * 圆形液态玻璃图标按钮（折射 + 模糊 + 鲜艳度 + 重力 3D 棱边高光 + 指尖聚光灯 + 按压微缩回弹）。
  *
  * 适用于顶部返回、更多菜单等小尺寸圆形悬浮按钮；当 [backdrop] 为空时平滑退化为半透明磨砂圆钮。
  */
@@ -165,6 +239,7 @@ fun LiquidGlassCircleButton(
     size: Dp = 38.dp,
     isDarkSurface: Boolean = false,
     enabled: Boolean = true,
+    interactiveHighlight: Boolean = true,
     contentDescription: String? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -180,6 +255,11 @@ fun LiquidGlassCircleButton(
     )
     val indication = LocalIndication.current
     val radius = size / 2
+    val compactBloom = if (isDarkSurface) {
+        BloomStrokeDefaults.CompactControl.copy(lightSurfaceSubtleOutlineAlpha = 0f)
+    } else {
+        BloomStrokeDefaults.CompactControl
+    }
 
     Box(
         modifier = modifier
@@ -197,32 +277,39 @@ fun LiquidGlassCircleButton(
             }
             .then(
                 if (backdrop != null) {
-                    Modifier
-                        .liquidGlass(
-                            backdrop = backdrop,
-                            cornerRadius = radius,
-                            surfaceAlpha = if (isDarkSurface) 0.14f else 0.42f,
-                            blurRadius = 1.5.dp,
-                            refractionHeight = 8.dp,
-                            refractionAmount = 16.dp
-                        )
-                        .border(
-                            width = 0.75.dp,
-                            color = Color.White.copy(alpha = if (isDarkSurface) 0.34f else 0.78f),
-                            shape = CircleShape
-                        )
+                    Modifier.liquidGlass(
+                        backdrop = backdrop,
+                        cornerRadius = radius,
+                        surfaceAlpha = if (isDarkSurface) 0.14f else 0.22f,
+                        blurRadius = GlassDefaults.BlurRadius,
+                        refractionHeight = 10.dp,
+                        refractionAmount = 14.dp,
+                        isDarkSurface = isDarkSurface,
+                        enableShadow = true,
+                        shadowRadius = 8.dp,
+                        enableBloomStroke = true,
+                        bloomStyle = compactBloom
+                    )
                 } else {
                     Modifier
                         .background(
-                            color = Color.White.copy(alpha = if (isDarkSurface) 0.16f else 0.70f),
+                            color = if (isDarkSurface) {
+                                Color(0xFF1C1C24).copy(alpha = 0.72f)
+                            } else {
+                                Color.White.copy(alpha = 0.74f)
+                            },
                             shape = CircleShape
                         )
-                        .border(
-                            width = 0.5.dp,
-                            color = Color.White.copy(alpha = if (isDarkSurface) 0.22f else 0.85f),
-                            shape = CircleShape
+                        .bloomStroke(
+                            cornerRadius = radius,
+                            style = compactBloom
                         )
                 }
+            )
+            .interactiveGlassHighlight(
+                shape = CircleShape,
+                enabled = enabled && interactiveHighlight,
+                isDarkSurface = isDarkSurface
             )
             .clip(CircleShape)
             .indication(interactionSource = interactionSource, indication = indication)

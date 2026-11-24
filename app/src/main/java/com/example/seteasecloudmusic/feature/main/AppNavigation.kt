@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -109,13 +110,17 @@ import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import com.example.seteasecloudmusic.core.ui.components.liquidGlassPanel
 import com.example.seteasecloudmusic.core.ui.components.GlassDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
-import com.example.seteasecloudmusic.core.ui.components.GlassThumb
-import com.example.seteasecloudmusic.core.ui.components.glassSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassActiveDroplet
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassActiveTabsRecorder
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassDualColorTabs
+import com.example.seteasecloudmusic.core.ui.components.LiquidSegmentState
+import com.example.seteasecloudmusic.core.ui.components.interactiveGlassHighlight
 import com.example.seteasecloudmusic.core.ui.components.liquidGlass
-import com.example.seteasecloudmusic.core.ui.components.rememberGlassThumbGeometry
+import com.example.seteasecloudmusic.core.ui.components.liquidSegmentDrag
+import com.example.seteasecloudmusic.core.ui.components.rememberLiquidSegmentState
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -228,58 +233,29 @@ private class MiniPlayerBoundsHolder(
     var artwork: Rect? = null
 )
 
-// 左侧主导航条内部分段滑块
-@Composable
-private fun LeftBarGlassThumb(
-    backdrop: Backdrop,
-    containerWidth: Dp,
-    itemCount: Int,
-    selectedIndex: Int,
-    dragOffsetX: State<Float?>,
-    barHeight: Dp,
-    cornerRadius: Dp,
-    alphaProvider: () -> Float,
-    modifier: Modifier = Modifier
-) {
-    val geometry = rememberGlassThumbGeometry(
-        containerWidth = containerWidth,
-        itemCount = itemCount,
-        selectedIndex = selectedIndex,
-        dragOffsetX = dragOffsetX.value,
-        barHeight = barHeight,
-        cornerRadius = cornerRadius
-    )
-    GlassThumb(
-        backdrop = backdrop,
-        geometry = geometry,
-        alphaProvider = alphaProvider,
-        surfaceAlpha = GlassSliderDefaults.ThumbSurfaceAlpha,
-        modifier = modifier
-    )
-}
-
 /** 独立可跳过的液态玻璃容器：隔绝外层交互状态切换导致的重组，防止 backdrop 重建 ShapeProvider。 */
 @Composable
 private fun LeftBarLiquidGlassContainer(
     backdrop: Backdrop,
     cornerRadius: Dp,
-    mainBarProgressAnimation: Animatable<Float, *>,
+    layerBlock: GraphicsLayerScope.() -> Unit,
+    highlightEnabled: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val barShape = remember(cornerRadius) { RoundedRectangle(cornerRadius) }
     Box(
         modifier = modifier
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
+                bloomExtraDegrees = -45f,
                 // 按下放大时同步缩放被采样的内容层，避免折射采样与组件本体错位
-                layerBlock = {
-                    val progress = mainBarProgressAnimation.value
-                    val maxScale = (size.width + 8f.dp.toPx()) / size.width
-                    val scale = lerp(1f, maxScale, progress)
-                    scaleX = scale
-                    scaleY = scale
-                }
+                layerBlock = layerBlock
+            )
+            .interactiveGlassHighlight(
+                shape = barShape,
+                enabled = highlightEnabled
             )
     ) {
         Box(
@@ -292,18 +268,177 @@ private fun LeftBarLiquidGlassContainer(
 }
 
 @Composable
+private fun BottomBarTabsLayer(
+    items: List<BottomNavItem>,
+    normalLeftWidth: Dp,
+    ballSize: Dp,
+    lastActiveTab: Int,
+    selectedIndex: Int,
+    isSearchExpanded: Boolean,
+    searchProgressState: State<Float>,
+    compactProgress: Animatable<Float, *>,
+    isSelectedLayer: Boolean
+) {
+    val slotWidth = normalLeftWidth / items.size
+    val accentRed = Color(0xFFFA233B)
+    val darkTint = Color(0xFF1C1C1E)
+    Box(modifier = Modifier.fillMaxSize()) {
+        items.forEachIndexed { index, item ->
+            val isActiveTab = index == lastActiveTab
+            val normalCenterX = slotWidth * (index + 0.5f)
+            val targetCenterX = ballSize / 2
+            val normalCenterY = 18.dp
+            val targetCenterY = ballSize / 2
+
+            val iconColor: Color
+            val iconRes: Int
+            if (isSelectedLayer) {
+                iconColor = accentRed
+                iconRes = item.selectedIconRes
+            } else {
+                val collapseProgress = maxOf(searchProgressState.value, compactProgress.value)
+                val collapsedSelected = isActiveTab && selectedIndex == index && !isSearchExpanded
+                val blendFraction = if (collapsedSelected) {
+                    ((collapseProgress - 0.15f) / 0.45f).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                iconColor = if (blendFraction > 0f) lerpColor(darkTint, accentRed, blendFraction) else darkTint
+                iconRes = if (collapsedSelected && collapseProgress > 0.35f) item.selectedIconRes else item.iconRes
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset {
+                        val collapseProgress = maxOf(
+                            searchProgressState.value,
+                            compactProgress.value
+                        )
+                        val currentCenterX = if (isActiveTab) {
+                            lerpDp(normalCenterX, targetCenterX, collapseProgress)
+                        } else {
+                            normalCenterX
+                        }
+                        val currentCenterY = if (isActiveTab) {
+                            lerpDp(normalCenterY, targetCenterY, collapseProgress)
+                        } else {
+                            normalCenterY
+                        }
+                        IntOffset(
+                            (currentCenterX - 11.dp).roundToPx(),
+                            (currentCenterY - 11.dp).roundToPx()
+                        )
+                    }
+                    .size(22.dp)
+                    .drawWithContent {
+                        val iconAlpha = if (isActiveTab) {
+                            1f
+                        } else {
+                            val collapseProgress = maxOf(
+                                searchProgressState.value,
+                                compactProgress.value
+                            )
+                            (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                        }
+                        if (iconAlpha > 0.001f) {
+                            drawContent()
+                        }
+                    }
+                    .graphicsLayer {
+                        alpha = if (isActiveTab) {
+                            1f
+                        } else {
+                            val collapseProgress = maxOf(
+                                searchProgressState.value,
+                                compactProgress.value
+                            )
+                            (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = iconRes),
+                    contentDescription = if (isSelectedLayer) null else item.title,
+                    tint = iconColor,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (normalCenterX - 28.dp).roundToPx(),
+                            33.dp.roundToPx()
+                        )
+                    }
+                    .width(56.dp)
+                    .drawWithContent {
+                        val collapseProgress = maxOf(
+                            searchProgressState.value,
+                            compactProgress.value
+                        )
+                        val labelAlpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                        if (labelAlpha > 0.001f) {
+                            drawContent()
+                        }
+                    }
+                    .graphicsLayer {
+                        val collapseProgress = maxOf(
+                            searchProgressState.value,
+                            compactProgress.value
+                        )
+                        alpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = item.title,
+                    color = if (isSelectedLayer) accentRed else darkTint,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = if (isSelectedLayer) FontWeight.SemiBold else FontWeight.Medium
+                    ),
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SearchButtonLiquidGlassContainer(
     backdrop: Backdrop,
     cornerRadius: Dp,
+    pressProgressAnimation: Animatable<Float, *>,
+    highlightEnabled: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val buttonShape = remember(cornerRadius) { RoundedRectangle(cornerRadius) }
     Box(
-        modifier = modifier.liquidGlass(
-            backdrop = backdrop,
-            cornerRadius = cornerRadius,
-            surfaceAlpha = GlassDefaults.SurfaceAlphaBright
-        ),
+        modifier = modifier
+            .liquidGlass(
+                backdrop = backdrop,
+                cornerRadius = cornerRadius,
+                surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                bloomExtraDegrees = -45f,
+                layerBlock = {
+                    val progress = pressProgressAnimation.value.coerceIn(0f, 1f)
+                    if (size.width > 0f) {
+                        val maxScale = (size.width + 6f.dp.toPx()) / size.width
+                        val scale = lerp(1f, maxScale, progress)
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                }
+            )
+            .interactiveGlassHighlight(
+                shape = buttonShape,
+                enabled = highlightEnabled
+            ),
         content = content
     )
 }
@@ -486,11 +621,7 @@ fun AppNavigation(
 
     // 背景底色会参与毛玻璃采样，决定整个导航栏的基础明度。
     val backgroundColor = Color.White
-    
-    // 主导航栏按下/抬起时的缩放动画进度。
-    val mainBarAnimationScope = rememberCoroutineScope()
-    val mainBarProgressAnimation = remember { Animatable(0f) }
-    
+
     // 右侧独立搜索按钮使用单独的动画状态，避免和主导航条互相影响。
     val searchAnimationScope = rememberCoroutineScope()
     val searchProgressAnimation = remember { Animatable(0f) }
@@ -498,19 +629,16 @@ fun AppNavigation(
     // 搜索展开后的关闭按钮按下动画状态
     val closeAnimationScope = rememberCoroutineScope()
     val closeProgressAnimation = remember { Animatable(0f) }
-    
+
     // 缩小底栏接收点击时的弹跳程度，增加 stiffness 使其更紧致，缩小弹跳幅度
     val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
-    
+
     val backdrop = rememberLayerBackdrop{
         drawRect(backgroundColor)
         drawContent()
     }
-
-    // 记录当前手指 X 坐标准备拖拽交互。
-    // 刻意保留 State 对象本体、不用 by 解构：解构会在 AppNavigation 作用域读取 .value，
-    // 导致每次指针移动都重组整个导航外壳；改由 GlassSlider 内部按需读取。
-    val dragOffsetXState = remember { mutableStateOf<Float?>(null) }
+    val bottomTabsBackdrop = rememberLayerBackdrop()
+    val combinedTabBackdrop = rememberCombinedBackdrop(backdrop, bottomTabsBackdrop)
 
     // 记录当前选中的导航项：
     // 0~2 对应左侧主导航条，3 对应右侧搜索按钮。
@@ -522,6 +650,11 @@ fun AppNavigation(
             lastActiveTab = selectedIndexState.intValue
         }
     }
+
+    val leftSegmentState = rememberLiquidSegmentState(
+        itemCount = MainNavItems.size,
+        selectedIndex = lastActiveTab
+    )
 
     val isSearchExpanded by remember {
         derivedStateOf { selectedIndexState.intValue == SEARCH_PAGE_INDEX }
@@ -733,6 +866,42 @@ fun AppNavigation(
             }
 
             Box(modifier = Modifier.fillMaxSize()) {
+                val thumbAlphaProvider: () -> Float = {
+                    if (isSearchExpanded) {
+                        0f
+                    } else {
+                        val collapseProgress = maxOf(
+                            searchProgressState.value,
+                            navigationScroll.compactProgress.value
+                        )
+                        val thumbExpansionAlpha = ((1f - collapseProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+                        sliderAlphaState.value * thumbExpansionAlpha
+                    }
+                }
+
+                val outerBarLayerBlock: GraphicsLayerScope.() -> Unit = {
+                    val progress = leftSegmentState.pressProgress.value.coerceIn(0f, 1f)
+                    if (size.width > 0f) {
+                        val maxScale = (size.width + 10f.dp.toPx()) / size.width
+                        val scale = lerp(1f, maxScale, progress)
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                }
+
+                val selectedTabsLayer: @Composable BoxScope.() -> Unit = {
+                    BottomBarTabsLayer(
+                        items = MainNavItems,
+                        normalLeftWidth = normalLeftWidth,
+                        ballSize = ballSize,
+                        lastActiveTab = lastActiveTab,
+                        selectedIndex = selectedIndexState.intValue,
+                        isSearchExpanded = isSearchExpanded,
+                        searchProgressState = searchProgressState,
+                        compactProgress = navigationScroll.compactProgress,
+                        isSelectedLayer = true
+                    )
+                }
 
                 // ============ 左侧主导航条 (包含主页、电台、我的，展开搜索或页面下滚时两边同步缩减为球状，只保留当前页图标并居中) ============
                 Box(
@@ -753,14 +922,6 @@ fun AppNavigation(
                             }
                         }
                         .fillMaxHeight().testTag("bottom_navigation_button")
-                        .graphicsLayer {
-                            // 按下时整体轻微放大，模拟液态玻璃被“压出张力”的感觉。缩小底栏放大比例。
-                            val progress = mainBarProgressAnimation.value
-                            val maxScale = (size.width + 8f.dp.toPx()) / size.width
-                            val scale = lerp(1f, maxScale, progress)
-                            scaleX = scale
-                            scaleY = scale
-                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -773,9 +934,10 @@ fun AppNavigation(
                                 navigationScroll.expand()
                             }
                         }
-                        .glassSegmentDrag(
+                        .liquidSegmentDrag(
+                            state = leftSegmentState,
                             itemCount = MainNavItems.size,
-                            onDragOffsetChange = { dragOffsetXState.value = it },
+                            selectedIndex = lastActiveTab,
                             onSettle = {
                                 if (selectedIndexState.intValue == it) {
                                     // 重复点击当前已选中的 Tab 时收起歌单与艺人页
@@ -791,11 +953,6 @@ fun AppNavigation(
                                 selectedIndexState.intValue = it
                                 lastActiveTab = it
                             },
-                            onPressChanged = { pressed ->
-                                mainBarAnimationScope.launch {
-                                    mainBarProgressAnimation.animateTo(if (pressed) 1f else 0f, animationSpec)
-                                }
-                            },
                             // 搜索展开或处于紧凑态时底栏交给 clickable 处理（点击展开），不响应滑动切换
                             enabled = isLeftBarDragEnabled
                         )
@@ -803,150 +960,59 @@ fun AppNavigation(
                     LeftBarLiquidGlassContainer(
                         backdrop = backdrop,
                         cornerRadius = cornerRadius,
-                        mainBarProgressAnimation = mainBarProgressAnimation,
+                        layerBlock = outerBarLayerBlock,
+                        highlightEnabled = isLeftBarDragEnabled,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        LeftBarGlassThumb(
-                            backdrop = backdrop,
+                        // 静息双色精确切割：滑块外黑色线框，滑块内高亮红填充
+                        LiquidGlassDualColorTabs(
+                            state = leftSegmentState,
                             containerWidth = normalLeftWidth,
-                            itemCount = MainNavItems.size,
-                            selectedIndex = lastActiveTab,
-                            dragOffsetX = dragOffsetXState,
-                            barHeight = navBarHeight,
+                            containerHeight = navBarHeight,
                             cornerRadius = cornerRadius,
-                            alphaProvider = {
-                                if (isSearchExpanded) {
-                                    0f
-                                } else {
-                                    val collapseProgress = maxOf(
-                                        searchProgressState.value,
-                                        navigationScroll.compactProgress.value
-                                    )
-                                    val thumbExpansionAlpha = ((1f - collapseProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
-                                    sliderAlphaState.value * thumbExpansionAlpha
-                                }
+                            alphaProvider = thumbAlphaProvider,
+                            unselectedContent = {
+                                BottomBarTabsLayer(
+                                    items = MainNavItems,
+                                    normalLeftWidth = normalLeftWidth,
+                                    ballSize = ballSize,
+                                    lastActiveTab = lastActiveTab,
+                                    selectedIndex = selectedIndexState.intValue,
+                                    isSearchExpanded = isSearchExpanded,
+                                    searchProgressState = searchProgressState,
+                                    compactProgress = navigationScroll.compactProgress,
+                                    isSelectedLayer = false
+                                )
                             },
-                            modifier = Modifier.align(Alignment.CenterStart)
+                            selectedContent = selectedTabsLayer
                         )
-
-                        val slotWidth = normalLeftWidth / MainNavItems.size
-                        val isSearchUnderHalf by remember {
-                            derivedStateOf { searchProgressState.value < 0.5f }
-                        }
-
-                        MainNavItems.forEachIndexed { index, item ->
-                            val isActiveTab = index == lastActiveTab
-                            val isSelected = selectedIndexState.intValue == index && !isSearchExpanded
-                            val normalCenterX = slotWidth * (index + 0.5f)
-                            val targetCenterX = ballSize / 2
-                            val normalCenterY = 18.dp
-                            val targetCenterY = ballSize / 2
-                            val targetColor = if (isSelected) Color(0xFFFA233B) else Color.DarkGray
-                            val iconColor = if (isActiveTab && isSearchExpanded) {
-                                lerpColor(targetColor, Color.DarkGray, searchProgressState.value)
-                            } else {
-                                targetColor
-                            }
-                            val iconRes = if (isSelected && isSearchUnderHalf) item.selectedIconRes else item.iconRes
-
-                            Box(
-                                modifier = Modifier
-                                    .offset {
-                                        val collapseProgress = maxOf(
-                                            searchProgressState.value,
-                                            navigationScroll.compactProgress.value
-                                        )
-                                        val currentCenterX = if (isActiveTab) {
-                                            lerpDp(normalCenterX, targetCenterX, collapseProgress)
-                                        } else {
-                                            normalCenterX
-                                        }
-                                        val currentCenterY = if (isActiveTab) {
-                                            lerpDp(normalCenterY, targetCenterY, collapseProgress)
-                                        } else {
-                                            normalCenterY
-                                        }
-                                        IntOffset(
-                                            (currentCenterX - 11.dp).roundToPx(),
-                                            (currentCenterY - 11.dp).roundToPx()
-                                        )
-                                    }
-                                    .size(22.dp)
-                                    .drawWithContent {
-                                        val iconAlpha = if (isActiveTab) {
-                                            1f
-                                        } else {
-                                            val collapseProgress = maxOf(
-                                                searchProgressState.value,
-                                                navigationScroll.compactProgress.value
-                                            )
-                                            (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
-                                        }
-                                        if (iconAlpha > 0.001f) {
-                                            drawContent()
-                                        }
-                                    }
-                                    .graphicsLayer {
-                                        alpha = if (isActiveTab) {
-                                            1f
-                                        } else {
-                                            val collapseProgress = maxOf(
-                                                searchProgressState.value,
-                                                navigationScroll.compactProgress.value
-                                            )
-                                            (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = iconRes),
-                                    contentDescription = item.title,
-                                    tint = iconColor,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-
-                            val isLabelSelected = selectedIndexState.intValue == index
-                            val itemColor = if (isLabelSelected) Color(0xFFFA233B) else Color.DarkGray
-
-                            Box(
-                                modifier = Modifier
-                                    .offset {
-                                        IntOffset(
-                                            (normalCenterX - 28.dp).roundToPx(),
-                                            33.dp.roundToPx()
-                                        )
-                                    }
-                                    .width(56.dp)
-                                    .drawWithContent {
-                                        val collapseProgress = maxOf(
-                                            searchProgressState.value,
-                                            navigationScroll.compactProgress.value
-                                        )
-                                        val labelAlpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
-                                        if (labelAlpha > 0.001f) {
-                                            drawContent()
-                                        }
-                                    }
-                                    .graphicsLayer {
-                                        val collapseProgress = maxOf(
-                                            searchProgressState.value,
-                                            navigationScroll.compactProgress.value
-                                        )
-                                        alpha = (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = item.title,
-                                    color = itemColor,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
-                                    maxLines = 1
-                                )
-                            }
-                        }
                     }
+
+                    // 离屏激活录制层（同级节点）：按压/拖动时将柔和玻璃底板与高亮红 Tab 写入 bottomTabsBackdrop
+                    LiquidGlassActiveTabsRecorder(
+                        pageBackdrop = backdrop,
+                        activeTabsBackdrop = bottomTabsBackdrop,
+                        state = leftSegmentState,
+                        containerWidth = normalLeftWidth,
+                        containerHeight = navBarHeight,
+                        cornerRadius = cornerRadius,
+                        layerBlock = outerBarLayerBlock,
+                        alphaProvider = thumbAlphaProvider,
+                        modifier = Modifier.align(Alignment.TopStart),
+                        selectedContent = selectedTabsLayer
+                    )
+
+                    // 激活态 3D 放大镜水滴滑块（同级兄弟节点，不被外框裁剪，折射下方高亮图标/文字与玻璃表面）
+                    LiquidGlassActiveDroplet(
+                        combinedBackdrop = combinedTabBackdrop,
+                        state = leftSegmentState,
+                        containerWidth = normalLeftWidth,
+                        containerHeight = navBarHeight,
+                        cornerRadius = cornerRadius,
+                        maxPressScale = GlassSliderDefaults.MaxPressScale,
+                        alphaProvider = thumbAlphaProvider,
+                        modifier = Modifier.align(Alignment.TopStart)
+                    )
                 }
 
                 // ============ 搜索按钮 / 展开成长条的搜索栏 (从右圆球缓缓向左移动并展开成长条) ============
@@ -985,13 +1051,6 @@ fun AppNavigation(
                             }
                         }
                         .fillMaxHeight().testTag("bottom_search_button")
-                        .graphicsLayer {
-                            val progress = searchProgressAnimation.value
-                            val maxScale = (size.width + 4f.dp.toPx()) / size.width
-                            val scale = lerp(1f, maxScale, progress)
-                            scaleX = scale
-                            scaleY = scale
-                        }
                         .clickable(
                             interactionSource = searchInteractionSource,
                             indication = null,
@@ -1005,6 +1064,8 @@ fun AppNavigation(
                     SearchButtonLiquidGlassContainer(
                         backdrop = backdrop,
                         cornerRadius = cornerRadius,
+                        pressProgressAnimation = searchProgressAnimation,
+                        highlightEnabled = !isSearchExpanded,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         val showSearchInput by remember {
@@ -1085,19 +1146,31 @@ fun AppNavigation(
                         modifier = Modifier
                             .offset { IntOffset((totalWidth - ballSize).roundToPx(), 0) }
                             .size(ballSize)
-                            .graphicsLayer {
-                                val progress = closeProgressAnimation.value
-                                val maxScale = (size.width + 4f.dp.toPx()) / size.width
-                                val pressScale = lerp(1f, maxScale, progress)
-                                val appearScale = searchProgressState.value.coerceIn(0f, 1f)
-                                scaleX = appearScale * pressScale
-                                scaleY = appearScale * pressScale
-                                alpha = appearScale
+                            .drawWithContent {
+                                if (searchProgressState.value > 0.01f) {
+                                    drawContent()
+                                }
                             }
                             .liquidGlass(
                                 backdrop = backdrop,
                                 cornerRadius = cornerRadius,
-                                surfaceAlpha = GlassDefaults.SurfaceAlphaBright
+                                surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                                bloomExtraDegrees = -45f,
+                                layerBlock = {
+                                    val progress = closeProgressAnimation.value.coerceIn(0f, 1f)
+                                    val appearScale = searchProgressState.value.coerceIn(0f, 1f)
+                                    alpha = appearScale
+                                    if (appearScale > 0.01f && size.width > 0f) {
+                                        val maxScale = (size.width + 4f.dp.toPx()) / size.width
+                                        val pressScale = lerp(1f, maxScale, progress)
+                                        scaleX = appearScale * pressScale
+                                        scaleY = appearScale * pressScale
+                                    }
+                                }
+                            )
+                            .interactiveGlassHighlight(
+                                shape = RoundedRectangle(cornerRadius),
+                                enabled = isSearchExpanded
                             )
                             .clickable(
                                 interactionSource = closeInteractionSource,
@@ -2386,9 +2459,13 @@ internal fun SearchMiniPlayerBar(
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
-                surfaceAlpha = GlassDefaults.SurfaceAlphaBright
+                surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                enableNoiseDither = true
             )
-            .clip(RoundedCornerShape(cornerRadius))
+            .interactiveGlassHighlight(
+                shape = RoundedRectangle(cornerRadius),
+                enabled = hasTrack && !isTransitioning && enabled
+            )
             // 移除默认水波纹（灰色），使用无 indication 的点击，避免按压变灰
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
