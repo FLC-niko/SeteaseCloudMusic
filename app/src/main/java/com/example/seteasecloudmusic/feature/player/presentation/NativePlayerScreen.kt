@@ -14,14 +14,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -31,12 +28,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -51,20 +45,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -101,14 +87,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -117,16 +101,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlaybackMode
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
-import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
+import com.example.seteasecloudmusic.feature.mine.presentation.TrackActionSheet
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -269,6 +252,7 @@ internal fun NativePlayerContent(
         if (!hasTrack) {
             currentPage = NativePlayerPage.ALBUM
             lyricsControlsVisible = true
+            showMoreSheet = false
         }
     }
 
@@ -307,25 +291,17 @@ internal fun NativePlayerContent(
 
     // 折叠屏与大屏分栏自适应
     val moreSheet: @Composable () -> Unit = {
-        if (showMoreSheet) {
-            AppleMusicMoreActionsSheet(
+        if (showMoreSheet && track != null) {
+            val resolvedDetails = rememberResolvedTrackAudioDetails(
                 track = track,
-                isStarred = isStarred,
-                playbackMode = playbackState.playbackMode,
                 currentQuality = currentAudioQuality,
                 isLocalTrack = isLocalTrack,
                 parsedLyrics = parsedLyrics,
-                queueSource = playbackState.queueSource,
-                onToggleStar = { track?.let { onToggleStar(it.id) } },
-                onSelectPlaybackMode = { mode -> onSetMode(mode) },
-                onOpenQuality = {
-                    showMoreSheet = false
-                    if (!isLocalTrack) showQualitySheet = true
-                },
-                onOpenQueue = {
-                    showMoreSheet = false
-                    showQueueSheet = true
-                },
+                queueSource = playbackState.queueSource
+            )
+            TrackActionSheet(
+                track = track,
+                audioDetails = resolvedDetails,
                 onDismiss = { showMoreSheet = false }
             )
         }
@@ -1156,403 +1132,6 @@ internal fun NativePlayerContent(
     }
 }
 
-/**
- * Apple Music 风格更多菜单（••• 按钮弹出：曲目收藏、播放模式切换、音质与待播入口、可下拉展开的音频详细信息）
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun AppleMusicMoreActionsSheet(
-    track: Track?,
-    isStarred: Boolean,
-    playbackMode: PlaybackMode,
-    currentQuality: OnlineAudioQuality,
-    isLocalTrack: Boolean,
-    parsedLyrics: ParsedLyrics = ParsedLyrics(emptyList()),
-    queueSource: String? = null,
-    onToggleStar: () -> Unit,
-    onSelectPlaybackMode: (PlaybackMode) -> Unit,
-    onOpenQuality: () -> Unit,
-    onOpenQueue: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    var isDetailsExpanded by rememberSaveable(track?.id) { mutableStateOf(false) }
-    val chevronRotation by animateFloatAsState(
-        targetValue = if (isDetailsExpanded) 180f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "audioDetailsChevron"
-    )
-    val resolvedDetails = rememberResolvedTrackAudioDetails(
-        track = track,
-        currentQuality = currentQuality,
-        isLocalTrack = isLocalTrack,
-        parsedLyrics = parsedLyrics,
-        queueSource = queueSource
-    )
-
-    AdaptiveModalSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color.White
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 6.dp)
-                .padding(bottom = 28.dp)
-        ) {
-            if (track != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = track.coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFF2F2F7))
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = track.title,
-                            color = Color(0xFF1E1E24),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知艺术家" },
-                            color = Color(0xFF8E8E93),
-                            fontSize = 13.5.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onToggleStar),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AppleMusicHeartIcon(
-                            isLiked = isStarred,
-                            size = 22.dp,
-                            tint = if (isStarred) Color(0xFFFA233B) else Color(0xFF515151)
-                        )
-                    }
-                }
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    color = Color(0xFFF0F0F2)
-                )
-            }
-
-            Text(
-                text = "播放模式",
-                color = Color(0xFF8E8E93),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val modes = listOf(
-                    Triple(PlaybackMode.SEQUENTIAL, "顺序循环", R.drawable.ic_repeat),
-                    Triple(PlaybackMode.SHUFFLE, "随机播放", R.drawable.ic_shuffle)
-                )
-                modes.forEach { (mode, label, iconRes) ->
-                    val selected = playbackMode == mode
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (selected) Color(0xFFFA233B).copy(alpha = 0.12f)
-                                else Color(0xFFF5F5F7)
-                            )
-                            .clickable { onSelectPlaybackMode(mode) }
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            painter = painterResource(id = iconRes),
-                            contentDescription = label,
-                            tint = if (selected) Color(0xFFFA233B) else Color(0xFF515151),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = label,
-                            color = if (selected) Color(0xFFFA233B) else Color(0xFF1E1E24),
-                            fontSize = 12.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            if (!isLocalTrack) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF5F5F7))
-                        .clickable(onClick = onOpenQuality)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.GraphicEq,
-                        contentDescription = null,
-                        tint = Color(0xFF515151),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "切换音频质量",
-                        color = Color(0xFF1E1E24),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = currentQuality.badgeText,
-                        color = Color(0xFF8E8E93),
-                        fontSize = 13.sp
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF5F5F7))
-                    .clickable(onClick = onOpenQueue)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                    contentDescription = null,
-                    tint = Color(0xFF515151),
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "查看待播清单",
-                    color = Color(0xFF1E1E24),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            if (resolvedDetails != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                AudioDetailsExpandableCard(
-                    details = resolvedDetails,
-                    isExpanded = isDetailsExpanded,
-                    chevronRotation = chevronRotation,
-                    onToggleExpand = { isDetailsExpanded = !isDetailsExpanded }
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun AudioDetailsExpandableCard(
-    details: ResolvedAudioDetails,
-    isExpanded: Boolean,
-    chevronRotation: Float,
-    onToggleExpand: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFF5F5F7))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggleExpand)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Info,
-                contentDescription = null,
-                tint = Color(0xFF515151),
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "音频详细信息",
-                color = Color(0xFF1E1E24),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = details.summaryBadge,
-                color = Color(0xFF8E8E93),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
-                tint = Color(0xFF8E8E93),
-                modifier = Modifier
-                    .size(20.dp)
-                    .graphicsLayer { rotationZ = chevronRotation }
-            )
-        }
-
-        AnimatedVisibility(
-            visible = isExpanded,
-            enter = expandVertically(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeIn(tween(180)),
-            exit = shrinkVertically(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeOut(tween(140))
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 14.dp)
-            ) {
-                HorizontalDivider(color = Color(0xFFE5E5EA), thickness = 0.5.dp)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    AudioSpecTagChip(
-                        text = details.sourceTag,
-                        backgroundColor = Color(0xFFFA233B).copy(alpha = 0.12f),
-                        textColor = Color(0xFFFA233B)
-                    )
-                    AudioSpecTagChip(
-                        text = details.formatTag,
-                        backgroundColor = Color(0xFFE9E9EE),
-                        textColor = Color(0xFF3A3A3C)
-                    )
-                    AudioSpecTagChip(
-                        text = details.bitrateTag,
-                        backgroundColor = Color(0xFFE9E9EE),
-                        textColor = Color(0xFF3A3A3C)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val rows = listOf(
-                    "音频来源" to details.sourceText,
-                    "音质规格" to details.qualityText,
-                    "编码格式" to details.formatText,
-                    "音频码率" to details.bitrateText,
-                    "采样率" to details.sampleRateText,
-                    "文件大小" to details.fileSizeText,
-                    "歌词来源" to details.lyricSourceText,
-                    "所属专辑" to details.albumText,
-                    details.identifierLabel to details.identifierValue
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    rows.forEach { (label, value) ->
-                        AudioDetailRow(label = label, value = value)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AudioSpecTagChip(
-    text: String,
-    backgroundColor: Color,
-    textColor: Color
-) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(backgroundColor)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = textColor,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun AudioDetailRow(
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
-    ) {
-        Text(
-            text = label,
-            color = Color(0xFF8E8E93),
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.Normal,
-            modifier = Modifier.width(76.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = value,
-            color = Color(0xFF1E1E24),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.End,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
 private data class LocalAudioProbeResult(
     val bitrateKbps: Int? = null,
     val sampleRateHz: Int? = null,
@@ -1560,7 +1139,7 @@ private data class LocalAudioProbeResult(
     val format: String? = null
 )
 
-internal data class ResolvedAudioDetails(
+data class ResolvedAudioDetails(
     val summaryBadge: String,
     val sourceTag: String,
     val formatTag: String,

@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- 音频详细信息图标：外径严格对齐专辑图标（810px），线条粗细调优至 54px 与专辑/歌手/下载图标视觉统一，中间 i 字形全部使用圆角 -->
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="54"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M512,134 A378,378 0 1,0 512,890 A378,378 0 1,0 512,134" />
+    <!-- i 上方圆点（直径 58px） -->
+    <path
+        android:fillColor="#FF515151"
+        android:pathData="M512,297 A29,29 0 1,0 512,355 A29,29 0 1,0 512,297 Z" />
+    <!-- i 下方全圆角竖线（线宽 54px） -->
+    <path
+        android:strokeColor="#FF515151"
+        android:strokeWidth="54"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M512,464 L512,702" />
+</vector>
