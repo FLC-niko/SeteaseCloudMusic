@@ -97,6 +97,7 @@ import com.example.seteasecloudmusic.core.ui.components.LiquidGlassSegmentedBar
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
@@ -108,11 +109,21 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private val PageBackground = Color.White
-private val PrimaryText = Color(0xFF111111)
-private val SecondaryText = Color(0xFF909094)
-private val DividerColor = Color(0xFFE2E2E6)
-private val TabActiveBg = Color(0xFFFA233B)
+private val PageBackground: Color
+    @Composable
+    get() = AppTheme.colors.background
+private val PrimaryText: Color
+    @Composable
+    get() = AppTheme.colors.textPrimary
+private val SecondaryText: Color
+    @Composable
+    get() = AppTheme.colors.textSecondary
+private val DividerColor: Color
+    @Composable
+    get() = AppTheme.colors.divider
+private val TabActiveBg: Color
+    @Composable
+    get() = AppTheme.colors.accent
 private val TabActiveText = Color.White
 
 private enum class SearchTab(val title: String) {
@@ -229,8 +240,9 @@ fun SearchScreenContent(
     isForeground: Boolean = true,
     topHeader: @Composable () -> Unit = {}
 ) {
+    val searchBgState = rememberUpdatedState(PageBackground)
     val searchBackdrop = rememberLayerBackdrop {
-        drawRect(PageBackground)
+        drawRect(searchBgState.value)
         drawContent()
     }
 
@@ -670,7 +682,7 @@ private fun SearchArtworkCard(
         is SearchRowItem.Suggestion -> { image = null; title = item.keyword; subtitle = "搜索建议"; action = { onQuery(title) } }
     }
     Column(Modifier.fillMaxWidth().clickable(onClick = action).padding(4.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(if (item is SearchRowItem.Artist) CircleShape else RoundedCornerShape(20.dp)).background(Color(0xFFF2F2F6)), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(if (item is SearchRowItem.Artist) CircleShape else RoundedCornerShape(20.dp)).background(AppTheme.colors.placeholder), contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_nav_search),
                 contentDescription = null,
@@ -929,17 +941,18 @@ private fun Artwork(
     isCircle: Boolean
 ) {
     val shape = if (isCircle) CircleShape else RoundedCornerShape(8.dp)
+    val colors = AppTheme.colors
     Box(
         modifier = Modifier
             .size(size)
             .clip(shape)
-            .background(Color(0xFFE3E3E6)),
+            .background(colors.placeholder),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             painter = painterResource(id = R.drawable.ic_nav_search),
             contentDescription = null,
-            tint = Color.White,
+            tint = if (colors.isDark) Color.White.copy(alpha = 0.65f) else Color.White,
             modifier = Modifier.size(size * 0.45f)
         )
         if (!imageUrl.isNullOrBlank()) {
@@ -961,7 +974,7 @@ fun ResultLoadingSection(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator(color = Color(0xFF606060), strokeWidth = 2.dp)
+        CircularProgressIndicator(color = SecondaryText, strokeWidth = 2.dp)
     }
 }
 
@@ -971,6 +984,7 @@ fun ResultErrorSection(
     onRetryClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = AppTheme.colors
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -981,7 +995,7 @@ fun ResultErrorSection(
         Icon(
             imageVector = Icons.Outlined.CloudOff,
             contentDescription = null,
-            tint = Color(0xFF9E9EA7),
+            tint = colors.textTertiary,
             modifier = Modifier.size(52.dp)
         )
         Spacer(modifier = Modifier.height(14.dp))
@@ -998,7 +1012,7 @@ fun ResultErrorSection(
         Text(
             text = "提示：请检查设备网络状态后重试",
             fontSize = 12.sp,
-            color = Color(0xFFAAAAAF)
+            color = colors.textSecondary
         )
         Spacer(modifier = Modifier.height(18.dp))
         Button(onClick = onRetryClick) {
@@ -1087,7 +1101,7 @@ private fun SearchHistorySection(
                         showClearDialog = false
                     }
                 ) {
-                    Text("清空", color = Color(0xFFFF2442), fontWeight = FontWeight.Bold)
+                    Text("清空", color = TabActiveBg, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -1095,7 +1109,7 @@ private fun SearchHistorySection(
                     Text("取消", color = PrimaryText)
                 }
             },
-            containerColor = Color.White,
+            containerColor = AppTheme.colors.surfaceElevated,
             shape = RoundedCornerShape(16.dp)
         )
     }
@@ -1135,7 +1149,7 @@ private fun SearchHistorySection(
         ) {
             history.forEach { keyword ->
                 Surface(
-                    color = Color(0xFFF4F4F6),
+                    color = AppTheme.colors.surfaceVariant,
                     shape = RoundedCornerShape(999.dp),
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
@@ -1147,7 +1161,7 @@ private fun SearchHistorySection(
                     Text(
                         text = keyword,
                         fontSize = 13.sp,
-                        color = Color(0xFF333333),
+                        color = PrimaryText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
@@ -1187,12 +1201,13 @@ private fun HotSearchSection(
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
-                    color = Color(0xFF888888),
+                    color = SecondaryText,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(24.dp)
                 )
             }
         } else {
+            val colors = AppTheme.colors
             hotSearches.forEachIndexed { index, item ->
                 val rank = index + 1
                 val isTopThree = rank <= 3
@@ -1207,7 +1222,7 @@ private fun HotSearchSection(
                         text = rank.toString(),
                         fontSize = 16.sp,
                         fontWeight = if (isTopThree) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isTopThree) Color(0xFFFF2442) else Color(0xFF999999),
+                        color = if (isTopThree) colors.accent else colors.textSecondary,
                         modifier = Modifier.width(32.dp),
                         textAlign = TextAlign.Start
                     )
@@ -1254,7 +1269,7 @@ private fun HotSearchSection(
                         Text(
                             text = formatHotScore(item.score),
                             fontSize = 12.sp,
-                            color = Color(0xFFCCCCCC)
+                            color = colors.textTertiary
                         )
                     }
                 }
@@ -1302,14 +1317,14 @@ private fun SearchSuggestionsSection(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_nav_search),
                     contentDescription = null,
-                    tint = Color(0xFFFF2442),
+                    tint = TabActiveBg,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(14.dp))
                 Text(
                     text = buildAnnotatedString {
                         append("搜索 “")
-                        withStyle(style = SpanStyle(color = Color(0xFFFF2442), fontWeight = FontWeight.SemiBold)) {
+                        withStyle(style = SpanStyle(color = TabActiveBg, fontWeight = FontWeight.SemiBold)) {
                             append(query)
                         }
                         append("”")

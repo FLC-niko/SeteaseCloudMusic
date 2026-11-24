@@ -8,6 +8,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class AppThemeMode(
+    val title: String,
+    val desc: String
+) {
+    SYSTEM("跟随系统", "自动匹配系统深浅色外观"),
+    LIGHT("浅色模式", "始终使用浅色外观"),
+    DARK("深色模式", "始终使用深色 OLED 外观")
+}
+
 enum class OnlineAudioQuality(
     val title: String,
     val levelKey: String,
@@ -58,6 +67,14 @@ class PlayerSettingsManager @Inject constructor(
 
     private val _localDirectApiEnabled = MutableStateFlow(loadSavedLocalDirectApi())
     val localDirectApiEnabled: StateFlow<Boolean> = _localDirectApiEnabled.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(loadSavedThemeMode())
+    val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: AppThemeMode) {
+        _themeMode.value = mode
+        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+    }
 
     fun setAudioQuality(quality: OnlineAudioQuality) {
         _audioQuality.value = quality
@@ -118,6 +135,15 @@ class PlayerSettingsManager @Inject constructor(
         return prefs.getBoolean(KEY_LOCAL_DIRECT_API, true)
     }
 
+    private fun loadSavedThemeMode(): AppThemeMode {
+        val name = prefs.getString(KEY_THEME_MODE, AppThemeMode.SYSTEM.name)
+        return try {
+            AppThemeMode.valueOf(name ?: AppThemeMode.SYSTEM.name)
+        } catch (_: Exception) {
+            AppThemeMode.SYSTEM
+        }
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
@@ -126,6 +152,7 @@ class PlayerSettingsManager @Inject constructor(
         private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
         private const val KEY_PREDICTIVE_BACK = "predictive_back_enabled"
         private const val KEY_LOCAL_DIRECT_API = "local_direct_api_enabled"
+        private const val KEY_THEME_MODE = "app_theme_mode"
 
         @Volatile
         private var INSTANCE: PlayerSettingsManager? = null

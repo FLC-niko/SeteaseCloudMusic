@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -88,6 +89,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.UserAvatarButton
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.feature.auth.presentation.AccountLoginSheetContent
@@ -244,18 +246,21 @@ private fun LeftBarLiquidGlassContainer(
     content: @Composable BoxScope.() -> Unit
 ) {
     val barShape = remember(cornerRadius) { RoundedRectangle(cornerRadius) }
+    val isDark = AppTheme.isDark
     Box(
         modifier = modifier
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
+                isDarkSurface = isDark,
                 bloomExtraDegrees = -45f,
                 // 按下放大时同步缩放被采样的内容层，避免折射采样与组件本体错位
                 layerBlock = layerBlock
             )
             .interactiveGlassHighlight(
                 shape = barShape,
-                enabled = highlightEnabled
+                enabled = highlightEnabled,
+                isDarkSurface = isDark
             )
     ) {
         Box(
@@ -280,8 +285,9 @@ private fun BottomBarTabsLayer(
     isSelectedLayer: Boolean
 ) {
     val slotWidth = normalLeftWidth / items.size
-    val accentRed = Color(0xFFFA233B)
-    val darkTint = Color(0xFF1C1C1E)
+    val colors = AppTheme.colors
+    val accentRed = colors.accent
+    val darkTint = colors.iconPrimary
     Box(modifier = Modifier.fillMaxSize()) {
         items.forEachIndexed { index, item ->
             val isActiveTab = index == lastActiveTab
@@ -418,12 +424,14 @@ private fun SearchButtonLiquidGlassContainer(
     content: @Composable BoxScope.() -> Unit
 ) {
     val buttonShape = remember(cornerRadius) { RoundedRectangle(cornerRadius) }
+    val isDark = AppTheme.isDark
     Box(
         modifier = modifier
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                isDarkSurface = isDark,
                 bloomExtraDegrees = -45f,
                 layerBlock = {
                     val progress = pressProgressAnimation.value.coerceIn(0f, 1f)
@@ -437,7 +445,8 @@ private fun SearchButtonLiquidGlassContainer(
             )
             .interactiveGlassHighlight(
                 shape = buttonShape,
-                enabled = highlightEnabled
+                enabled = highlightEnabled,
+                isDarkSurface = isDark
             ),
         content = content
     )
@@ -620,7 +629,9 @@ fun AppNavigation(
     }
 
     // 背景底色会参与毛玻璃采样，决定整个导航栏的基础明度。
-    val backgroundColor = Color.White
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
+    val backgroundColorState = rememberUpdatedState(colors.background)
 
     // 右侧独立搜索按钮使用单独的动画状态，避免和主导航条互相影响。
     val searchAnimationScope = rememberCoroutineScope()
@@ -633,8 +644,8 @@ fun AppNavigation(
     // 缩小底栏接收点击时的弹跳程度，增加 stiffness 使其更紧致，缩小弹跳幅度
     val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
 
-    val backdrop = rememberLayerBackdrop{
-        drawRect(backgroundColor)
+    val backdrop = rememberLayerBackdrop {
+        drawRect(backgroundColorState.value)
         drawContent()
     }
     val bottomTabsBackdrop = rememberLayerBackdrop()
@@ -800,7 +811,7 @@ fun AppNavigation(
                 .statusBarsPadding().padding(top = 68.dp), contentAlignment = Alignment.TopCenter) {
                 LiquidGlassPanel(Modifier.widthIn(max = 680.dp).fillMaxWidth().height(54.dp), cornerRadius = 27.dp) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(painterResource(R.drawable.ic_nav_search), null, Modifier.size(20.dp), tint = Color(0xFFFA233B))
+                        Icon(painterResource(R.drawable.ic_nav_search), null, Modifier.size(20.dp), tint = colors.accent)
                         Spacer(Modifier.width(10.dp))
                         SearchQueryInputContent(searchViewModel, enabled = true, modifier = Modifier.weight(1f).fillMaxHeight())
                     }
@@ -1088,9 +1099,9 @@ fun AppNavigation(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val iconTint = if (isSearchExpanded) {
-                                lerpColor(Color.DarkGray, Color(0xFFFA233B), searchProgressState.value)
+                                lerpColor(colors.iconSecondary, colors.accent, searchProgressState.value)
                             } else {
-                                Color.DarkGray
+                                colors.iconSecondary
                             }
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_nav_search),
@@ -1155,6 +1166,7 @@ fun AppNavigation(
                                 backdrop = backdrop,
                                 cornerRadius = cornerRadius,
                                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                                isDarkSurface = isDark,
                                 bloomExtraDegrees = -45f,
                                 layerBlock = {
                                     val progress = closeProgressAnimation.value.coerceIn(0f, 1f)
@@ -1170,7 +1182,8 @@ fun AppNavigation(
                             )
                             .interactiveGlassHighlight(
                                 shape = RoundedRectangle(cornerRadius),
-                                enabled = isSearchExpanded
+                                enabled = isSearchExpanded,
+                                isDarkSurface = isDark
                             )
                             .clickable(
                                 interactionSource = closeInteractionSource,
@@ -1185,7 +1198,7 @@ fun AppNavigation(
                         Icon(
                             painter = painterResource(id = R.drawable.ic_nav_close),
                             contentDescription = "关闭搜索",
-                            tint = Color.Black,
+                            tint = colors.iconPrimary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1500,10 +1513,11 @@ private fun AppPageContent(
     mineListState: LazyListState
 ) {
     val index = selectedIndex.value
+    val colors = AppTheme.colors
     val bottomContentPadding = LocalContentBottomPadding.current + imeOffset
     val pageBackgroundColor = when (index) {
-        2 -> Color(0xFFF7F7FA)
-        else -> Color.White
+        2 -> colors.backgroundSecondary
+        else -> colors.background
     }
     val animatedPageBackgroundColor by animateColorAsState(
         targetValue = pageBackgroundColor,
@@ -1807,6 +1821,8 @@ private fun AccountFullScreenOverlay(
             }
         }
 
+        val isDark = AppTheme.isDark
+        val colors = AppTheme.colors
         val centeredPanel = LocalAdaptiveWindow.current.width >= 600.dp || LocalAdaptiveWindow.current.separatingFold != null
         val panelShape = if (centeredPanel) RoundedRectangle(30.dp) else RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
 
@@ -1822,7 +1838,7 @@ private fun AccountFullScreenOverlay(
                         vibrancy()
                     },
                     onDrawSurface = {
-                        drawRect(Color.Black.copy(alpha = 0.32f))
+                        drawRect(Color.Black.copy(alpha = if (isDark) 0.56f else 0.32f))
                     }
                 )
                 .graphicsLayer {
@@ -1864,8 +1880,8 @@ private fun AccountFullScreenOverlay(
                     shape = panelShape,
                     clip = false
                 )
-                .then(if (centeredPanel) Modifier.liquidGlassPanel(backdrop, Color(0xFFF2F2F7), 30.dp, 0.dp)
-                    else Modifier.clip(panelShape).background(Color(0xFFF2F2F7)))
+                .then(if (centeredPanel) Modifier.liquidGlassPanel(backdrop, colors.groupedBackground, 30.dp, 0.dp)
+                    else Modifier.clip(panelShape).background(colors.groupedBackground))
         ) {
             AccountLoginSheetContent(
                 onDismiss = onDismissRequest,
@@ -1904,7 +1920,7 @@ private fun AccountFullScreenOverlay(
                     modifier = Modifier
                         .size(width = 44.dp, height = 5.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFD2D2D8))
+                        .background(colors.handleBar)
                 )
             }
         }
@@ -1923,7 +1939,7 @@ private fun LargePageTitle(
         lineHeight = 44.sp,
         letterSpacing = (-0.8).sp,
         fontWeight = FontWeight.Bold,
-        color = Color(0xFF111111),
+        color = AppTheme.colors.textPrimary,
         modifier = modifier
     )
 }
@@ -1947,9 +1963,10 @@ private fun SearchQueryInputContent(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val colors = AppTheme.colors
 
     val searchTextStyle = MaterialTheme.typography.bodyLarge.copy(
-        color = Color.Black,
+        color = colors.textPrimary,
         fontSize = 15.sp,
         platformStyle = PlatformTextStyle(includeFontPadding = false),
         lineHeightStyle = LineHeightStyle(
@@ -1970,6 +1987,7 @@ private fun SearchQueryInputContent(
         enabled = enabled,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { performSearch() }),
+        cursorBrush = SolidColor(colors.accent),
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
@@ -1997,8 +2015,8 @@ private fun SearchQueryInputContent(
                     if (uiState.query.isEmpty()) {
                         Text(
                             text = "搜你想听的",
-                            color = Color(0xFF888888),
-                            style = searchTextStyle.copy(color = Color(0xFF888888)),
+                            color = colors.textSecondary,
+                            style = searchTextStyle.copy(color = colors.textSecondary),
                             maxLines = 1
                         )
                     }
@@ -2008,7 +2026,7 @@ private fun SearchQueryInputContent(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_nav_close),
                         contentDescription = "清空搜索",
-                        tint = Color.Gray,
+                        tint = colors.textSecondary,
                         modifier = Modifier
                             .size(18.dp)
                             .clickable { viewModel.onClearQuery() }
@@ -2450,6 +2468,8 @@ internal fun SearchMiniPlayerBar(
         }
     }
 
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
     Box(
         modifier = modifier
             .fillMaxWidth().testTag("bottom_mini_player_surface")
@@ -2460,11 +2480,13 @@ internal fun SearchMiniPlayerBar(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                isDarkSurface = isDark,
                 enableNoiseDither = true
             )
             .interactiveGlassHighlight(
                 shape = RoundedRectangle(cornerRadius),
-                enabled = hasTrack && !isTransitioning && enabled
+                enabled = hasTrack && !isTransitioning && enabled,
+                isDarkSurface = isDark
             )
             // 移除默认水波纹（灰色），使用无 indication 的点击，避免按压变灰
             .clickable(
@@ -2596,7 +2618,7 @@ internal fun SearchMiniPlayerBar(
                     ) {
                         Text(
                             text = title,
-                            color = Color.Black,
+                            color = colors.textPrimary,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.5.sp,
@@ -2610,7 +2632,7 @@ internal fun SearchMiniPlayerBar(
                         if (!artistText.isNullOrEmpty()) {
                             Text(
                                 text = artistText,
-                                color = Color(0xFF666666),
+                                color = colors.textSecondary,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp,
                                     platformStyle = PlatformTextStyle(includeFontPadding = false),
                                     lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)),
@@ -2668,7 +2690,7 @@ internal fun SearchMiniPlayerBar(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_mini_playlist),
                         contentDescription = "播放列表",
-                        tint = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8),
+                        tint = if (hasTrack) colors.iconPrimary else colors.textTertiary,
                         modifier = Modifier.size(19.dp)
                     )
                 }
@@ -2715,8 +2737,14 @@ private fun MiniPlayerProgressPlayButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val ringColor = if (hasTrack) Color(0xFF2C2C2C) else Color(0xFFB8B8B8)
-    val trackColor = if (hasTrack) Color(0x1F000000) else Color(0x0F000000)
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
+    val ringColor = if (hasTrack) colors.iconPrimary else colors.textTertiary
+    val trackColor = if (isDark) {
+        if (hasTrack) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.08f)
+    } else {
+        if (hasTrack) Color(0x1F000000) else Color(0x0F000000)
+    }
     val strokeWidth = 1.6.dp
 
     val targetProgress by remember(playbackStateFlow, isProgressActive) {
@@ -2829,6 +2857,8 @@ private fun MiniPlayerArtwork(
 ) {
     val shape = RoundedRectangle(7.dp)
     val sharedArtwork = LocalPlayerArtwork.current
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
 
     Box(
         modifier = modifier
@@ -2836,7 +2866,7 @@ private fun MiniPlayerArtwork(
                 onBoundsChanged(coordinates.boundsInRoot())
             }
             .clip(shape)
-            .background(Color(0xFFE3E3E6)),
+            .background(colors.placeholder),
         contentAlignment = Alignment.Center
     ) {
         if (!imageUrl.isNullOrBlank()) {
@@ -2873,7 +2903,7 @@ private fun MiniPlayerArtwork(
             Icon(
                 painter = painterResource(id = R.drawable.ic_mini_play),
                 contentDescription = null,
-                tint = Color.White,
+                tint = if (isDark) Color.White.copy(alpha = 0.65f) else Color.White,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -2897,6 +2927,6 @@ private fun AppPageBackground(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(AppTheme.colors.background)
     )
 }

@@ -62,6 +62,7 @@ import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
 import com.example.seteasecloudmusic.feature.player.presentation.ResolvedAudioDetails
 
@@ -99,10 +100,11 @@ fun TrackActionSheet(
 ) {
     val context = LocalContext.current
     var currentPage by remember { mutableStateOf(TrackActionSheetPage.ACTIONS) }
+    val colors = AppTheme.colors
 
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = colors.surface,
         modifier = modifier
     ) {
         if (currentPage == TrackActionSheetPage.ADD_TO_PLAYLIST) {
@@ -136,7 +138,7 @@ fun TrackActionSheet(
                     modifier = Modifier
                         .size(60.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFF2F2F7)),
+                        .background(colors.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!track.coverUrl.isNullOrBlank()) {
@@ -150,7 +152,7 @@ fun TrackActionSheet(
                         Icon(
                             imageVector = Icons.Filled.MusicNote,
                             contentDescription = null,
-                            tint = Color(0xFF8E8E93),
+                            tint = colors.textSecondary,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -167,7 +169,7 @@ fun TrackActionSheet(
                     Text(
                         text = track.title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            color = Color(0xFF1E1E24),
+                            color = colors.textPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         ),
@@ -182,7 +184,7 @@ fun TrackActionSheet(
                     Text(
                         text = artistNames,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color(0xFF8E8E93),
+                            color = colors.textSecondary,
                             fontSize = 13.sp
                         ),
                         maxLines = 1,
@@ -194,7 +196,7 @@ fun TrackActionSheet(
             Spacer(modifier = Modifier.height(6.dp))
 
             HorizontalDivider(
-                color = Color(0xFFF0F0F2),
+                color = colors.dividerSubtle,
                 thickness = 0.5.dp,
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
@@ -210,7 +212,7 @@ fun TrackActionSheet(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_action_play_next),
                         contentDescription = "下一首播放",
-                        tint = Color(0xFF515151),
+                        tint = colors.iconSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -230,7 +232,7 @@ fun TrackActionSheet(
                     Icon(
                         painter = painterResource(id = if (isLiked) R.drawable.ic_heart_filled else R.drawable.ic_heart),
                         contentDescription = if (isLiked) "取消喜欢" else "喜欢",
-                        tint = if (isLiked) Color(0xFFFA233B) else Color(0xFF515151),
+                        tint = if (isLiked) colors.accent else colors.iconSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -252,7 +254,7 @@ fun TrackActionSheet(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_action_add_to_playlist),
                         contentDescription = "收藏到歌单",
-                        tint = Color(0xFF515151),
+                        tint = colors.iconSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -269,7 +271,7 @@ fun TrackActionSheet(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_action_download),
                         contentDescription = "下载",
-                        tint = Color(0xFF515151),
+                        tint = colors.iconSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -287,7 +289,7 @@ fun TrackActionSheet(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_action_artist),
                         contentDescription = "歌手",
-                        tint = Color(0xFF515151),
+                        tint = colors.iconSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -305,7 +307,7 @@ fun TrackActionSheet(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_action_album),
                         contentDescription = "专辑",
-                        tint = Color(0xFF515151),
+                        tint = colors.iconSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -334,6 +336,8 @@ private fun TrackAudioDetailsItem(
     trackId: Long,
     details: ResolvedAudioDetails
 ) {
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
     var isExpanded by rememberSaveable(trackId) { mutableStateOf(false) }
     val chevronRotation by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
@@ -359,7 +363,7 @@ private fun TrackAudioDetailsItem(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_action_audio_info),
                     contentDescription = null,
-                    tint = Color(0xFF515151),
+                    tint = colors.iconSecondary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -369,7 +373,7 @@ private fun TrackAudioDetailsItem(
             Text(
                 text = "音频详细信息",
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    color = Color(0xFF222226),
+                    color = colors.textPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Normal
                 ),
@@ -380,7 +384,7 @@ private fun TrackAudioDetailsItem(
 
             Text(
                 text = details.summaryBadge,
-                color = Color(0xFF8E8E93),
+                color = colors.textSecondary,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -393,7 +397,7 @@ private fun TrackAudioDetailsItem(
             Icon(
                 imageVector = Icons.Filled.KeyboardArrowDown,
                 contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
-                tint = Color(0xFF8E8E93),
+                tint = colors.textSecondary,
                 modifier = Modifier
                     .size(20.dp)
                     .graphicsLayer { rotationZ = chevronRotation }
@@ -415,13 +419,15 @@ private fun TrackAudioDetailsItem(
                 )
             ) + fadeOut(tween(140))
         ) {
+            val chipBg = if (isDark) Color(0xFF3A3A3E) else Color(0xFFE9E9EE)
+            val chipText = if (isDark) Color(0xFFE5E5EA) else Color(0xFF3A3A3C)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .padding(top = 2.dp, bottom = 8.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF5F5F7))
+                    .background(colors.surfaceVariant)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 FlowRow(
@@ -431,18 +437,18 @@ private fun TrackAudioDetailsItem(
                 ) {
                     AudioSpecTagChip(
                         text = details.sourceTag,
-                        backgroundColor = Color(0xFFFA233B).copy(alpha = 0.12f),
-                        textColor = Color(0xFFFA233B)
+                        backgroundColor = colors.accentSubtle,
+                        textColor = colors.accent
                     )
                     AudioSpecTagChip(
                         text = details.formatTag,
-                        backgroundColor = Color(0xFFE9E9EE),
-                        textColor = Color(0xFF3A3A3C)
+                        backgroundColor = chipBg,
+                        textColor = chipText
                     )
                     AudioSpecTagChip(
                         text = details.bitrateTag,
-                        backgroundColor = Color(0xFFE9E9EE),
-                        textColor = Color(0xFF3A3A3C)
+                        backgroundColor = chipBg,
+                        textColor = chipText
                     )
                 }
 
@@ -497,13 +503,14 @@ private fun AudioDetailRow(
     label: String,
     value: String
 ) {
+    val colors = AppTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
-            color = Color(0xFF8E8E93),
+            color = colors.textSecondary,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.width(76.dp)
@@ -511,7 +518,7 @@ private fun AudioDetailRow(
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
-            color = Color(0xFF1E1E24),
+            color = colors.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
@@ -548,7 +555,7 @@ private fun TrackActionItem(
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge.copy(
-                color = Color(0xFF222226),
+                color = AppTheme.colors.textPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal
             ),

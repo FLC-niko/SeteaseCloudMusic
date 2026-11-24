@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
@@ -200,7 +201,7 @@ fun GlassSurface(
     cornerRadius: Dp = 24.dp,
     surfaceAlpha: Float = GlassDefaults.SurfaceAlpha,
     borderWidth: Dp = 1.dp,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     interactiveHighlight: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -237,7 +238,7 @@ fun LiquidGlassCircleButton(
     backdrop: Backdrop?,
     modifier: Modifier = Modifier,
     size: Dp = 38.dp,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     enabled: Boolean = true,
     interactiveHighlight: Boolean = true,
     contentDescription: String? = null,

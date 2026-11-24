@@ -110,17 +110,28 @@ import com.example.seteasecloudmusic.core.ui.components.LiquidGlassSegmentedBar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.launch
 
-private val MineTextPrimary = Color(0xFF111111)
-private val MineTextSecondary = Color(0xFF767680)
-private val MineDividerColor = Color(0x14000000)
-private val MineAccentRed = Color(0xFFFA233B)
-private val MinePageBase = Color(0xFFF7F7FA)
+private val MineTextPrimary: Color
+    @Composable
+    get() = AppTheme.colors.textPrimary
+private val MineTextSecondary: Color
+    @Composable
+    get() = AppTheme.colors.textSecondary
+private val MineDividerColor: Color
+    @Composable
+    get() = AppTheme.colors.divider
+private val MineAccentRed: Color
+    @Composable
+    get() = AppTheme.colors.accent
+private val MinePageBase: Color
+    @Composable
+    get() = AppTheme.colors.backgroundSecondary
 
 @Composable
 fun MineScreen(
@@ -161,8 +172,9 @@ fun MineScreen(
         )
     }
 
+    val appIsDark = AppTheme.isDark
     val handlePlaylistClick: (UserPlaylist) -> Unit = { playlist ->
-        trySyncExtractColor(context, playlist.coverUrl)
+        trySyncExtractColor(context, playlist.coverUrl, isDark = appIsDark)
         onPlaylistClick(playlist)
     }
 
@@ -194,12 +206,13 @@ fun MineScreen(
     // “我的”页面只采集自己的静态氛围背景，玻璃卡片从这张局部纹理取景，
     // 这样既保留液态玻璃效果，也避免渲染反馈导致点击页面后主线程/渲染线程卡死。
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
+    val minePageBaseState = rememberUpdatedState(MinePageBase)
     val mineBackdrop = rememberLayerBackdrop {
-        drawRect(MinePageBase)
+        drawRect(minePageBaseState.value)
         drawContent()
     }
     val topBarBackdrop = rememberLayerBackdrop {
-        drawRect(MinePageBase)
+        drawRect(minePageBaseState.value)
         drawContent()
     }
 
@@ -601,6 +614,13 @@ private fun MineCollapsedTopBar(
 
 @Composable
 private fun MineAmbientBackground() {
+    val isDark = AppTheme.isDark
+    val baseColor = MinePageBase
+    val warmTopStart = if (isDark) Color(0xFF5A1828).copy(alpha = 0.42f) else Color(0xFFFFE8ED).copy(alpha = 0.82f)
+    val warmTopMid = if (isDark) Color(0xFF241B4B).copy(alpha = 0.28f) else Color(0xFFF2EEFF).copy(alpha = 0.32f)
+    val leftGlow = if (isDark) Color(0xFF10243C).copy(alpha = 0.26f) else Color(0xFFE9F5FF).copy(alpha = 0.30f)
+    val rightGlow = if (isDark) Color(0xFF3B1E18).copy(alpha = 0.20f) else Color(0xFFFFF1E8).copy(alpha = 0.24f)
+
     // 三层氛围背景合并到同一个节点的 drawBehind 里：
     // 原先三个各自带 .background(brush) 的 Box 会产生三个布局节点 + 三份绘制指令，
     // 而这段内容既要在屏幕上画一遍、又要在 mineBackdrop 图层里录一遍。
@@ -609,15 +629,15 @@ private fun MineAmbientBackground() {
         modifier = Modifier
             .fillMaxSize()
             .drawBehind {
-                drawRect(MinePageBase)
+                drawRect(baseColor)
                 // 顶部暖色渐晕：原先是 height(420.dp) 的 Box，
                 // 因此渐变必须显式限定在 0..420dp，否则会按整个画布高度拉伸。
                 val warmBandHeight = 420.dp.toPx()
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFFFFE8ED).copy(alpha = 0.82f),
-                            Color(0xFFF2EEFF).copy(alpha = 0.32f),
+                            warmTopStart,
+                            warmTopMid,
                             Color.Transparent
                         ),
                         startY = 0f,
@@ -629,9 +649,9 @@ private fun MineAmbientBackground() {
                 drawRect(
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            Color(0xFFE9F5FF).copy(alpha = 0.30f),
+                            leftGlow,
                             Color.Transparent,
-                            Color(0xFFFFF1E8).copy(alpha = 0.24f)
+                            rightGlow
                         )
                     )
                 )
@@ -794,11 +814,12 @@ private fun UserProfileCenterpiece(
             }
 
             Spacer(modifier = Modifier.height(18.dp))
+            val statBgColor = Color.White.copy(alpha = if (AppTheme.isDark) 0.08f else 0.24f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = 0.24f))
+                    .background(statBgColor)
                     .padding(vertical = 12.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
@@ -848,7 +869,7 @@ private fun ProfileStatDivider() {
         modifier = Modifier
             .height(26.dp)
             .width(1.dp)
-            .background(Color.White.copy(alpha = 0.42f))
+            .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.14f else 0.42f))
     )
 }
 
@@ -899,7 +920,7 @@ private fun MineLoggedOutView(
                     modifier = Modifier
                         .size(76.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.32f)),
+                        .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.10f else 0.32f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -962,7 +983,7 @@ private fun LikedSongsHeroCard(
                 modifier = Modifier
                     .size(70.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = 0.32f)),
+                    .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.10f else 0.32f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (!playlist?.coverUrl.isNullOrBlank()) {
@@ -1163,7 +1184,7 @@ private fun PlaylistRowItem(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.White.copy(alpha = 0.42f)),
+                .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.12f else 0.42f)),
             contentAlignment = Alignment.Center
         ) {
             if (!playlist.coverUrl.isNullOrBlank()) {
@@ -1205,7 +1226,7 @@ private fun PlaylistRowItem(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = Color(0xFFB7B7C0),
+            tint = AppTheme.colors.textTertiary,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -1229,6 +1250,7 @@ private fun MineErrorNotice(
     message: String,
     onRetry: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1239,7 +1261,7 @@ private fun MineErrorNotice(
         Icon(
             imageVector = Icons.Outlined.CloudOff,
             contentDescription = null,
-            tint = Color(0xFF9E9EA7),
+            tint = colors.textTertiary,
             modifier = Modifier.size(44.dp)
         )
         Text(
@@ -1254,7 +1276,7 @@ private fun MineErrorNotice(
         )
         Text(
             text = "提示：请检查网络设置后重试",
-            style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFAAAAAF), fontSize = 11.sp)
+            style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary, fontSize = 11.sp)
         )
         Spacer(modifier = Modifier.height(4.dp))
         Button(onClick = onRetry) {

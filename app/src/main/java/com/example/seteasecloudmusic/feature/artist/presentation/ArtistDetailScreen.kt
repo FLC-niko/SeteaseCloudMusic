@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -72,6 +73,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -113,6 +115,7 @@ import com.example.seteasecloudmusic.core.ui.adaptive.LocalContentBottomPadding
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistAlbum
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistFavoritePlaylist
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
@@ -127,12 +130,30 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.math.roundToInt
 
-private val ArtistPrimaryText = Color.White
-private val ArtistSecondaryText = Color(0x9EFFFFFF)
-private val ArtistCardSurface = Color(0x14FFFFFF)
-private val ArtistCardBorder = Color(0x1AFFFFFF)
-private val ArtistDividerColor = Color(0x14FFFFFF)
-private val ArtistAccentRed = Color(0xFFFA233B)
+private val ArtistPrimaryText: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color.White else Color(0xFF111111)
+private val ArtistSecondaryText: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color(0x9EFFFFFF) else Color.Black.copy(alpha = 0.56f)
+private val ArtistCardSurface: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color(0x14FFFFFF) else Color.White.copy(alpha = 0.55f)
+private val ArtistCardBorder: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color(0x1AFFFFFF) else Color.Black.copy(alpha = 0.08f)
+private val ArtistDividerColor: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color(0x14FFFFFF) else Color.Black.copy(alpha = 0.08f)
+private val ArtistSubtleSurface: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+private val ArtistPillSurface: Color
+    @Composable
+    get() = if (AppTheme.isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f)
+private val ArtistAccentRed: Color
+    @Composable
+    get() = AppTheme.colors.accent
 private val ArtistHorizontalCardWidth = 156.dp
 
 private data class ArtistNavTarget(
@@ -234,9 +255,10 @@ fun ArtistDetailScreen(
     onPlayTrackList: (List<Track>, Int) -> Unit = { _, _ -> },
     listState: LazyListState = rememberLazyListState()
 ) {
+    val isDark = AppTheme.isDark
     val hasActivePlaylist = uiState.activePlaylistDetail != null
     BackHandler(enabled = backHandlerEnabled && !hasActivePlaylist, onBack = onClose)
-    ArtistLightStatusBarEffect()
+    ArtistLightStatusBarEffect(isDark = isDark)
 
     val window = LocalAdaptiveWindow.current
     val bottom = LocalContentBottomPadding.current
@@ -254,10 +276,11 @@ fun ArtistDetailScreen(
         }
     }
 
-    val ambientDarkColor by rememberArtistAmbientDarkColor(uiState.artistCoverUrl)
+    val ambientDarkColor by rememberArtistAmbientDarkColor(uiState.artistCoverUrl, isDark = isDark)
+    val ambientColorState = rememberUpdatedState(ambientDarkColor)
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val artistBackdrop = rememberLayerBackdrop {
-        drawRect(ambientDarkColor)
+        drawRect(ambientColorState.value)
         drawContent()
     }
 
@@ -387,7 +410,7 @@ fun ArtistDetailScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(
-                                color = Color.White,
+                                color = ArtistPrimaryText,
                                 strokeWidth = 2.5.dp,
                                 modifier = Modifier.size(28.dp)
                             )
@@ -399,7 +422,7 @@ fun ArtistDetailScreen(
                     item(key = "error") {
                         Text(
                             text = uiState.errorMessage,
-                            color = Color(0xFFFF8A80),
+                            color = if (isDark) Color(0xFFFF8A80) else AppTheme.colors.errorContent,
                             fontSize = 14.sp,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
@@ -524,13 +547,13 @@ fun ArtistDetailScreen(
                                     onClick = onClose,
                                     backdrop = artistBackdrop,
                                     size = 38.dp,
-                                    isDarkSurface = true,
+                                    isDarkSurface = isDark,
                                     contentDescription = "返回"
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = ArtistPrimaryText,
                                         modifier = Modifier.size(19.dp)
                                     )
                                 }
@@ -618,7 +641,7 @@ fun ArtistDetailScreen(
                     val layoutMaxWidth = minOf(maxWidth - 48.dp, dockedMaxTextWidth)
                     Text(
                         text = uiState.artistName.ifBlank { "未知艺人" },
-                        color = Color.White,
+                        color = ArtistPrimaryText,
                         fontWeight = FontWeight.Bold,
                         fontSize = 32.sp,
                         lineHeight = 38.sp,
@@ -662,14 +685,14 @@ fun ArtistDetailScreen(
                         onClick = onClose,
                         backdrop = artistBackdrop,
                         size = 38.dp,
-                        isDarkSurface = true,
+                        isDarkSurface = isDark,
                         contentDescription = "返回",
                         modifier = Modifier.align(Alignment.CenterStart)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = ArtistPrimaryText,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -755,19 +778,19 @@ fun ArtistDetailScreen(
 }
 
 @Composable
-private fun ArtistLightStatusBarEffect() {
+private fun ArtistLightStatusBarEffect(isDark: Boolean) {
     val view = LocalView.current
-    DisposableEffect(view) {
+    val isAppDark by rememberUpdatedState(AppTheme.isDark)
+    DisposableEffect(view, isDark) {
         fun findActivity(context: Context): Activity? = when (context) {
             is Activity -> context
             is ContextWrapper -> findActivity(context.baseContext)
             else -> null
         }
         val controller = findActivity(view.context)?.let { WindowCompat.getInsetsController(it.window, view) }
-        val prevLightStatus = controller?.isAppearanceLightStatusBars ?: true
-        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightStatusBars = !isDark
         onDispose {
-            controller?.isAppearanceLightStatusBars = prevLightStatus
+            controller?.isAppearanceLightStatusBars = !isAppDark
         }
     }
 }
@@ -779,6 +802,7 @@ private fun ArtistHeroSection(
     ambientDarkColor: Color,
     hasSongs: Boolean,
     onPlayHot50: () -> Unit,
+    isDark: Boolean = AppTheme.isDark,
     compactHeight: Boolean = false,
     titleAlphaProvider: () -> Float = { 1f },
     onHeroTitleMetricsChanged: ((centerOffsetFromTopPx: Float) -> Unit)? = null,
@@ -838,7 +862,7 @@ private fun ArtistHeroSection(
                 .clipToBounds()
         )
 
-        // 顶部轻暗角保护返回按钮与状态栏可读性
+        // 顶部轻保护渐变保障返回按钮与状态栏可读性
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -846,7 +870,7 @@ private fun ArtistHeroSection(
                 .align(Alignment.TopCenter)
                 .background(
                     Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.34f),
+                        0.0f to if (isDark) Color.Black.copy(alpha = 0.34f) else ambientDarkColor.copy(alpha = 0.45f),
                         1.0f to Color.Transparent
                     )
                 )
@@ -870,7 +894,7 @@ private fun ArtistHeroSection(
         ) {
             Text(
                 text = artistName.ifBlank { "未知艺人" },
-                color = Color.White,
+                color = ArtistPrimaryText,
                 fontWeight = FontWeight.Bold,
                 fontSize = 32.sp,
                 lineHeight = 38.sp,
@@ -900,6 +924,7 @@ private fun ArtistHeroSection(
             Surface(
                 shape = CircleShape,
                 color = Color.White,
+                border = if (isDark) null else BorderStroke(0.5.dp, Color.Black.copy(alpha = 0.06f)),
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .size(62.dp)
@@ -928,7 +953,7 @@ private fun ArtistHeroSection(
 
 private fun buildSmoothHeroScrimBrush(ambientColor: Color): Brush {
     val startPos = 0.34f
-    val endPos = 0.975f
+    val endPos = 0.94f
     val steps = 12
     val stops = Array(steps + 2) { index ->
         when (index) {
@@ -980,7 +1005,7 @@ private fun ArtistSectionHeader(
             Spacer(modifier = Modifier.width(8.dp))
             CircularProgressIndicator(
                 modifier = Modifier.size(14.dp),
-                color = Color.White,
+                color = ArtistPrimaryText,
                 strokeWidth = 1.8.dp
             )
         }
@@ -1185,7 +1210,7 @@ private fun ArtistFavoritesSection(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.08f)),
+                        .background(ArtistSubtleSurface),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1313,8 +1338,8 @@ private fun SimilarArtistsCardSection(
                     modifier = Modifier
                         .size(78.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .border(0.75.dp, Color.White.copy(alpha = 0.14f), CircleShape)
+                        .background(ArtistSubtleSurface)
+                        .border(0.75.dp, ArtistCardBorder, CircleShape)
                 ) {
                     AsyncImage(
                         model = artist.coverUrl.toCoverThumbnailUrl(200),
@@ -1352,13 +1377,13 @@ private fun SimilarArtistsCardSection(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color.White.copy(alpha = 0.14f))
+                        .background(ArtistPillSurface)
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "进入主页",
-                        color = Color.White,
+                        color = ArtistPrimaryText,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -1377,11 +1402,15 @@ private fun DescriptionSection(
     horizontalPadding: Dp = 20.dp
 ) {
     val description = uiState.description ?: return
-    val wikiText = remember(description) {
+    val isDark = AppTheme.isDark
+    val primaryColor = ArtistPrimaryText
+    val briefColor = if (isDark) Color.White.copy(alpha = 0.74f) else Color.Black.copy(alpha = 0.72f)
+    val contentColor = if (isDark) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.68f)
+    val wikiText = remember(description, primaryColor, briefColor, contentColor) {
         buildAnnotatedString {
             var hasPrevious = false
             if (description.brief.isNotBlank()) {
-                withStyle(SpanStyle(color = Color.White.copy(alpha = 0.74f))) {
+                withStyle(SpanStyle(color = briefColor)) {
                     append(description.brief)
                 }
                 hasPrevious = true
@@ -1394,7 +1423,7 @@ private fun DescriptionSection(
                 if (section.title.isNotBlank()) {
                     withStyle(
                         SpanStyle(
-                            color = ArtistPrimaryText,
+                            color = primaryColor,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1406,7 +1435,7 @@ private fun DescriptionSection(
                     }
                 }
                 if (section.content.isNotBlank()) {
-                    withStyle(SpanStyle(color = Color.White.copy(alpha = 0.72f))) {
+                    withStyle(SpanStyle(color = contentColor)) {
                         append(section.content)
                     }
                 }
@@ -1451,7 +1480,7 @@ private fun DescriptionSection(
         if (canExpand || expanded) {
             Text(
                 text = if (expanded) "收起" else "展开全部",
-                color = Color.White.copy(alpha = 0.90f),
+                color = if (isDark) Color.White.copy(alpha = 0.90f) else Color(0xFF111111),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
@@ -1507,7 +1536,7 @@ private fun ArtistAllAlbumsSheet(
                 if (hasMore) {
                     Text(
                         text = if (isLoadingMore) "加载中..." else "加载更多",
-                        color = Color.White,
+                        color = ArtistPrimaryText,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier

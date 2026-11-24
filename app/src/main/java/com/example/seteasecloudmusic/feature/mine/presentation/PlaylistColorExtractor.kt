@@ -19,53 +19,74 @@ import androidx.palette.graphics.Palette
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import com.example.seteasecloudmusic.core.ui.theme.tuneAmbientHslForTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+val DefaultPlaylistLightBg = Color.White
+val DefaultPlaylistDarkBg = Color(0xFF14181E)
 
 /**
  * 默认底色：白底（若尚未获取到取色结果，避免使用暗沉灰底导致第一帧视觉突兀）
  */
-val DefaultDarkNavyBg = Color.White
+val DefaultDarkNavyBg = DefaultPlaylistLightBg
 
 /**
- * 歌单封面提取主色内存缓存，保证再次进入或已采样封面直接在首帧出图，避免过渡前闪现底色
+ * 歌单封面提取主色内存缓存，按浅色/深色外观分开缓存，保证再次进入或已采样封面直接在首帧出图，避免过渡前闪现底色
  */
 object PlaylistCoverColorCache {
-    private val cache = LruCache<String, Color>(128)
+    private val cache = LruCache<String, Color>(256)
 
-    fun get(url: String?): Color? {
+    private fun key(url: String, isDark: Boolean): String = "${if (isDark) "d" else "l"}|$url"
+
+    fun get(url: String?, isDark: Boolean = false): Color? {
         if (url.isNullOrBlank()) return null
-        return synchronized(cache) { cache.get(url) }
+        return synchronized(cache) { cache.get(key(url, isDark)) }
     }
 
-    fun put(url: String?, color: Color) {
+    fun put(url: String?, color: Color, isDark: Boolean = false) {
         if (!url.isNullOrBlank()) {
-            synchronized(cache) { cache.put(url, color) }
+            synchronized(cache) { cache.put(key(url, isDark), color) }
         }
     }
 }
 
 /**
- * 从已有的 Bitmap 中快速提取歌单/专辑主色调（计算量极小，通常 < 1ms）
+ * 从已有的 Bitmap 中快速提取歌单/专辑主色调（计算量极小，通常 < 1ms）。
+ * 浅色模式下输出高明度莫兰迪浅色底，深色模式下输出低明度沉静深色底。
  */
-fun extractDominantDarkColor(bitmap: Bitmap, defaultColor: Color = Color.White): Color {
+fun extractDominantDarkColor(
+    bitmap: Bitmap,
+    defaultColor: Color = Color.White,
+    isDark: Boolean = false
+): Color {
     val palette = Palette.from(bitmap).maximumColorCount(16).generate()
-    val swatch = palette.mutedSwatch
-        ?: palette.dominantSwatch
-        ?: palette.darkMutedSwatch
-        ?: palette.darkVibrantSwatch
-        ?: palette.vibrantSwatch
+    val swatch = if (isDark) {
+        palette.mutedSwatch
+            ?: palette.dominantSwatch
+            ?: palette.darkMutedSwatch
+            ?: palette.darkVibrantSwatch
+            ?: palette.vibrantSwatch
+    } else {
+        val dominant = palette.dominantSwatch
+        if (dominant != null && dominant.hsl[1] >= 0.18f) {
+            dominant
+        } else {
+            palette.vibrantSwatch
+                ?: palette.lightVibrantSwatch
+                ?: dominant
+                ?: palette.mutedSwatch
+                ?: palette.darkVibrantSwatch
+                ?: palette.darkMutedSwatch
+        }
+    }
 
     val rawColorInt = swatch?.rgb ?: return defaultColor
 
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(rawColorInt, hsl)
-
-    // 饱和度控制在雅致区间 (0.12 .. 0.36)，呈现清爽高级的莫兰迪灰彩色系
-    hsl[1] = hsl[1].coerceIn(0.12f, 0.36f)
-    // 明度整体往浅色明亮方向调校，基准区间提高至 0.28 .. 0.42，即便原图深黑也保持明净通透
-    val boostedLightness = (hsl[2] * 0.55f + 0.22f).coerceIn(0.28f, 0.42f)
-    hsl[2] = boostedLightness
+    tuneAmbientHslForTheme(hsl, isDark)
 
     return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = 1f)
 }
@@ -74,34 +95,44 @@ fun extractDominantDarkColor(bitmap: Bitmap, defaultColor: Color = Color.White):
  * 尝试同步从内存主色缓存中立即获取颜色，保证已访问过的封面在首帧即可渲染正确取色直接滑入。
  * 未缓存时立即返回 null，绝不阻塞主线程磁盘 IO 或色彩提取，保证进入动效 100% 满帧丝滑。
  */
-fun trySyncExtractColor(context: Context, imageUrl: String?): Color? {
+fun trySyncExtractColor(
+    context: Context,
+    imageUrl: String?,
+    isDark: Boolean = false
+): Color? {
     if (imageUrl.isNullOrBlank()) return null
-    return PlaylistCoverColorCache.get(imageUrl)
+    return PlaylistCoverColorCache.get(imageUrl, isDark)
 }
 
 /**
- * 根据歌单/专辑封面 URL 提取适合背景的主色调。
- * 整体往浅色、明亮、柔和通透方向调校，避免深色封面导致界面过暗。
- * 优先同步命中内存/已解码缓存以保证首帧正确取色直接滑入；若无缓存则以白底滑入并在就绪后平滑渐变。
+ * 根据歌单/专辑封面 URL 与当前主题模式提取适合背景的主色调。
+ * 浅色模式提取浅色柔和底色，深色模式提取深色沉静底色。
+ * 优先同步命中内存/已解码缓存以保证首帧正确取色直接滑入；若无缓存则以默认底色滑入并在就绪后平滑渐变。
  */
 @Composable
 fun rememberCoverDominantDarkColor(
     imageUrl: String?,
-    defaultColor: Color = Color.White
+    isDark: Boolean = AppTheme.isDark,
+    defaultColor: Color = if (isDark) DefaultPlaylistDarkBg else DefaultPlaylistLightBg
 ): State<Color> {
     val context = LocalContext.current
-    val initialColor = remember(imageUrl) {
-        trySyncExtractColor(context, imageUrl) ?: defaultColor
+    val initialColor = remember(imageUrl, isDark, defaultColor) {
+        trySyncExtractColor(context, imageUrl, isDark) ?: defaultColor
     }
 
-    val extractedColorState = produceState(initialValue = initialColor, key1 = imageUrl) {
+    val extractedColorState = produceState(
+        initialValue = initialColor,
+        key1 = imageUrl,
+        key2 = isDark,
+        key3 = defaultColor
+    ) {
         if (imageUrl.isNullOrBlank()) {
             value = defaultColor
             return@produceState
         }
 
         // 若已命中缓存且当前值已经是正确取色，跳过重复解码
-        val cached = PlaylistCoverColorCache.get(imageUrl)
+        val cached = PlaylistCoverColorCache.get(imageUrl, isDark)
         if (cached != null) {
             value = cached
             return@produceState
@@ -129,8 +160,8 @@ fun rememberCoverDominantDarkColor(
                         }
                     }
 
-                    val color = extractDominantDarkColor(bitmap, defaultColor)
-                    PlaylistCoverColorCache.put(imageUrl, color)
+                    val color = extractDominantDarkColor(bitmap, defaultColor, isDark)
+                    PlaylistCoverColorCache.put(imageUrl, color, isDark)
                     color
                 } else {
                     defaultColor

@@ -35,6 +35,7 @@ import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.PlaybackMode
 import com.example.seteasecloudmusic.core.player.PlaybackState
 import com.example.seteasecloudmusic.core.player.PlayerStatus
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 
 /**
  * 播放列表二级菜单底栏 (当前待播清单与播放顺序)
@@ -61,9 +62,10 @@ fun PlaylistQueueSheet(
         }
     }
 
+    val colors = AppTheme.colors
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = colors.surface,
         modifier = modifier
     ) {
         Column(
@@ -85,13 +87,13 @@ fun PlaylistQueueSheet(
                         text = "播放列表",
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E1E24)
+                        color = colors.textPrimary
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "(${playbackState.queueTracks.size})",
                         fontSize = 14.sp,
-                        color = Color(0xFF8E8E93),
+                        color = colors.textSecondary,
                         fontWeight = FontWeight.Normal
                     )
                 }
@@ -102,7 +104,7 @@ fun PlaylistQueueSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFFF2F2F7))
+                            .background(colors.surfaceVariant)
                             .clickable(onClick = onTogglePlaybackMode)
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
@@ -110,7 +112,7 @@ fun PlaylistQueueSheet(
                         Icon(
                             imageVector = if (isShuffle) Icons.Filled.Shuffle else Icons.Filled.Repeat,
                             contentDescription = null,
-                            tint = if (isShuffle) Color(0xFFFA233B) else Color(0xFF2C2C2C),
+                            tint = if (isShuffle) colors.accent else colors.iconPrimary,
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(5.dp))
@@ -118,7 +120,7 @@ fun PlaylistQueueSheet(
                             text = if (isShuffle) "随机播放" else "顺序播放",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
-                            color = if (isShuffle) Color(0xFFFA233B) else Color(0xFF2C2C2C)
+                            color = if (isShuffle) colors.accent else colors.iconPrimary
                         )
                     }
 
@@ -133,7 +135,7 @@ fun PlaylistQueueSheet(
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
                                 contentDescription = "清空播放列表",
-                                tint = Color(0xFF8E8E93),
+                                tint = colors.textSecondary,
                                 modifier = Modifier.size(19.dp)
                             )
                         }
@@ -146,7 +148,7 @@ fun PlaylistQueueSheet(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 6.dp),
                 thickness = 0.5.dp,
-                color = Color(0xFFEBEBEF)
+                color = colors.dividerSubtle
             )
 
             // 歌曲列表区域
@@ -161,14 +163,14 @@ fun PlaylistQueueSheet(
                         Icon(
                             imageVector = Icons.Filled.MusicNote,
                             contentDescription = null,
-                            tint = Color(0xFFD1D1D6),
+                            tint = colors.textTertiary,
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "播放列表为空",
                             fontSize = 14.sp,
-                            color = Color(0xFF8E8E93)
+                            color = colors.textSecondary
                         )
                     }
                 }
@@ -212,11 +214,12 @@ private fun QueueTrackItemRow(
     onRemove: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = AppTheme.colors
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isCurrent) Color(0xFFFA233B).copy(alpha = 0.08f) else Color.Transparent)
+            .background(if (isCurrent) colors.accentSubtle else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -231,14 +234,14 @@ private fun QueueTrackItemRow(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
-                        tint = Color(0xFFFA233B),
+                        tint = colors.accent,
                         modifier = Modifier.size(18.dp)
                     )
                 } else {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_mini_play),
                         contentDescription = null,
-                        tint = Color(0xFFFA233B),
+                        tint = colors.accent,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -246,7 +249,7 @@ private fun QueueTrackItemRow(
                 Text(
                     text = "${index + 1}",
                     fontSize = 13.sp,
-                    color = Color(0xFFC7C7CC),
+                    color = colors.textTertiary,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -258,7 +261,7 @@ private fun QueueTrackItemRow(
                 text = track.title,
                 fontSize = 15.sp,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                color = if (isCurrent) Color(0xFFFA233B) else Color(0xFF1E1E24),
+                color = if (isCurrent) colors.accent else colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -271,7 +274,7 @@ private fun QueueTrackItemRow(
             Text(
                 text = artistText,
                 fontSize = 12.sp,
-                color = if (isCurrent) Color(0xFFFA233B).copy(alpha = 0.82f) else Color(0xFF8E8E93),
+                color = if (isCurrent) colors.accent.copy(alpha = 0.82f) else colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -287,7 +290,7 @@ private fun QueueTrackItemRow(
             Icon(
                 imageVector = Icons.Filled.Close,
                 contentDescription = "移出播放列表",
-                tint = Color(0xFFC7C7CC),
+                tint = colors.textTertiary,
                 modifier = Modifier.size(15.dp)
             )
         }

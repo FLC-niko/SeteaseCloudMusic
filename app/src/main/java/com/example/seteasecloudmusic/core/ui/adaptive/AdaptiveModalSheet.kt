@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -69,11 +70,15 @@ fun AdaptiveModalSheet(
     content: @Composable () -> Unit
 ) {
     val window = LocalAdaptiveWindow.current
+    val scrimColor = AppTheme.colors.scrim
+    val handleColor = AppTheme.colors.handleBar
     if (window.width < 600.dp && window.separatingFold == null) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = containerColor,
+            scrimColor = scrimColor,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = handleColor) },
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             modifier = modifier
         ) { content() }
@@ -83,7 +88,7 @@ fun AdaptiveModalSheet(
             LaunchedEffect(Unit) { appeared = true }
             val reveal by animateFloatAsState(if (appeared) 1f else 0f,
                 spring(dampingRatio = 0.82f, stiffness = 500f), label = "glassSheetReveal")
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)).clickable(
+            Box(Modifier.fillMaxSize().background(scrimColor).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismissRequest)) {
                 AdaptiveOverlayPane(Modifier.fillMaxSize().systemBarsPadding()) {
                     BoxWithConstraints(Modifier.fillMaxSize()) {

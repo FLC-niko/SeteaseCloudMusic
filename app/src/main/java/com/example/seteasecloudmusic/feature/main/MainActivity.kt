@@ -9,12 +9,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.components.ProvideDeviceTilt
+import com.example.seteasecloudmusic.core.ui.theme.SeteaseCloudMusicTheme
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 
 /**
@@ -36,6 +40,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var mineRepository: MineRepository
+
+    @Inject
+    lateinit var playerSettingsManager: PlayerSettingsManager
 
     private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
@@ -75,9 +82,12 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            ProvideDeviceTilt {
-                com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
-                    AppNavigation()
+            val themeMode by playerSettingsManager.themeMode.collectAsStateWithLifecycle()
+            SeteaseCloudMusicTheme(themeMode = themeMode) {
+                ProvideDeviceTilt {
+                    com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
+                        AppNavigation()
+                    }
                 }
             }
         }

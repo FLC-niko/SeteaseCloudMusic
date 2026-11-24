@@ -57,6 +57,7 @@ import androidx.lifecycle.ViewModel
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.*
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -82,13 +83,17 @@ internal class AppNavigationState : ViewModel() {
 /** Quiet light behind the floating dock, sampled together with the page rather than the dock itself. */
 @Composable
 internal fun ExpandedChromeBackground(modifier: Modifier = Modifier, atStart: Boolean = false) {
+    val isDark = AppTheme.isDark
+    val bgColor = AppTheme.colors.background
+    val firstGlow = if (isDark) Color(0xFF5A2038).copy(alpha = 0.24f) else Color(0xFFF5DCE8).copy(alpha = 0.36f)
+    val secondGlow = if (isDark) Color(0xFF1C2E5A).copy(alpha = 0.22f) else Color(0xFFE1EAFB).copy(alpha = 0.32f)
     Canvas(modifier.fillMaxSize()) {
-        drawRect(Color.White)
+        drawRect(bgColor)
         drawRect(Brush.radialGradient(
-            listOf(Color(0xFFF5DCE8).copy(alpha = 0.36f), Color.Transparent),
+            listOf(firstGlow, Color.Transparent),
             center = Offset(if (atStart) 0f else size.width, size.height * 0.52f), radius = 280.dp.toPx()))
         drawRect(Brush.radialGradient(
-            listOf(Color(0xFFE1EAFB).copy(alpha = 0.32f), Color.Transparent),
+            listOf(secondGlow, Color.Transparent),
             center = Offset(if (atStart) 40.dp.toPx() else size.width - 40.dp.toPx(), size.height * 0.2f), radius = 220.dp.toPx()))
     }
 }
@@ -108,6 +113,8 @@ internal fun MusicNavigationRail(
         BottomNavItem("电台", R.drawable.ic_nav_radio, R.drawable.ic_nav_radio_filled),
         BottomNavItem("我的", R.drawable.ic_nav_mine, R.drawable.ic_nav_mine_filled)
     ) }
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
     val window = LocalAdaptiveWindow.current
     var overflow by remember { mutableStateOf(false) }
     val activeTabIndex = selectedIndex.coerceAtMost(2)
@@ -131,10 +138,10 @@ internal fun MusicNavigationRail(
             if (collapsed) {
                 Box {
                     IconButton({ overflow = true }, Modifier.size(48.dp)
-                        .liquidGlass(backdrop, 24.dp)
-                        .interactiveGlassHighlight(RoundedRectangle(24.dp))
+                        .liquidGlass(backdrop, 24.dp, isDarkSurface = isDark)
+                        .interactiveGlassHighlight(RoundedRectangle(24.dp), isDarkSurface = isDark)
                         .testTag("glass_dock_overflow")) {
-                        Icon(painterResource(items[activeTabIndex].selectedIconRes), "更多导航", tint = Color(0xFFFA233B))
+                        Icon(painterResource(items[activeTabIndex].selectedIconRes), "更多导航", tint = colors.accent)
                     }
                     DropdownMenu(overflow, { overflow = false }) {
                         items.forEachIndexed { index, item ->
@@ -169,13 +176,13 @@ internal fun MusicNavigationRail(
                                     painterResource(item.selectedIconRes),
                                     null,
                                     Modifier.size(23.dp),
-                                    tint = Color(0xFFFA233B)
+                                    tint = colors.accent
                                 )
                                 if (showLabels) {
                                     Spacer(Modifier.height(3.dp))
                                     Text(
                                         item.title,
-                                        color = Color(0xFFFA233B),
+                                        color = colors.accent,
                                         fontSize = 11.sp,
                                         lineHeight = 14.sp,
                                         fontWeight = FontWeight.SemiBold
@@ -191,10 +198,11 @@ internal fun MusicNavigationRail(
                             .liquidGlass(
                                 backdrop = backdrop,
                                 cornerRadius = railCorner,
+                                isDarkSurface = isDark,
                                 bloomExtraDegrees = -45f,
                                 layerBlock = railLayerBlock
                             )
-                            .interactiveGlassHighlight(shape = railShape)
+                            .interactiveGlassHighlight(shape = railShape, isDarkSurface = isDark)
                             .liquidSegmentDrag(
                                 state = segmentState,
                                 itemCount = items.size,
@@ -208,6 +216,7 @@ internal fun MusicNavigationRail(
                             containerWidth = dockWidth,
                             containerHeight = groupHeight,
                             cornerRadius = railCorner,
+                            isDarkSurface = isDark,
                             alphaProvider = railAlphaProvider,
                             orientation = Orientation.Vertical,
                             unselectedContent = {
@@ -232,13 +241,13 @@ internal fun MusicNavigationRail(
                                                 painterResource(item.iconRes),
                                                 null,
                                                 Modifier.size(23.dp),
-                                                tint = Color(0xFF1C1C1E)
+                                                tint = colors.iconPrimary
                                             )
                                             if (showLabels) {
                                                 Spacer(Modifier.height(3.dp))
                                                 Text(
                                                     item.title,
-                                                    color = Color(0xFF1C1C1E),
+                                                    color = colors.iconPrimary,
                                                     fontSize = 11.sp,
                                                     lineHeight = 14.sp,
                                                     fontWeight = FontWeight.Medium
@@ -259,6 +268,7 @@ internal fun MusicNavigationRail(
                         containerWidth = dockWidth,
                         containerHeight = groupHeight,
                         cornerRadius = railCorner,
+                        isDarkSurface = isDark,
                         layerBlock = railLayerBlock,
                         alphaProvider = railAlphaProvider,
                         modifier = Modifier.align(Alignment.TopStart),
@@ -272,6 +282,7 @@ internal fun MusicNavigationRail(
                         containerHeight = groupHeight,
                         cornerRadius = railCorner,
                         maxPressScale = GlassSliderDefaults.CompactMaxPressScale,
+                        isDarkSurface = isDark,
                         alphaProvider = railAlphaProvider,
                         orientation = Orientation.Vertical,
                         modifier = Modifier.align(Alignment.TopStart)
@@ -287,15 +298,16 @@ internal fun MusicNavigationRail(
                 .liquidGlass(
                     backdrop = backdrop,
                     cornerRadius = 24.dp,
-                    surfaceAlpha = if (selectedIndex == 3) 0.58f else GlassDefaults.SurfaceAlphaBright,
+                    surfaceAlpha = if (selectedIndex == 3) (if (isDark) 0.40f else 0.58f) else GlassDefaults.SurfaceAlphaBright,
+                    isDarkSurface = isDark,
                     layerBlock = { scaleX = searchScale; scaleY = searchScale }
                 )
-                .interactiveGlassHighlight(RoundedRectangle(24.dp))
+                .interactiveGlassHighlight(RoundedRectangle(24.dp), isDarkSurface = isDark)
                 .selectable(selectedIndex == 3, interactionSource = searchInteractions, indication = null,
                     role = Role.Tab, onClick = { onSelect(3) })
                 .semantics { contentDescription = "搜索" }.testTag("glass_dock_search"), contentAlignment = Alignment.Center) {
                 Icon(painterResource(R.drawable.ic_nav_search), null, Modifier.size(23.dp),
-                    tint = if (selectedIndex == 3) Color(0xFFFA233B) else Color(0xFF494950))
+                    tint = if (selectedIndex == 3) colors.accent else colors.iconSecondary)
             }
         }
     }
@@ -316,10 +328,12 @@ internal fun SideMiniPlayer(
     }.collectAsStateWithLifecycle(initialValue = stateFlow.value.let { it.currentTrack to it.status })
     val track = state.first
     val status = state.second
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
     val shared = LocalPlayerArtwork.current
     val artwork = track?.coverUrl ?: track?.album?.coverUrl
-    Column(Modifier.width(56.dp).liquidGlass(backdrop, 28.dp, enableNoiseDither = true)
-        .interactiveGlassHighlight(RoundedRectangle(28.dp))
+    Column(Modifier.width(56.dp).liquidGlass(backdrop, 28.dp, isDarkSurface = isDark, enableNoiseDither = true)
+        .interactiveGlassHighlight(RoundedRectangle(28.dp), isDarkSurface = isDark)
         .padding(vertical = 6.dp).onGloballyPositioned { onBounds(it.boundsInRoot()) }.testTag("side_mini_player"),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(44.dp).clip(RoundedRectangle(12.dp))
@@ -328,13 +342,13 @@ internal fun SideMiniPlayer(
             val painter = shared?.takeIf { it.first == normalizeHighResCoverUrl(artwork) }?.second
             if (painter != null) Image(painter, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             else if (!artwork.isNullOrBlank()) AsyncImage(rememberHighResArtworkRequest(artwork), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else Icon(painterResource(R.drawable.ic_nav_radio), null, Modifier.size(22.dp), tint = Color.Gray)
+            else Icon(painterResource(R.drawable.ic_nav_radio), null, Modifier.size(22.dp), tint = colors.textSecondary)
         }
         IconButton(onPlayPause, Modifier.size(44.dp), enabled = track != null) {
             if (status == PlayerStatus.BUFFERING) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
-                    color = Color(0xFF494950),
+                    color = colors.iconSecondary,
                     strokeWidth = 2.dp
                 )
             } else {
@@ -343,11 +357,11 @@ internal fun SideMiniPlayer(
                         id = if (status == PlayerStatus.PLAYING) R.drawable.ic_mini_pause else R.drawable.ic_mini_play
                     ),
                     contentDescription = if (status == PlayerStatus.PLAYING) "暂停" else "播放",
-                    tint = Color(0xFF494950),
+                    tint = colors.iconSecondary,
                     modifier = Modifier.size(20.dp)
                 )
             }
         }
-        IconButton(onQueue, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Filled.QueueMusic, "播放列表", tint = Color(0xFF494950)) }
+        IconButton(onQueue, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Filled.QueueMusic, "播放列表", tint = colors.iconSecondary) }
     }
 }

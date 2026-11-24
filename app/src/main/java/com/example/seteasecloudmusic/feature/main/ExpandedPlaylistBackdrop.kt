@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
 import com.example.seteasecloudmusic.feature.mine.presentation.LOCAL_PLAYLIST_ID
 import com.example.seteasecloudmusic.feature.mine.presentation.MineViewModel
@@ -30,7 +31,8 @@ internal fun ExpandedPlaylistBackdrop(
 ) {
     val enabled = rememberPlaylistColorBackgroundEnabled(playlistId)
     val color by rememberCoverDominantDarkColor(coverUrl)
-    Canvas(modifier.fillMaxSize()) { drawRect(if (enabled) color else Color.White) }
+    val bgColor = AppTheme.colors.background
+    Canvas(modifier.fillMaxSize()) { drawRect(if (enabled) color else bgColor) }
 }
 
 @Composable

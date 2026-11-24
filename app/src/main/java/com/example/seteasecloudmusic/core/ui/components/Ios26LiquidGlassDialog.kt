@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveOverlayPane
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -83,13 +84,15 @@ fun Ios26LiquidGlassDialog(
     description: String? = null,
     secondaryButtonText: String? = "取消",
     primaryButtonText: String = "确定",
-    primaryButtonColor: Color = Color(0xFF007AFF),
+    primaryButtonColor: Color = AppTheme.colors.accentBlue,
     isPrimaryLoading: Boolean = false,
     onSecondaryClick: (() -> Unit)? = onDismissRequest,
     onPrimaryClick: () -> Unit = {},
     content: (@Composable () -> Unit)? = null
 ) {
     val cornerRadius = 34.dp
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
 
     AnimatedVisibility(
         visible = isVisible,
@@ -106,7 +109,7 @@ fun Ios26LiquidGlassDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.22f))
+                .background(Color.Black.copy(alpha = if (isDark) 0.50f else 0.22f))
                 .pointerInput(Unit) {
                     detectTapGestures {
                         // 点击蒙层关闭
@@ -151,24 +154,35 @@ fun Ios26LiquidGlassDialog(
                                     )
                                 },
                                 onDrawSurface = {
-                                    // 中间层：#F2F2F7 通透半透明铺底
-                                    drawRect(Color(0xFFF2F2F7).copy(alpha = 0.58f))
-                                    // 玻璃表面微反射高光渐变
-                                    drawRect(
-                                        Brush.verticalGradient(
-                                            0.0f to Color.White.copy(alpha = 0.28f),
-                                            0.35f to Color.White.copy(alpha = 0.08f),
-                                            1.0f to Color.White.copy(alpha = 0.18f)
+                                    if (isDark) {
+                                        drawRect(Color(0xFF1C1C1E).copy(alpha = 0.72f))
+                                        drawRect(
+                                            Brush.verticalGradient(
+                                                0.0f to Color.White.copy(alpha = 0.10f),
+                                                0.35f to Color.White.copy(alpha = 0.02f),
+                                                1.0f to Color.White.copy(alpha = 0.06f)
+                                            )
                                         )
-                                    )
+                                    } else {
+                                        // 中间层：#F2F2F7 通透半透明铺底
+                                        drawRect(Color(0xFFF2F2F7).copy(alpha = 0.58f))
+                                        // 玻璃表面微反射高光渐变
+                                        drawRect(
+                                            Brush.verticalGradient(
+                                                0.0f to Color.White.copy(alpha = 0.28f),
+                                                0.35f to Color.White.copy(alpha = 0.08f),
+                                                1.0f to Color.White.copy(alpha = 0.18f)
+                                            )
+                                        )
+                                    }
                                 }
                             )
                         } else {
                             Modifier
                                 .background(
                                     Brush.verticalGradient(
-                                        0.0f to Color(0xFFF7F7FA).copy(alpha = 0.94f),
-                                        1.0f to Color(0xFFEDEDF2).copy(alpha = 0.94f)
+                                        0.0f to (if (isDark) Color(0xFF242428) else Color(0xFFF7F7FA)).copy(alpha = if (isDark) 0.96f else 0.94f),
+                                        1.0f to (if (isDark) Color(0xFF1A1A1E) else Color(0xFFEDEDF2)).copy(alpha = if (isDark) 0.96f else 0.94f)
                                     ),
                                     RoundedCornerShape(cornerRadius)
                                 )
@@ -177,7 +191,7 @@ fun Ios26LiquidGlassDialog(
                     // 重力联动 3D SDF 棱边高光（BloomStroke）
                     .bloomStroke(
                         cornerRadius = cornerRadius,
-                        style = BloomStrokeDefaults.DialogLight,
+                        style = if (isDark) BloomStrokeDefaults.DialogDark else BloomStrokeDefaults.DialogLight,
                         extraDegrees = -45f
                     )
                     .clip(RoundedCornerShape(cornerRadius))
@@ -193,7 +207,7 @@ fun Ios26LiquidGlassDialog(
                             text = title,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF111111),
+                            color = colors.textPrimary,
                             letterSpacing = (-0.4).sp,
                             lineHeight = 22.sp
                         )
@@ -208,7 +222,7 @@ fun Ios26LiquidGlassDialog(
                             text = description,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Normal,
-                            color = Color(0xFF48484A),
+                            color = if (isDark) Color(0xFFAEAEB2) else Color(0xFF48484A),
                             lineHeight = 19.sp
                         )
                     }
@@ -289,7 +303,7 @@ fun Ios26NetworkOfflineDialog(
         description = description,
         secondaryButtonText = "稍后",
         primaryButtonText = "重试加载",
-        primaryButtonColor = Color(0xFF007AFF),
+        primaryButtonColor = AppTheme.colors.accentBlue,
         isPrimaryLoading = isRetrying,
         onSecondaryClick = onDismiss,
         onPrimaryClick = onRetry,
@@ -313,12 +327,16 @@ fun Ios26DialogInputCard(
     placeholder2: String = "Value"
 ) {
     val containerShape = RoundedCornerShape(18.dp)
+    val isDark = AppTheme.isDark
+    val containerBg = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.055f)
+    val containerBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f)
+    val dividerColor = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.055f), containerShape)
-            .border(0.5.dp, Color.Black.copy(alpha = 0.04f), containerShape)
+            .background(containerBg, containerShape)
+            .border(0.5.dp, containerBorder, containerShape)
             .padding(horizontal = 16.dp)
     ) {
         // 第一行输入框
@@ -334,7 +352,7 @@ fun Ios26DialogInputCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(0.6.dp)
-                    .background(Color.Black.copy(alpha = 0.08f))
+                    .background(dividerColor)
             )
 
             Ios26InputFieldRow(
@@ -355,16 +373,17 @@ private fun Ios26InputFieldRow(
     onValueChange: (String) -> Unit,
     placeholder: String
 ) {
+    val colors = AppTheme.colors
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
         textStyle = TextStyle(
             fontSize = 15.sp,
-            color = Color(0xFF1C1C1E),
+            color = colors.textPrimary,
             fontWeight = FontWeight.Normal
         ),
-        cursorBrush = SolidColor(Color(0xFF007AFF)),
+        cursorBrush = SolidColor(colors.accentBlue),
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp),
@@ -377,7 +396,7 @@ private fun Ios26InputFieldRow(
                     Text(
                         text = placeholder,
                         fontSize = 15.sp,
-                        color = Color(0xFF8E8E93),
+                        color = colors.textSecondary,
                         fontWeight = FontWeight.Normal
                     )
                 }
@@ -399,12 +418,17 @@ fun Ios26ValueContainer(
     modifier: Modifier = Modifier
 ) {
     val containerShape = RoundedCornerShape(18.dp)
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
+    val containerBg = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.055f)
+    val containerBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f)
+    val dividerColor = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.055f), containerShape)
-            .border(0.5.dp, Color.Black.copy(alpha = 0.04f), containerShape)
+            .background(containerBg, containerShape)
+            .border(0.5.dp, containerBorder, containerShape)
             .padding(horizontal = 16.dp)
     ) {
         // 第一行
@@ -419,7 +443,7 @@ fun Ios26ValueContainer(
                 text = valueTopLabel,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1C1C1E),
+                color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -434,7 +458,7 @@ fun Ios26ValueContainer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(0.6.dp)
-                    .background(Color.Black.copy(alpha = 0.08f))
+                    .background(dividerColor)
             )
 
             Row(
@@ -448,7 +472,7 @@ fun Ios26ValueContainer(
                     text = valueBottomLabel,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Normal,
-                    color = Color(0xFF8E8E93),
+                    color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -468,10 +492,12 @@ private fun Ios26CapsuleButton(
     text: String,
     isPrimary: Boolean,
     modifier: Modifier = Modifier,
-    backgroundColor: Color = if (isPrimary) Color(0xFF007AFF) else Color.Black.copy(alpha = 0.065f),
+    backgroundColor: Color = if (isPrimary) AppTheme.colors.accentBlue else if (AppTheme.isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.065f),
     isLoading: Boolean = false,
     onClick: () -> Unit
 ) {
+    val isDark = AppTheme.isDark
+    val colors = AppTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -494,7 +520,7 @@ private fun Ios26CapsuleButton(
             .background(backgroundColor)
             .interactiveGlassHighlight(
                 shape = buttonShape,
-                isDarkSurface = isPrimary
+                isDarkSurface = isPrimary || isDark
             )
             .then(
                 if (isPrimary) {
@@ -507,7 +533,11 @@ private fun Ios26CapsuleButton(
                         buttonShape
                     )
                 } else {
-                    Modifier.border(0.5.dp, Color.Black.copy(alpha = 0.04f), buttonShape)
+                    Modifier.border(
+                        0.5.dp,
+                        if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f),
+                        buttonShape
+                    )
                 }
             )
             .clickable(
@@ -530,7 +560,7 @@ private fun Ios26CapsuleButton(
                 text = text,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isPrimary) Color.White else Color(0xFF1C1C1E),
+                color = if (isPrimary) Color.White else colors.textPrimary,
                 letterSpacing = (-0.2).sp
             )
         }

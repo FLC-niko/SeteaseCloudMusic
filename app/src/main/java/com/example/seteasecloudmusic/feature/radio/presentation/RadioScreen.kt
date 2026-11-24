@@ -52,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
@@ -93,6 +94,7 @@ import com.example.seteasecloudmusic.core.ui.components.extractCachedDominantDar
 import com.example.seteasecloudmusic.core.ui.components.getCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
@@ -112,11 +114,21 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
 
-private val RadioBackground = Color.White
-private val RadioTextPrimary = Color(0xFF111111)
-private val RadioTextSecondary = Color(0xFF8F8F95)
-private val RadioAccent = Color(0xFFFA233B)
-private val RadioCoverBorder = Color(0x12000000)
+private val RadioBackground: Color
+    @Composable
+    get() = AppTheme.colors.background
+private val RadioTextPrimary: Color
+    @Composable
+    get() = AppTheme.colors.textPrimary
+private val RadioTextSecondary: Color
+    @Composable
+    get() = AppTheme.colors.textSecondary
+private val RadioAccent: Color
+    @Composable
+    get() = AppTheme.colors.accent
+private val RadioCoverBorder: Color
+    @Composable
+    get() = AppTheme.colors.coverBorder
 private val RadioHorizontalCardWidth = 160.dp
 private val RadioHorizontalCardSpacing = 12.dp
 private val RadioCoverCornerRadius = 12.dp
@@ -153,6 +165,7 @@ fun RadioRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val appIsDark = AppTheme.isDark
 
     androidx.compose.runtime.LaunchedEffect(isForeground) {
         if (isForeground) {
@@ -169,7 +182,7 @@ fun RadioRoute(
         onAvatarClick = onAvatarClick,
         onArtistClick = onArtistClick,
         onOpenPlaylistDetail = { id, name, coverUrl ->
-            trySyncExtractColor(context, coverUrl)
+            trySyncExtractColor(context, coverUrl, isDark = appIsDark)
             viewModel.openPlaylistDetail(id, name, coverUrl)
         },
         onClosePlaylistDetail = viewModel::closePlaylistDetail,
@@ -220,8 +233,10 @@ internal fun RadioScreenContent(
         collapseThresholdDp = AppleMusicTopBarDefaults.CollapseThreshold
     )
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = LazyListState.Saver) { LazyListState() }
+    val colors = AppTheme.colors
+    val radioBgState = rememberUpdatedState(RadioBackground)
     val radioBackdrop = rememberLayerBackdrop {
-        drawRect(RadioBackground)
+        drawRect(radioBgState.value)
         drawContent()
     }
 
@@ -280,7 +295,7 @@ internal fun RadioScreenContent(
                 item(key = "radio_error", fullSpan = true) {
                     Card(
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
+                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 8.dp)
@@ -293,19 +308,19 @@ internal fun RadioScreenContent(
                             Icon(
                                 imageVector = Icons.Filled.WarningAmber,
                                 contentDescription = null,
-                                tint = Color(0xFFE53935),
+                                tint = colors.errorIcon,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
                                     text = uiState.errorMessage,
-                                    color = Color(0xFFD32F2F),
+                                    color = colors.errorContent,
                                     fontSize = 13.sp
                                 )
                                 Text(
                                     text = "轻触可重新加载",
-                                    color = Color(0xFF8E8E93),
+                                    color = colors.textSecondary,
                                     fontSize = 11.sp
                                 )
                             }
@@ -1188,7 +1203,7 @@ private fun RecommendedSingersSection(
                         modifier = Modifier
                             .size(76.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFEFEFEF))
+                            .background(AppTheme.colors.placeholder)
                             .border(0.5.dp, RadioCoverBorder, CircleShape),
                         contentScale = ContentScale.Crop
                     )
@@ -1235,7 +1250,7 @@ private fun RecommendedPlaylistsSection(
                         modifier = Modifier
                             .size(RadioHorizontalCardWidth)
                             .clip(RoundedCornerShape(RadioCoverCornerRadius))
-                            .background(Color(0xFFEAEAEA))
+                            .background(AppTheme.colors.placeholder)
                             .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
                     ) {
                         AsyncImage(
@@ -1541,7 +1556,7 @@ private fun FollowedArtistSection(
                                     .offset(x = (i * 14).dp)
                                     .size(24.dp)
                                     .clip(CircleShape)
-                                    .border(1.5.dp, Color.White, CircleShape),
+                                    .border(1.5.dp, RadioBackground, CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                         }

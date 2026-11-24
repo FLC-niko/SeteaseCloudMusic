@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,18 +59,34 @@ import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlaylist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverToplist
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverTrackPreview
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
-private val DiscoverBackground = Color(0xFFF4F4F6)
-private val DiscoverPrimary = Color(0xFF111111)
-private val DiscoverSecondary = Color(0xFF8F8F95)
-private val DiscoverDivider = Color(0xFFE2E2E6)
-private val DiscoverAccent = Color(0xFFFA233B)
-private val DiscoverSurface = Color(0xFFF7F7FA)
+private val DiscoverBackground: Color
+    @Composable
+    get() = AppTheme.colors.backgroundSecondary
+private val DiscoverPrimary: Color
+    @Composable
+    get() = AppTheme.colors.textPrimary
+private val DiscoverSecondary: Color
+    @Composable
+    get() = AppTheme.colors.textSecondary
+private val DiscoverDivider: Color
+    @Composable
+    get() = AppTheme.colors.divider
+private val DiscoverAccent: Color
+    @Composable
+    get() = AppTheme.colors.accent
+private val DiscoverSurface: Color
+    @Composable
+    get() = AppTheme.colors.surfaceVariant
+private val DiscoverCardSurface: Color
+    @Composable
+    get() = AppTheme.colors.surface
 
 @Composable
 fun DiscoverScreen(
@@ -84,8 +101,9 @@ fun DiscoverScreen(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val discoverBgState = rememberUpdatedState(DiscoverBackground)
     val discoverBackdrop = rememberLayerBackdrop {
-        drawRect(DiscoverBackground)
+        drawRect(discoverBgState.value)
         drawContent()
     }
     val topBlurAlpha by remember(listState, density) {
@@ -242,7 +260,7 @@ private fun DiscoverChipCard(
     ) {
         Card(
             shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = DiscoverCardSurface),
             border = BorderStroke(1.dp, DiscoverDivider),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier
@@ -318,7 +336,7 @@ private fun DiscoverToplistCard(
 ) {
     Card(
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = DiscoverCardSurface),
         border = BorderStroke(1.dp, DiscoverDivider),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.width(320.dp)
@@ -430,7 +448,7 @@ private fun DiscoverSongSection(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.White)
+                .background(DiscoverCardSurface)
         ) {
             tracks.take(10).forEachIndexed { index, track ->
                 DiscoverSongRow(track = track)
@@ -508,7 +526,7 @@ private fun DiscoverPlaylistListSection(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.White)
+                .background(DiscoverCardSurface)
         ) {
             playlists.take(6).forEachIndexed { index, playlist ->
                 DiscoverPlaylistRow(playlist = playlist)
@@ -592,7 +610,7 @@ private fun DiscoverLoadingRow(
                     .width(132.dp)
                     .height(cardHeight)
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Color.White),
+                    .background(DiscoverCardSurface),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
@@ -613,7 +631,7 @@ private fun DiscoverLoadingColumn(
         modifier = Modifier
             .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Color.White)
+            .background(DiscoverCardSurface)
     ) {
         repeat(rowCount) { index ->
             Row(
@@ -649,11 +667,12 @@ private fun DiscoverErrorPanel(
     message: String,
     onRetry: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Column(
         modifier = Modifier
             .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Color.White)
+            .background(DiscoverCardSurface)
             .padding(20.dp),
         horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -665,7 +684,7 @@ private fun DiscoverErrorPanel(
             Icon(
                 imageVector = Icons.Filled.WarningAmber,
                 contentDescription = null,
-                tint = Color(0xFFE53935),
+                tint = colors.errorIcon,
                 modifier = Modifier.size(20.dp)
             )
             Text(
@@ -683,7 +702,7 @@ private fun DiscoverErrorPanel(
         )
         Text(
             text = "提示：请检查设备网络连接后重试",
-            color = Color(0xFF8E8E93),
+            color = DiscoverSecondary,
             fontSize = 12.sp
         )
         Button(onClick = onRetry) {
@@ -702,7 +721,7 @@ private fun DiscoverEmptyPanel(
         modifier = Modifier
             .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Color.White)
+            .background(DiscoverCardSurface)
             .fillMaxWidth()
             .height(120.dp),
         contentAlignment = Alignment.Center

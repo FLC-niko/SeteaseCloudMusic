@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.Text
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -51,7 +52,7 @@ fun UserAvatar(
     val hasAvatarImage = !avatarUrl.isNullOrBlank()
     val hasMonogram = !monogram.isNullOrBlank()
     val isGuestPlaceholder = !hasAvatarImage && !hasMonogram && isGuest
-    val appleMusicRed = Color(0xFFFA233B)
+    val appleMusicRed = AppTheme.colors.accent
 
     if (isGuestPlaceholder) {
         Box(

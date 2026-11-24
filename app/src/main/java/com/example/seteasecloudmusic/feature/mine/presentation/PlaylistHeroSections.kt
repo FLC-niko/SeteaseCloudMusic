@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.home.presentation.ScrollingPosterWall
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicPlayTriangleIcon
@@ -122,7 +124,7 @@ fun PlaylistHeroAppleMusicSection(
                     ambientColor = Color.Black.copy(alpha = 0.45f)
                 )
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.08f)),
+                .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)),
             contentAlignment = Alignment.Center
         ) {
             if (!detail.coverUrl.isNullOrBlank()) {
@@ -175,7 +177,7 @@ fun PlaylistHeroPosterWallSection(
         if (tracksCovers.isNotEmpty()) tracksCovers else listOfNotNull(detail.coverUrl)
     }
     val totalCount = detail.trackCount.coerceAtLeast(detail.tracks.size)
-    val maskColor = if (isDark) dominantDarkColor else Color(0xFF333338)
+    val maskColor = dominantDarkColor
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -262,8 +264,9 @@ fun PlaylistHeroDynamicPosterWallSection(
     val smoothScrimBrush = remember(maskColor) {
         buildSmoothHeroScrimBrush(maskColor)
     }
+    val maskColorState = rememberUpdatedState(maskColor)
     val wallBackdrop = rememberLayerBackdrop {
-        drawRect(maskColor)
+        drawRect(maskColorState.value)
         drawContent()
     }
 
@@ -596,6 +599,7 @@ private fun PosterCoverGrid(
             if (covers.isNotEmpty()) covers[index % covers.size].toCoverThumbnailUrl(180) else null
         }
     }
+    val gridLineColor = if (AppTheme.isDark) Color(0xFF1C1C1E) else Color.White
 
     Column(
         modifier = modifier
@@ -608,7 +612,7 @@ private fun PosterCoverGrid(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(Color.White)
+                        .background(gridLineColor)
                 )
             }
             Row(
@@ -633,7 +637,7 @@ private fun PosterCoverGrid(
                                     val lineBottom = (size.height - bottomCutoff).coerceAtLeast(0f)
                                     if (lineBottom > 0f) {
                                         drawLine(
-                                            color = Color.White,
+                                            color = gridLineColor,
                                             start = Offset(size.width - strokePx / 2, 0f),
                                             end = Offset(size.width - strokePx / 2, lineBottom),
                                             strokeWidth = strokePx

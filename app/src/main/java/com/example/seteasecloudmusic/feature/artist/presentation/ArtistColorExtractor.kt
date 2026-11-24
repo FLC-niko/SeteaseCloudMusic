@@ -16,62 +16,87 @@ import androidx.palette.graphics.Palette
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import com.example.seteasecloudmusic.core.ui.theme.tuneAmbientHslForTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-val DefaultArtistAmbientBg = Color(0xFF28353E)
+val DefaultArtistAmbientLightBg = Color(0xFFF0F2F5)
+val DefaultArtistAmbientDarkBg = Color(0xFF171E24)
+val DefaultArtistAmbientBg = DefaultArtistAmbientDarkBg
 
 private object ArtistCoverColorCache {
-    private val cache = LruCache<String, Color>(64)
+    private val cache = LruCache<String, Color>(128)
 
-    fun get(url: String?): Color? {
+    private fun key(url: String, isDark: Boolean): String = "${if (isDark) "d" else "l"}|$url"
+
+    fun get(url: String?, isDark: Boolean): Color? {
         if (url.isNullOrBlank()) return null
-        return synchronized(cache) { cache.get(url) }
+        return synchronized(cache) { cache.get(key(url, isDark)) }
     }
 
-    fun put(url: String?, color: Color) {
+    fun put(url: String?, color: Color, isDark: Boolean) {
         if (!url.isNullOrBlank()) {
-            synchronized(cache) { cache.put(url, color) }
+            synchronized(cache) { cache.put(key(url, isDark), color) }
         }
     }
 }
 
 private fun extractArtistAmbientDarkColor(
     bitmap: Bitmap,
-    defaultColor: Color = DefaultArtistAmbientBg
+    isDark: Boolean,
+    defaultColor: Color = if (isDark) DefaultArtistAmbientDarkBg else DefaultArtistAmbientLightBg
 ): Color {
     val palette = Palette.from(bitmap).maximumColorCount(16).generate()
-    val swatch = palette.mutedSwatch
-        ?: palette.dominantSwatch
-        ?: palette.darkMutedSwatch
-        ?: palette.darkVibrantSwatch
-        ?: palette.vibrantSwatch
-        ?: return defaultColor
+    val swatch = if (isDark) {
+        palette.mutedSwatch
+            ?: palette.dominantSwatch
+            ?: palette.darkMutedSwatch
+            ?: palette.darkVibrantSwatch
+            ?: palette.vibrantSwatch
+    } else {
+        val dominant = palette.dominantSwatch
+        if (dominant != null && dominant.hsl[1] >= 0.18f) {
+            dominant
+        } else {
+            palette.vibrantSwatch
+                ?: palette.lightVibrantSwatch
+                ?: dominant
+                ?: palette.mutedSwatch
+                ?: palette.darkVibrantSwatch
+                ?: palette.darkMutedSwatch
+        }
+    } ?: return defaultColor
 
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(swatch.rgb, hsl)
-    hsl[1] = hsl[1].coerceIn(0.14f, 0.36f)
-    hsl[2] = (hsl[2] * 0.46f + 0.16f).coerceIn(0.22f, 0.32f)
+    tuneAmbientHslForTheme(hsl, isDark)
     return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = 1f)
 }
 
 @Composable
 fun rememberArtistAmbientDarkColor(
     imageUrl: String?,
-    defaultColor: Color = DefaultArtistAmbientBg
+    isDark: Boolean = AppTheme.isDark,
+    defaultColor: Color = if (isDark) DefaultArtistAmbientDarkBg else DefaultArtistAmbientLightBg
 ): State<Color> {
     val context = LocalContext.current
-    val initialColor = remember(imageUrl) {
-        ArtistCoverColorCache.get(imageUrl) ?: defaultColor
+    val initialColor = remember(imageUrl, isDark, defaultColor) {
+        ArtistCoverColorCache.get(imageUrl, isDark) ?: defaultColor
     }
 
-    val extractedState = produceState(initialValue = initialColor, key1 = imageUrl) {
+    val extractedState = produceState(
+        initialValue = initialColor,
+        key1 = imageUrl,
+        key2 = isDark,
+        key3 = defaultColor
+    ) {
         if (imageUrl.isNullOrBlank()) {
             value = defaultColor
             return@produceState
         }
 
-        val cached = ArtistCoverColorCache.get(imageUrl)
+        val cached = ArtistCoverColorCache.get(imageUrl, isDark)
         if (cached != null) {
             value = cached
             return@produceState
@@ -98,8 +123,8 @@ fun rememberArtistAmbientDarkColor(
                             drawable.draw(canvas)
                         }
                     }
-                    extractArtistAmbientDarkColor(bitmap, defaultColor).also { color ->
-                        ArtistCoverColorCache.put(imageUrl, color)
+                    extractArtistAmbientDarkColor(bitmap, isDark, defaultColor).also { color ->
+                        ArtistCoverColorCache.put(imageUrl, color, isDark)
                     }
                 } else {
                     defaultColor

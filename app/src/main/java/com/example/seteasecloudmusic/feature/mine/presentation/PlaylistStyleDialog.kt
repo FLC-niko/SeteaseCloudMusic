@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
 
 /**
@@ -79,6 +80,7 @@ fun PlaylistMoreActionSheet(
 ) {
     val context = LocalContext.current
     var currentLevel by remember { mutableStateOf(PlaylistMoreMenuLevel.MAIN) }
+    val colors = AppTheme.colors
 
     // 当处于二级菜单（歌单壁纸）时，点击物理返回键优先返回一级菜单
     BackHandler(enabled = currentLevel == PlaylistMoreMenuLevel.WALLPAPER) {
@@ -87,7 +89,7 @@ fun PlaylistMoreActionSheet(
 
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = colors.surface,
         modifier = modifier
     ) {
         Column(
@@ -113,7 +115,7 @@ fun PlaylistMoreActionSheet(
                                 text = "更多操作",
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E1E24),
+                                color = colors.textPrimary,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
 
@@ -122,10 +124,10 @@ fun PlaylistMoreActionSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(18.dp))
-                                    .background(Color(0xFFF5F5F7))
+                                    .background(colors.surfaceVariant)
                                     .border(
                                         width = 0.5.dp,
-                                        color = Color.Black.copy(alpha = 0.04f),
+                                        color = colors.coverBorder,
                                         shape = RoundedCornerShape(18.dp)
                                     )
                                     .clickable {
@@ -138,13 +140,13 @@ fun PlaylistMoreActionSheet(
                                     modifier = Modifier
                                         .size(36.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFFFA233B).copy(alpha = 0.12f)),
+                                        .background(colors.accentSubtle),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Wallpaper,
                                         contentDescription = "歌单壁纸",
-                                        tint = Color(0xFFFA233B),
+                                        tint = colors.accent,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -156,7 +158,7 @@ fun PlaylistMoreActionSheet(
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF1E1E24)
+                                        color = colors.textPrimary
                                     ),
                                     modifier = Modifier.weight(1f)
                                 )
@@ -165,7 +167,7 @@ fun PlaylistMoreActionSheet(
                                     text = currentStyle.title,
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = 14.sp,
-                                        color = Color(0xFF8E8E93)
+                                        color = colors.textSecondary
                                     )
                                 )
 
@@ -174,7 +176,7 @@ fun PlaylistMoreActionSheet(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                     contentDescription = null,
-                                    tint = Color(0xFFC7C7CC),
+                                    tint = colors.textTertiary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -184,10 +186,10 @@ fun PlaylistMoreActionSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(18.dp))
-                                    .background(Color(0xFFF5F5F7))
+                                    .background(colors.surfaceVariant)
                                     .border(
                                         width = 0.5.dp,
-                                        color = Color.Black.copy(alpha = 0.04f),
+                                        color = colors.coverBorder,
                                         shape = RoundedCornerShape(18.dp)
                                     )
                                     .clickable {
@@ -205,13 +207,13 @@ fun PlaylistMoreActionSheet(
                                     modifier = Modifier
                                         .size(36.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF007AFF).copy(alpha = 0.12f)),
+                                        .background(colors.accentBlue.copy(alpha = 0.14f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.Sort,
                                         contentDescription = "歌曲排序",
-                                        tint = Color(0xFF007AFF),
+                                        tint = colors.accentBlue,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -223,7 +225,7 @@ fun PlaylistMoreActionSheet(
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF1E1E24)
+                                        color = colors.textPrimary
                                     ),
                                     modifier = Modifier.weight(1f)
                                 )
@@ -232,7 +234,7 @@ fun PlaylistMoreActionSheet(
                                     text = "默认",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = 14.sp,
-                                        color = Color(0xFF8E8E93)
+                                        color = colors.textSecondary
                                     )
                                 )
 
@@ -241,7 +243,7 @@ fun PlaylistMoreActionSheet(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                     contentDescription = null,
-                                    tint = Color(0xFFC7C7CC),
+                                    tint = colors.textTertiary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -253,7 +255,7 @@ fun PlaylistMoreActionSheet(
                                 onClick = onDismiss,
                                 shape = RoundedCornerShape(24.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFFA233B),
+                                    containerColor = colors.accent,
                                     contentColor = Color.White
                                 ),
                                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
@@ -280,7 +282,7 @@ fun PlaylistMoreActionSheet(
                                 text = "歌单壁纸",
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E1E24),
+                                color = colors.textPrimary,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
 
@@ -289,10 +291,10 @@ fun PlaylistMoreActionSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(18.dp))
-                                    .background(Color(0xFFF5F5F7))
+                                    .background(colors.surfaceVariant)
                                     .border(
                                         width = 0.5.dp,
-                                        color = Color.Black.copy(alpha = 0.04f),
+                                        color = colors.coverBorder,
                                         shape = RoundedCornerShape(18.dp)
                                     )
                                     .clickable {
@@ -307,15 +309,15 @@ fun PlaylistMoreActionSheet(
                                         style = MaterialTheme.typography.titleMedium.copy(
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFF1E1E24)
+                                            color = colors.textPrimary
                                         )
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = if (useColorBackground) "根据封面智能取色沉浸背景" else "已恢复纯白背景与灰色遮罩",
+                                        text = if (useColorBackground) "根据封面智能取色沉浸背景" else "已恢复默认纯色背景与遮罩",
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontSize = 12.sp,
-                                            color = Color(0xFF8E8E93)
+                                            color = colors.textSecondary
                                         )
                                     )
                                 }
@@ -325,9 +327,9 @@ fun PlaylistMoreActionSheet(
                                     onCheckedChange = onToggleColorBackground,
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
-                                        checkedTrackColor = Color(0xFFFA233B),
+                                        checkedTrackColor = colors.accent,
                                         uncheckedThumbColor = Color.White,
-                                        uncheckedTrackColor = Color(0xFFE5E5EA),
+                                        uncheckedTrackColor = colors.divider,
                                         uncheckedBorderColor = Color.Transparent
                                     )
                                 )
@@ -342,12 +344,12 @@ fun PlaylistMoreActionSheet(
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(18.dp))
                                         .background(
-                                            if (isSelected) Color(0xFFFA233B).copy(alpha = 0.10f)
-                                            else Color(0xFFF5F5F7)
+                                            if (isSelected) colors.accentSubtle
+                                            else colors.surfaceVariant
                                         )
                                         .border(
                                             width = if (isSelected) 1.5.dp else 0.5.dp,
-                                            color = if (isSelected) Color(0xFFFA233B) else Color.Black.copy(alpha = 0.04f),
+                                            color = if (isSelected) colors.accent else colors.coverBorder,
                                             shape = RoundedCornerShape(18.dp)
                                         )
                                         .clickable {
@@ -361,7 +363,7 @@ fun PlaylistMoreActionSheet(
                                         style = MaterialTheme.typography.titleMedium.copy(
                                             fontSize = 16.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                            color = if (isSelected) Color(0xFFFA233B) else Color(0xFF1E1E24)
+                                            color = if (isSelected) colors.accent else colors.textPrimary
                                         ),
                                         modifier = Modifier.weight(1f)
                                     )
@@ -371,7 +373,7 @@ fun PlaylistMoreActionSheet(
                                             modifier = Modifier
                                                 .size(24.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFFFA233B)),
+                                                .background(colors.accent),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
@@ -396,7 +398,7 @@ fun PlaylistMoreActionSheet(
                                 Surface(
                                     onClick = { currentLevel = PlaylistMoreMenuLevel.MAIN },
                                     shape = RoundedCornerShape(24.dp),
-                                    color = Color(0xFFF2F2F7),
+                                    color = colors.surfaceVariant,
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(48.dp)
@@ -409,7 +411,7 @@ fun PlaylistMoreActionSheet(
                                             text = "返回",
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFF1E1E24)
+                                            color = colors.textPrimary
                                         )
                                     }
                                 }
@@ -418,7 +420,7 @@ fun PlaylistMoreActionSheet(
                                     onClick = onDismiss,
                                     shape = RoundedCornerShape(24.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFA233B),
+                                        containerColor = colors.accent,
                                         contentColor = Color.White
                                     ),
                                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),

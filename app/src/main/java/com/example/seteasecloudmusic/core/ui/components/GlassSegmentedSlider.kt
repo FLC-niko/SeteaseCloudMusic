@@ -43,6 +43,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -418,7 +419,7 @@ fun LiquidGlassRestingThumb(
     cornerRadius: Dp,
     modifier: Modifier = Modifier,
     thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     pillColor: Color = if (isDarkSurface) Color.White else Color.Black,
     pillAlpha: Float = if (isDarkSurface) GlassSliderDefaults.RestingPillAlphaDark else GlassSliderDefaults.RestingPillAlphaLight,
     alphaProvider: (() -> Float)? = null,
@@ -475,7 +476,7 @@ fun LiquidGlassDualColorTabs(
     cornerRadius: Dp,
     modifier: Modifier = Modifier,
     thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     pillColor: Color = if (isDarkSurface) Color.White else Color.Black,
     pillAlpha: Float = if (isDarkSurface) GlassSliderDefaults.RestingPillAlphaDark else GlassSliderDefaults.RestingPillAlphaLight,
     alphaProvider: (() -> Float)? = null,
@@ -584,7 +585,7 @@ fun LiquidGlassActiveTabsRecorder(
     containerHeight: Dp,
     cornerRadius: Dp,
     modifier: Modifier = Modifier,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     surfaceAlpha: Float = GlassDefaults.SurfaceAlpha,
     surfaceColor: Color = if (isDarkSurface) Color(0xFF1C1C24) else Color(0xFFF7F7FA),
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
@@ -650,7 +651,7 @@ fun LiquidGlassActiveDroplet(
     modifier: Modifier = Modifier,
     thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
     maxPressScale: Float = GlassSliderDefaults.MaxPressScale,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     alphaProvider: (() -> Float)? = null,
     orientation: Orientation = Orientation.Horizontal
 ) {
@@ -790,7 +791,7 @@ fun LiquidGlassActiveDroplet(
             modifier = visibilityModifier
                 .graphicsLayer(dropletLayerBlock)
                 .size(thumbWidth, thumbHeight)
-                .background(Color.White.copy(alpha = 0.28f), shape)
+                .background(Color.White.copy(alpha = if (isDarkSurface) 0.18f else 0.28f), shape)
                 .bloomStroke(
                     cornerRadius = innerCornerRadius,
                     style = dropletBloomStyle,
@@ -820,7 +821,7 @@ fun LiquidGlassSegmentedBar(
     cornerRadius: Dp = barHeight / 2,
     thumbPadding: Dp = GlassSliderDefaults.ThumbPadding,
     maxPressScale: Float = GlassSliderDefaults.CompactMaxPressScale,
-    isDarkSurface: Boolean = false,
+    isDarkSurface: Boolean = AppTheme.isDark,
     surfaceAlpha: Float = GlassDefaults.SurfaceAlpha,
     orientation: Orientation = Orientation.Horizontal,
     content: @Composable BoxScope.(isInsideSlider: Boolean) -> Unit
@@ -1013,7 +1014,7 @@ fun GlassThumb(
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
     alphaProvider: (() -> Float)? = null,
-    surfaceColor: Color = Color.White,
+    surfaceColor: Color = if (AppTheme.isDark) Color(0xFF2C2C34) else Color.White,
     surfaceAlpha: Float = GlassSliderDefaults.ThumbSurfaceAlpha,
     blurRadius: Dp = GlassSliderDefaults.BlurRadius,
     orientation: Orientation = Orientation.Horizontal

@@ -79,6 +79,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -125,14 +126,25 @@ import com.example.seteasecloudmusic.core.ui.components.getCachedBottomEdgeColor
 import com.example.seteasecloudmusic.core.ui.components.getCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 
-private val HomeBackground = Color.White
-private val HomePrimary = Color(0xFF111111)
-private val HomeSecondary = Color(0xFF8F8F95)
-private val HomeDivider = Color(0xFFE2E2E6)
-private val HomeAccent = Color(0xFFFA233B)
+private val HomeBackground: Color
+    @Composable
+    get() = AppTheme.colors.background
+private val HomePrimary: Color
+    @Composable
+    get() = AppTheme.colors.textPrimary
+private val HomeSecondary: Color
+    @Composable
+    get() = AppTheme.colors.textSecondary
+private val HomeDivider: Color
+    @Composable
+    get() = AppTheme.colors.divider
+private val HomeAccent: Color
+    @Composable
+    get() = AppTheme.colors.accent
 private val PosterWallSurface = Color(0xFF1C1C22)
 
 @Composable
@@ -250,9 +262,13 @@ internal fun HomeScreenContent(
             (split || uiState.activePlaylistDetail == null) &&
             isPosterWallInViewport
 
+        val homeBgColor = HomeBackground
+        val homeBgColorState = rememberUpdatedState(homeBgColor)
+        val colors = AppTheme.colors
+
         val feedContent: @Composable () -> Unit = {
             val homeBackdrop = rememberLayerBackdrop {
-                drawRect(HomeBackground)
+                drawRect(homeBgColorState.value)
                 drawContent()
             }
             Box(modifier = Modifier.fillMaxSize()) {
@@ -297,7 +313,7 @@ internal fun HomeScreenContent(
                 item(key = "home_error_message", fullSpan = true) {
                     Card(
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
+                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 8.dp)
@@ -309,20 +325,20 @@ internal fun HomeScreenContent(
                             Icon(
                                 imageVector = Icons.Filled.WarningAmber,
                                 contentDescription = null,
-                                tint = Color(0xFFE53935),
+                                tint = colors.errorIcon,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
                                     text = uiState.errorMessage,
-                                    color = Color(0xFFD32F2F),
+                                    color = colors.errorContent,
                                     fontSize = 13.sp,
                                     lineHeight = 18.sp
                                 )
                                 Text(
                                     text = "提示：可轻触页面上方刷新按钮重新获取",
-                                    color = Color(0xFF8E8E93),
+                                    color = colors.textSecondary,
                                     fontSize = 11.sp
                                 )
                             }
@@ -738,7 +754,7 @@ private fun DailyTrackRow(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE4E4E8)),
+                .background(AppTheme.colors.placeholder),
             contentAlignment = Alignment.Center
         ) {
             if (!track.coverUrl.isNullOrBlank()) {
@@ -789,6 +805,7 @@ private fun HomeErrorState(
     onRetryClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = AppTheme.colors
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -797,12 +814,12 @@ private fun HomeErrorState(
             Icon(
                 imageVector = Icons.Filled.WarningAmber,
                 contentDescription = null,
-                tint = Color(0xFFB52438),
+                tint = colors.errorIcon,
                 modifier = Modifier.size(28.dp)
             )
             Text(
                 text = message ?: "获取每日推荐失败",
-                color = Color(0xFFB52438),
+                color = colors.errorContent,
                 fontSize = 13.sp
             )
             Button(onClick = onRetryClick) {
@@ -1009,7 +1026,7 @@ private fun FavoriteRecommendedSongsSection(
                     )
                     if (index < columnTracks.lastIndex) {
                         HorizontalDivider(
-                            color = Color(0x14000000),
+                            color = HomeDivider,
                             thickness = 0.5.dp,
                             modifier = Modifier.padding(start = 66.dp, end = 4.dp)
                         )
@@ -1039,7 +1056,7 @@ private fun SongRecommendRowItem(
             modifier = Modifier
                 .size(54.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFE8E8EC)),
+                .background(AppTheme.colors.placeholder),
             contentAlignment = Alignment.Center
         ) {
             if (coverUrl != null) {
@@ -1107,17 +1124,9 @@ private fun SongTagBadge(tag: String) {
     val hasHeart = tag.contains("❤️") || cleanTag.contains("红心") || cleanTag.contains("悲伤联盟")
     val isHiRes = cleanTag.equals("Hi-Res", ignoreCase = true) || cleanTag.equals("HiRes", ignoreCase = true)
 
-    val badgeBg = when {
-        isVip -> Color(0xFFFFF0F2)
-        isHiRes -> Color(0xFFFFFAFA)
-        else -> Color(0xFFFFECEF)
-    }
-
-    val textColor = when {
-        isVip -> Color(0xFFE53935)
-        isHiRes -> Color(0xFFE53935)
-        else -> Color(0xFFE53935)
-    }
+    val colors = AppTheme.colors
+    val badgeBg = colors.tagContainer
+    val textColor = colors.tagContent
 
     Box(
         modifier = Modifier
@@ -1134,7 +1143,7 @@ private fun SongTagBadge(tag: String) {
                 Icon(
                     imageVector = Icons.Filled.Favorite,
                     contentDescription = null,
-                    tint = Color(0xFFE53935),
+                    tint = textColor,
                     modifier = Modifier.size(9.dp)
                 )
             }
@@ -1452,7 +1461,7 @@ private fun SimiSongsRoamStyleCard(
             .height(215.dp)
             .clip(RoundedCornerShape(18.dp))
             .drawBehind { drawRect(animatedBgState.value) }
-            .border(0.5.dp, Color(0x12000000), RoundedCornerShape(18.dp))
+            .border(0.5.dp, AppTheme.colors.coverBorder, RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
     ) {
         Column(

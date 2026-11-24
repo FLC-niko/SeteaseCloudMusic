@@ -43,8 +43,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
+import com.example.seteasecloudmusic.core.settings.AppThemeMode
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -104,7 +106,9 @@ fun AccountLoginSheetContent(
     val scope = rememberCoroutineScope()
     val contentScrollState = rememberScrollState()
     var showAudioQualityDialog by remember { mutableStateOf(false) }
+    var showThemeModeDialog by remember { mutableStateOf(false) }
     val audioQuality by viewModel.playerSettingsManager.audioQuality.collectAsStateWithLifecycle()
+    val themeMode by viewModel.playerSettingsManager.themeMode.collectAsStateWithLifecycle()
     val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
     val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
     val predictiveBackEnabled by viewModel.playerSettingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
@@ -122,8 +126,9 @@ fun AccountLoginSheetContent(
         }
     }
 
-    val red = Color(0xFFFA233B)
-    val secondary = Color(0xFF8D8D93)
+    val colors = AppTheme.colors
+    val red = colors.accent
+    val secondary = colors.textSecondary
 
     Box(modifier = modifier) {
         Column(
@@ -247,6 +252,8 @@ fun AccountLoginSheetContent(
                             },
                             audioQuality = audioQuality,
                             onAudioQualityClick = { showAudioQualityDialog = true },
+                            themeMode = themeMode,
+                            onThemeModeClick = { showThemeModeDialog = true },
                             bluetoothLyricsEnabled = bluetoothLyricsEnabled,
                             onBluetoothLyricsChange = { viewModel.playerSettingsManager.setBluetoothLyricsEnabled(it) },
                             superLyricApiEnabled = superLyricApiEnabled,
@@ -288,7 +295,7 @@ fun AccountLoginSheetContent(
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.onDismissLogoutConfirm() }) {
-                        Text(text = "取消", color = Color(0xFF5F5F67))
+                        Text(text = "取消", color = colors.textSecondary)
                     }
                 }
             )
@@ -305,6 +312,17 @@ fun AccountLoginSheetContent(
             )
         }
 
+        if (showThemeModeDialog) {
+            ThemeModeSettingsDialog(
+                currentMode = themeMode,
+                onSelect = { mode ->
+                    viewModel.playerSettingsManager.setThemeMode(mode)
+                    showThemeModeDialog = false
+                },
+                onDismiss = { showThemeModeDialog = false }
+            )
+        }
+
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -316,6 +334,7 @@ fun AccountLoginSheetContent(
 
 @Composable
 private fun Header(onDismiss: () -> Unit) {
+    val colors = AppTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -326,14 +345,14 @@ private fun Header(onDismiss: () -> Unit) {
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFFE8EC))
-                    .border(1.dp, Color(0xFFFFBAC7), CircleShape),
+                    .background(colors.accentSubtle)
+                    .border(1.dp, colors.accent.copy(alpha = 0.30f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Filled.Sms,
                     contentDescription = null,
-                    tint = Color(0xFFFA233B),
+                    tint = colors.accent,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -342,7 +361,7 @@ private fun Header(onDismiss: () -> Unit) {
                 text = "Setease 账户",
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF121212)
+                color = colors.textPrimary
             )
         }
 
@@ -350,12 +369,12 @@ private fun Header(onDismiss: () -> Unit) {
             onClick = onDismiss,
             modifier = Modifier
                 .size(44.dp)
-                .background(Color(0xFFF0F0F4), CircleShape)
+                .background(colors.surfaceVariant, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Filled.Close,
                 contentDescription = "关闭",
-                tint = Color(0xFF1C1C1E)
+                tint = colors.iconPrimary
             )
         }
     }
@@ -367,6 +386,7 @@ private fun AccountDetailsHeader(
     onBack: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -376,12 +396,12 @@ private fun AccountDetailsHeader(
             onClick = onBack,
             modifier = Modifier
                 .size(44.dp)
-                .background(Color(0xFFF0F0F4), CircleShape)
+                .background(colors.surfaceVariant, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "返回",
-                tint = Color(0xFF1C1C1E)
+                tint = colors.iconPrimary
             )
         }
 
@@ -389,19 +409,19 @@ private fun AccountDetailsHeader(
             text = title,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF121212)
+            color = colors.textPrimary
         )
 
         IconButton(
             onClick = onDismiss,
             modifier = Modifier
                 .size(44.dp)
-                .background(Color(0xFFF0F0F4), CircleShape)
+                .background(colors.surfaceVariant, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Filled.Close,
                 contentDescription = "关闭",
-                tint = Color(0xFF1C1C1E)
+                tint = colors.iconPrimary
             )
         }
     }
@@ -425,6 +445,8 @@ private fun AccountDetailsPanel(
     onPersonalizedRecommendationChange: (Boolean) -> Unit,
     audioQuality: OnlineAudioQuality,
     onAudioQualityClick: () -> Unit,
+    themeMode: AppThemeMode,
+    onThemeModeClick: () -> Unit,
     bluetoothLyricsEnabled: Boolean,
     onBluetoothLyricsChange: (Boolean) -> Unit,
     superLyricApiEnabled: Boolean,
@@ -435,9 +457,10 @@ private fun AccountDetailsPanel(
     onLocalDirectApiChange: (Boolean) -> Unit,
     onLogoutClick: () -> Unit
 ) {
-    val secondary = Color(0xFF8D8D93)
-    val dividerColor = Color(0xFFE2E2E8)
-    val red = Color(0xFFFA233B)
+    val colors = AppTheme.colors
+    val secondary = colors.textSecondary
+    val dividerColor = colors.divider
+    val red = colors.accent
 
     Column(modifier = Modifier.fillMaxWidth()) {
         if (isLoggedIn) {
@@ -461,7 +484,7 @@ private fun AccountDetailsPanel(
                             text = "Apple 账户",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF121212)
+                            color = colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
@@ -473,7 +496,7 @@ private fun AccountDetailsPanel(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = Color(0xFFC7C7CC),
+                        tint = colors.textTertiary,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -487,6 +510,12 @@ private fun AccountDetailsPanel(
                 title = "在线播放音质",
                 trailingText = audioQuality.badgeText,
                 onClick = onAudioQualityClick
+            )
+            SettingsDivider(dividerColor)
+            SettingsNavigationRow(
+                title = "外观模式",
+                trailingText = themeMode.title,
+                onClick = onThemeModeClick
             )
         }
 
@@ -593,7 +622,7 @@ private fun AccountDetailsPanel(
 
             Card(
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -636,10 +665,11 @@ private fun AccountDetailsSubpagePanel(
     val title = destination?.title ?: "账户详情"
     val description = destination?.placeholderDescription() ?: "该功能正在开发中。"
 
+    val colors = AppTheme.colors
     Column(modifier = Modifier.fillMaxWidth()) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -652,7 +682,7 @@ private fun AccountDetailsSubpagePanel(
                     text = title,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF121212)
+                    color = colors.textPrimary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -672,7 +702,7 @@ private fun SettingsSectionCard(
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = AppTheme.colors.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -695,6 +725,7 @@ private fun SettingsNavigationRow(
     trailingText: String? = null,
     onClick: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -706,21 +737,21 @@ private fun SettingsNavigationRow(
             text = title,
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF121212),
+            color = colors.textPrimary,
             modifier = Modifier.weight(1f)
         )
         if (!trailingText.isNullOrBlank()) {
             Text(
                 text = trailingText,
                 fontSize = 16.sp,
-                color = Color(0xFF8D8D93)
+                color = colors.textSecondary
             )
             Spacer(modifier = Modifier.size(4.dp))
         }
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = Color(0xFFC7C7CC),
+            tint = colors.textTertiary,
             modifier = Modifier.size(22.dp)
         )
     }
@@ -743,7 +774,7 @@ private fun SettingsToggleRow(
             text = title,
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF121212),
+            color = AppTheme.colors.textPrimary,
             modifier = Modifier.weight(1f)
         )
         LiquidGlassSwitch(
@@ -762,6 +793,7 @@ private fun LiquidGlassSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    val isDark = AppTheme.isDark
     val trackWidth = 51.dp
     val trackHeight = 31.dp
     val thumbSize = 27.dp
@@ -769,8 +801,9 @@ private fun LiquidGlassSwitch(
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val uncheckedTrackColor = if (isDark) Color(0xFF3A3A3C) else Color(0xFFD6D6DC)
     val trackColor by animateColorAsState(
-        targetValue = if (checked) Color(0xFF30D158) else Color(0xFF3A3A3C),
+        targetValue = if (checked) Color(0xFF30D158) else uncheckedTrackColor,
         animationSpec = tween(durationMillis = 170),
         label = "liquidSwitchTrackColor"
     )
@@ -784,6 +817,11 @@ private fun LiquidGlassSwitch(
         animationSpec = spring(dampingRatio = 0.72f, stiffness = 700f),
         label = "liquidSwitchThumbScale"
     )
+    val switchBloomStyle = remember(isDark) {
+        BloomStrokeDefaults.CompactControl.copy(
+            lightSurfaceSubtleOutlineAlpha = if (isDark) 0f else 0.06f
+        )
+    }
 
     val baseModifier = modifier
         .size(trackWidth, trackHeight)
@@ -816,7 +854,7 @@ private fun LiquidGlassSwitch(
             )
             .bloomStroke(
                 cornerRadius = trackHeight / 2,
-                style = BloomStrokeDefaults.CompactControl,
+                style = switchBloomStyle,
                 extraDegrees = -45f
             )
     } else {
@@ -824,7 +862,7 @@ private fun LiquidGlassSwitch(
             .background(trackColor, CircleShape)
             .bloomStroke(
                 cornerRadius = trackHeight / 2,
-                style = BloomStrokeDefaults.CompactControl,
+                style = switchBloomStyle,
                 extraDegrees = -45f
             )
     }
@@ -889,6 +927,7 @@ private fun MethodSelectionPanel(
     onSettingsClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Column(modifier = Modifier.fillMaxWidth()) {
         if (isLoggedIn) {
             ProfileCard(
@@ -901,7 +940,7 @@ private fun MethodSelectionPanel(
         } else {
             Card(
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -913,7 +952,7 @@ private fun MethodSelectionPanel(
 
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 14.dp),
-                    color = Color(0xFFE8E8ED),
+                    color = colors.divider,
                     thickness = 1.dp
                 )
 
@@ -941,7 +980,7 @@ private fun MethodSelectionPanel(
 
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -956,7 +995,7 @@ private fun MethodSelectionPanel(
                 Box(
                     modifier = Modifier
                         .size(30.dp)
-                        .background(Color(0xFFFFE8EC), CircleShape),
+                        .background(colors.accentSubtle, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -984,9 +1023,10 @@ private fun ProfileCard(
     displayName: String?,
     onClick: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
             .fillMaxWidth()
@@ -1010,19 +1050,19 @@ private fun ProfileCard(
                     text = displayName ?: "Setease 用户",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF121212)
+                    color = colors.textPrimary
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "账户信息、付款方式和设置",
                     fontSize = 14.sp,
-                    color = Color(0xFF8D8D93)
+                    color = colors.textSecondary
                 )
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = Color(0xFFC7C7CC),
+                tint = colors.textTertiary,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -1065,6 +1105,7 @@ private fun CaptchaPanel(
     onSendCaptcha: () -> Unit,
     onLogin: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Column(modifier = Modifier.fillMaxWidth()) {
         PanelTitle(
             title = "手机验证码登录",
@@ -1075,23 +1116,29 @@ private fun CaptchaPanel(
 
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
+            val fieldColors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedPlaceholderColor = colors.textSecondary,
+                unfocusedPlaceholderColor = colors.textSecondary,
+                cursorColor = red
+            )
             TextField(
                 value = phone,
                 onValueChange = onPhoneChange,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 placeholder = { Text("请输入手机号") },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
+                colors = fieldColors,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
@@ -1099,7 +1146,7 @@ private fun CaptchaPanel(
 
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                color = Color(0xFFE8E8ED),
+                color = colors.divider,
                 thickness = 1.dp
             )
 
@@ -1109,13 +1156,7 @@ private fun CaptchaPanel(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 placeholder = { Text("请输入验证码") },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
+                colors = fieldColors,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
@@ -1190,6 +1231,7 @@ internal fun QrPanel(
     }
 
     val isErrorState = imageBitmap == null && !isLoading
+    val colors = AppTheme.colors
 
     Column(modifier = Modifier.fillMaxWidth()) {
         PanelTitle(
@@ -1201,7 +1243,7 @@ internal fun QrPanel(
 
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -1214,10 +1256,13 @@ internal fun QrPanel(
                 Box(
                     modifier = Modifier
                         .size(190.dp)
-                        .background(if (isErrorState) Color(0xFFF9F9FB) else Color(0xFFF3F3F7), RoundedCornerShape(20.dp))
+                        .background(
+                            if (imageBitmap != null) Color.White else colors.surfaceVariant,
+                            RoundedCornerShape(20.dp)
+                        )
                         .border(
                             1.dp,
-                            if (isErrorState) Color(0xFFE2E2EA) else Color(0xFFE5E5EA),
+                            colors.divider,
                             RoundedCornerShape(20.dp)
                         )
                         .then(if (isErrorState) Modifier.clickable { onRefresh() } else Modifier),
@@ -1247,13 +1292,13 @@ internal fun QrPanel(
                                 Icon(
                                     imageVector = Icons.Outlined.CloudOff,
                                     contentDescription = "加载失败",
-                                    tint = Color(0xFF9E9EA7),
+                                    tint = colors.textTertiary,
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "点击重新加载",
-                                    color = Color(0xFF8E8E93),
+                                    color = colors.textSecondary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -1267,7 +1312,7 @@ internal fun QrPanel(
                 if (isErrorState) {
                     Card(
                         shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2F0)),
+                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -1277,13 +1322,13 @@ internal fun QrPanel(
                             Icon(
                                 imageVector = Icons.Outlined.ErrorOutline,
                                 contentDescription = null,
-                                tint = Color(0xFFE53935),
+                                tint = colors.errorIcon,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = qrHint,
-                                color = Color(0xFFD32F2F),
+                                color = colors.errorContent,
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
                             )
@@ -1292,7 +1337,7 @@ internal fun QrPanel(
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "提示：请确认手机已联网，或服务器正常运行",
-                        color = Color(0xFF8E8E93),
+                        color = colors.textSecondary,
                         fontSize = 12.sp
                     )
                 } else {
@@ -1327,6 +1372,7 @@ private fun PanelTitle(
     title: String,
     onBack: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1336,12 +1382,12 @@ private fun PanelTitle(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "返回",
-                tint = Color(0xFF121212)
+                tint = colors.textPrimary
             )
         }
         Text(
             text = title,
-            color = Color(0xFF121212),
+            color = colors.textPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
@@ -1354,6 +1400,7 @@ private fun AudioQualitySettingsDialog(
     onSelect: (OnlineAudioQuality) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val colors = AppTheme.colors
     AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1362,7 +1409,7 @@ private fun AudioQualitySettingsDialog(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111111)
+                    color = colors.textPrimary
                 )
             )
         },
@@ -1378,7 +1425,7 @@ private fun AudioQualitySettingsDialog(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(
-                                if (isSelected) Color(0xFFFA233B).copy(alpha = 0.08f) else Color(0xFFF5F5F7)
+                                if (isSelected) colors.accentSubtle else colors.surfaceVariant
                             )
                             .clickable { onSelect(quality) }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -1389,20 +1436,20 @@ private fun AudioQualitySettingsDialog(
                                 text = quality.badgeText,
                                 fontSize = 15.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color(0xFFFA233B) else Color(0xFF111111)
+                                color = if (isSelected) colors.accent else colors.textPrimary
                             )
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
                                 text = quality.desc,
                                 fontSize = 12.sp,
-                                color = Color(0xFF8E8E93)
+                                color = colors.textSecondary
                             )
                         }
                         if (isSelected) {
                             Icon(
                                 imageVector = Icons.Filled.Check,
                                 contentDescription = null,
-                                tint = Color(0xFFFA233B),
+                                tint = colors.accent,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -1414,12 +1461,89 @@ private fun AudioQualitySettingsDialog(
             Button(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFA233B))
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accent)
             ) {
                 Text("完成", color = Color.White)
             }
         },
         shape = RoundedCornerShape(24.dp),
-        containerColor = Color.White
+        containerColor = colors.surfaceElevated
+    )
+}
+
+@Composable
+private fun ThemeModeSettingsDialog(
+    currentMode: AppThemeMode,
+    onSelect: (AppThemeMode) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = AppTheme.colors
+    AdaptiveAlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "选择外观模式",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AppThemeMode.entries.forEach { mode ->
+                    val isSelected = currentMode == mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (isSelected) colors.accentSubtle else colors.surfaceVariant
+                            )
+                            .clickable { onSelect(mode) }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = mode.title,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) colors.accent else colors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = mode.desc,
+                                fontSize = 12.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = colors.accent,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accent)
+            ) {
+                Text("完成", color = Color.White)
+            }
+        },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = colors.surfaceElevated
     )
 }

@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -100,7 +101,7 @@ fun Modifier.liquidGlassPanel(
 fun LiquidGlassPanel(
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = LocalGlassBackdrop.current,
-    containerColor: Color = Color.White,
+    containerColor: Color = AppTheme.colors.glassPanelContainer,
     cornerRadius: Dp = 28.dp,
     content: @Composable BoxScope.() -> Unit
 ) {

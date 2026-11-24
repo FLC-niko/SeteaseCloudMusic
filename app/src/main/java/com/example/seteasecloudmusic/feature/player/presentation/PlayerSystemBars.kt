@@ -5,12 +5,16 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 
 @Composable
 internal fun PlayerSystemBars() {
     val view = LocalView.current
+    val isAppDark by rememberUpdatedState(AppTheme.isDark)
     DisposableEffect(view) {
         fun findActivity(context: Context): Activity? = when (context) {
             is Activity -> context
@@ -18,13 +22,11 @@ internal fun PlayerSystemBars() {
             else -> null
         }
         val controller = findActivity(view.context)?.let { WindowCompat.getInsetsController(it.window, view) }
-        val lightStatus = controller?.isAppearanceLightStatusBars ?: true
-        val lightNavigation = controller?.isAppearanceLightNavigationBars ?: true
         controller?.isAppearanceLightStatusBars = false
         controller?.isAppearanceLightNavigationBars = false
         onDispose {
-            controller?.isAppearanceLightStatusBars = lightStatus
-            controller?.isAppearanceLightNavigationBars = lightNavigation
+            controller?.isAppearanceLightStatusBars = !isAppDark
+            controller?.isAppearanceLightNavigationBars = !isAppDark
         }
     }
 }

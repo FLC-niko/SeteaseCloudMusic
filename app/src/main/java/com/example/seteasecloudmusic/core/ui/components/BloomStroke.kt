@@ -205,6 +205,12 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0.06f
     )
 
+    val DialogDark: BloomStrokeStyle = PanelDark.copy(
+        strokeWidth = 1.dp,
+        innerBlurRadius = 2.5.dp,
+        lightSurfaceSubtleOutlineAlpha = 0f
+    )
+
     val CompactControl: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 0.85.dp,
         innerBlurRadius = 1.75.dp,

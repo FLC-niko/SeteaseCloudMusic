@@ -62,6 +62,7 @@ import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.example.seteasecloudmusic.feature.mine.domain.repository.PlaylistTrackAlreadyExistsException
 import kotlinx.coroutines.launch
@@ -82,7 +83,7 @@ fun AddToPlaylistSheet(
 ) {
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = AppTheme.colors.surface,
         modifier = modifier
     ) {
         AddToPlaylistContent(
@@ -115,6 +116,7 @@ fun AddToPlaylistContent(
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
     val likedTrackIds by FavoriteTracksManager.likedTrackIds.collectAsState()
+    val colors = AppTheme.colors
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistTitle by remember { mutableStateOf("") }
@@ -144,7 +146,7 @@ fun AddToPlaylistContent(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
-                        tint = Color(0xFF222226),
+                        tint = colors.textPrimary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -154,7 +156,7 @@ fun AddToPlaylistContent(
             Text(
                 text = "收藏到歌单",
                 style = MaterialTheme.typography.titleMedium.copy(
-                    color = Color(0xFF1E1E24),
+                    color = colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp
                 )
@@ -169,14 +171,14 @@ fun AddToPlaylistContent(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "关闭",
-                    tint = Color(0xFF8E8E93),
+                    tint = colors.textSecondary,
                     modifier = Modifier.size(20.dp)
                 )
             }
         }
 
         HorizontalDivider(
-            color = Color(0xFFF0F0F2),
+            color = colors.dividerSubtle,
             thickness = 0.5.dp,
             modifier = Modifier.padding(horizontal = 20.dp)
         )
@@ -193,7 +195,7 @@ fun AddToPlaylistContent(
                 Text(
                     text = "登录网易云音乐账号后即可收藏到自建歌单",
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = Color(0xFF8E8E93),
+                        color = colors.textSecondary,
                         fontSize = 14.sp
                     )
                 )
@@ -207,7 +209,7 @@ fun AddToPlaylistContent(
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
-                    color = Color(0xFFFA233B),
+                    color = colors.accent,
                     modifier = Modifier.size(28.dp),
                     strokeWidth = 2.5.dp
                 )
@@ -238,7 +240,7 @@ fun AddToPlaylistContent(
                         onClick = { showCreateDialog = true }
                     )
                     HorizontalDivider(
-                        color = Color(0xFFF0F0F2),
+                        color = colors.dividerSubtle,
                         thickness = 0.5.dp,
                         modifier = Modifier.padding(horizontal = 20.dp)
                     )
@@ -314,7 +316,7 @@ fun AddToPlaylistContent(
                     // 我喜欢的音乐下方紧跟一条细分割线，保持整洁一体
                     if (isLikedHero) {
                         HorizontalDivider(
-                            color = Color(0xFFF0F0F2),
+                            color = colors.dividerSubtle,
                             thickness = 0.5.dp,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
@@ -343,7 +345,7 @@ fun AddToPlaylistContent(
                 Column {
                     Text(
                         text = "输入歌单标题后将自动创建并收录本首单曲",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF8E8E93))
+                        style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
@@ -380,7 +382,7 @@ fun AddToPlaylistContent(
                     },
                     enabled = newPlaylistTitle.isNotBlank() && !isCreating
                 ) {
-                    Text("创建并收藏", color = if (newPlaylistTitle.isNotBlank() && !isCreating) Color(0xFFFA233B) else Color.Gray)
+                    Text("创建并收藏", color = if (newPlaylistTitle.isNotBlank() && !isCreating) colors.accent else colors.textTertiary)
                 }
             },
             dismissButton = {
@@ -392,7 +394,7 @@ fun AddToPlaylistContent(
                         }
                     }
                 ) {
-                    Text("取消", color = Color(0xFF8E8E93))
+                    Text("取消", color = colors.textSecondary)
                 }
             }
         )
@@ -407,6 +409,7 @@ private fun PlaylistPickerItem(
 ) {
     val isLikedHero = playlist.isLikedHero || playlist.name.contains("喜欢")
     val contentAlpha = if (isAlreadyAdded) 0.52f else 1f
+    val colors = AppTheme.colors
 
     Row(
         modifier = Modifier
@@ -419,7 +422,7 @@ private fun PlaylistPickerItem(
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (isLikedHero && !isAlreadyAdded) Color(0xFFFF3B50) else Color(0xFFF2F2F7))
+                .background(if (isLikedHero && !isAlreadyAdded) colors.accent else colors.surfaceVariant)
                 .graphicsLayer { alpha = contentAlpha },
             contentAlignment = Alignment.Center
         ) {
@@ -434,14 +437,14 @@ private fun PlaylistPickerItem(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_heart_filled),
                     contentDescription = "我喜欢的音乐",
-                    tint = if (isAlreadyAdded) Color(0xFF8E8E93) else Color.White,
+                    tint = if (isAlreadyAdded) colors.textSecondary else Color.White,
                     modifier = Modifier.size(24.dp)
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.MusicNote,
                     contentDescription = null,
-                    tint = Color(0xFF8E8E93),
+                    tint = colors.textSecondary,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -458,7 +461,7 @@ private fun PlaylistPickerItem(
                 text = playlist.name,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = if (isAlreadyAdded) Color(0xFF8E8E93) else Color(0xFF1E1E24),
+                    color = if (isAlreadyAdded) colors.textSecondary else colors.textPrimary,
                     fontSize = 15.sp
                 ),
                 maxLines = 1,
@@ -468,7 +471,7 @@ private fun PlaylistPickerItem(
             Text(
                 text = "${playlist.trackCount} 首",
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = Color(0xFF8E8E93),
+                    color = colors.textSecondary,
                     fontSize = 12.sp
                 )
             )
@@ -478,12 +481,12 @@ private fun PlaylistPickerItem(
             Text(
                 text = "已添加",
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = Color(0xFF8E8E93),
+                    color = colors.textSecondary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 ),
                 modifier = Modifier
-                    .background(Color(0xFFF2F2F7), RoundedCornerShape(4.dp))
+                    .background(colors.surfaceVariant, RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             )
         }
@@ -494,6 +497,7 @@ private fun PlaylistPickerItem(
 private fun NewPlaylistPickerItem(
     onClick: () -> Unit
 ) {
+    val colors = AppTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -505,13 +509,13 @@ private fun NewPlaylistPickerItem(
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF2F2F7)),
+                .background(colors.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = "新建歌单",
-                tint = Color(0xFF515151),
+                tint = colors.iconSecondary,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -522,7 +526,7 @@ private fun NewPlaylistPickerItem(
             Text(
                 text = "新建歌单",
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    color = Color(0xFF1E1E24),
+                    color = colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 ),
@@ -533,7 +537,7 @@ private fun NewPlaylistPickerItem(
             Text(
                 text = "创建新歌单并加入此歌曲",
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = Color(0xFF8E8E93),
+                    color = colors.textSecondary,
                     fontSize = 12.sp
                 ),
                 maxLines = 1,
@@ -559,6 +563,7 @@ fun AddToPlaylistBatchSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
+    val colors = AppTheme.colors
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistTitle by remember { mutableStateOf("") }
@@ -566,7 +571,7 @@ fun AddToPlaylistBatchSheet(
 
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = colors.surface,
         modifier = modifier
     ) {
         Column(
@@ -582,7 +587,7 @@ fun AddToPlaylistBatchSheet(
                 Text(
                     text = "收藏到歌单（已选 ${tracks.size} 首）",
                     style = MaterialTheme.typography.titleMedium.copy(
-                        color = Color(0xFF1E1E24),
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp
                     )
@@ -597,14 +602,14 @@ fun AddToPlaylistBatchSheet(
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "关闭",
-                        tint = Color(0xFF8E8E93),
+                        tint = colors.textSecondary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
             HorizontalDivider(
-                color = Color(0xFFF0F0F2),
+                color = colors.dividerSubtle,
                 thickness = 0.5.dp,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
@@ -646,7 +651,7 @@ fun AddToPlaylistBatchSheet(
                         }
                     )
                     HorizontalDivider(
-                        color = Color(0xFFF4F4F6),
+                        color = colors.dividerSubtle,
                         thickness = 0.5.dp,
                         modifier = Modifier.padding(start = 68.dp, end = 4.dp)
                     )
@@ -697,13 +702,13 @@ fun AddToPlaylistBatchSheet(
 
                     if (isLikedHero) {
                         HorizontalDivider(
-                            color = Color(0xFFEEEEF0),
+                            color = colors.divider,
                             thickness = 1.dp,
                             modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
                         )
                     } else if (index < combinedPlaylists.lastIndex) {
                         HorizontalDivider(
-                            color = Color(0xFFF4F4F6),
+                            color = colors.dividerSubtle,
                             thickness = 0.5.dp,
                             modifier = Modifier.padding(start = 68.dp, end = 4.dp)
                         )
@@ -730,7 +735,7 @@ fun AddToPlaylistBatchSheet(
                     Column {
                         Text(
                             text = "输入歌单标题后将自动创建并收录所选歌曲",
-                            style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF8E8E93))
+                            style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedTextField(
@@ -771,7 +776,7 @@ fun AddToPlaylistBatchSheet(
                     ) {
                         Text(
                             text = "创建并收藏",
-                            color = Color(0xFFFA233B),
+                            color = colors.accent,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -785,7 +790,7 @@ fun AddToPlaylistBatchSheet(
                     ) {
                         Text(
                             text = "取消",
-                            color = Color(0xFF8E8E93)
+                            color = colors.textSecondary
                         )
                     }
                 }

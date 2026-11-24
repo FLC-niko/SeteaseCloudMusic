@@ -135,6 +135,7 @@ import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
 import com.example.seteasecloudmusic.feature.main.navigation.LocalNavigationScrollState
 import com.example.seteasecloudmusic.feature.main.navigation.toNavigationViewport
@@ -146,11 +147,21 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private val PlaylistPageBg = Color(0xFFF7F7FA)
-private val PlaylistTextPrimary = Color(0xFF111111)
-private val PlaylistTextSecondary = Color(0xFF8E8E93)
-private val PlaylistDividerColor = Color(0xFFEAEAEE)
-private val PlaylistAccentColor = Color(0xFFFA233B)
+private val PlaylistPageBg: Color
+    @Composable
+    get() = AppTheme.colors.backgroundSecondary
+private val PlaylistTextPrimary: Color
+    @Composable
+    get() = AppTheme.colors.textPrimary
+private val PlaylistTextSecondary: Color
+    @Composable
+    get() = AppTheme.colors.textSecondary
+private val PlaylistDividerColor: Color
+    @Composable
+    get() = AppTheme.colors.divider
+private val PlaylistAccentColor: Color
+    @Composable
+    get() = AppTheme.colors.accent
 
 private const val PREFS_NAME = "app_settings_prefs"
 private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
@@ -358,9 +369,11 @@ fun PlaylistDetailScreen(
         prefs.edit().putBoolean(colorBgPrefKey, enabled).apply()
     }
 
-    val dominantDarkColor by rememberCoverDominantDarkColor(currentDetail.coverUrl)
-    val isDark = useColorBackground
-    val solidBackgroundColor = if (isDark) dominantDarkColor.copy(alpha = 1f) else Color.White
+    val appIsDark = AppTheme.isDark
+    val dominantColor by rememberCoverDominantDarkColor(currentDetail.coverUrl, isDark = appIsDark)
+    val solidBackgroundColor = if (useColorBackground) dominantColor.copy(alpha = 1f) else AppTheme.colors.background
+    val isDark = solidBackgroundColor.luminance() < 0.32f
+    val heroMaskColor = solidBackgroundColor
 
     val handleShuffle: () -> Unit = {
         if (onShufflePlay != null) {
@@ -388,8 +401,8 @@ fun PlaylistDetailScreen(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
-        val expandedDark = solidBackgroundColor.luminance() < 0.4f
-        val paneDark = if (split) expandedDark else isDark
+        val expandedDark = isDark
+        val paneDark = isDark
         val isCardMode = !embedded && !split
         val fullWidthPx = with(density) { maxWidth.toPx() }
         val isPredictiveGestureActive = predictiveTranslationX.value > 0.5f
@@ -462,8 +475,9 @@ fun PlaylistDetailScreen(
             if (embedded || split) {
                 val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val songsTopInset = if (split) statusBarHeight else 0.dp
+                val solidBackgroundColorState = rememberUpdatedState(solidBackgroundColor)
                 val songsTopBackdrop = rememberLayerBackdrop {
-                    drawRect(solidBackgroundColor)
+                    drawRect(solidBackgroundColorState.value)
                     drawContent()
                 }
                 val songsTopBlurAlpha by remember(listState, density) {
@@ -532,7 +546,7 @@ fun PlaylistDetailScreen(
                                         )
                                     }
                                     HorizontalDivider(
-                                        color = if (paneDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
+                                        color = if (paneDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
                                         thickness = 0.5.dp
                                     )
                                 }
@@ -564,7 +578,7 @@ fun PlaylistDetailScreen(
                                             onMore = { showMoreSheet = true })
                                     } else {
                                         Text("${currentDetail.trackCount.coerceAtLeast(currentDetail.tracks.size)} 首歌曲",
-                                            color = if (expandedDark) Color.White.copy(alpha = 0.65f) else PlaylistTextSecondary,
+                                            color = if (expandedDark) Color.White.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.56f),
                                             fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
                                     }
                                 }
@@ -574,7 +588,7 @@ fun PlaylistDetailScreen(
                                             RenderPlaylistHero(
                                                 style = currentStyle,
                                                 detail = currentDetail,
-                                                dominantDarkColor = solidBackgroundColor,
+                                                dominantDarkColor = heroMaskColor,
                                                 onPlayAll = onPlayAll,
                                                 isDark = isDark
                                             )
@@ -640,7 +654,7 @@ fun PlaylistDetailScreen(
                                                     end = 20.dp
                                                 ),
                                                 thickness = 0.5.dp,
-                                                color = if (paneDark) Color(0x14FFFFFF) else PlaylistDividerColor
+                                                color = if (paneDark) Color(0x14FFFFFF) else Color.Black.copy(alpha = 0.08f)
                                             )
                                         }
                                     }
@@ -670,7 +684,7 @@ fun PlaylistDetailScreen(
                             PlaylistEditBottomBar(
                                 selectedCount = selectedTrackIds.size,
                                 isDark = paneDark,
-                                backgroundColor = if (paneDark) solidBackgroundColor else Color.White,
+                                backgroundColor = solidBackgroundColor,
                                 onPlayNext = handlePlayNextSelected,
                                 onAddToPlaylist = handleAddToPlaylistSelected,
                                 onDownload = handleDownloadSelected,
@@ -702,15 +716,16 @@ fun PlaylistDetailScreen(
                                                 PlaylistDetailStyle.DYNAMIC_POSTER_WALL -> 560.dp
                                             }.coerceAtMost(560.dp)
                                             Box(Modifier.widthIn(max = cap).fillMaxWidth()) {
-                                                RenderPlaylistHero(currentStyle, currentDetail, solidBackgroundColor, onPlayAll,
+                                                RenderPlaylistHero(currentStyle, currentDetail, heroMaskColor, onPlayAll,
                                                     isDark = expandedDark, expanded = true, mediaOnly = true, artworkHeight = mediaHeight)
                                             }
                                         }
                                     }
                                 } else {
                                     val primaryScrollState = rememberScrollState()
+                                    val primaryBgState = rememberUpdatedState(solidBackgroundColor)
                                     val primaryTopBackdrop = rememberLayerBackdrop {
-                                        drawRect(solidBackgroundColor)
+                                        drawRect(primaryBgState.value)
                                         drawContent()
                                     }
                                     val primaryBlurAlpha by remember(primaryScrollState, density) {
@@ -735,7 +750,7 @@ fun PlaylistDetailScreen(
                                         ) {
                                             Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
                                                 RenderPlaylistHero(
-                                                    currentStyle, currentDetail, solidBackgroundColor,
+                                                    currentStyle, currentDetail, heroMaskColor,
                                                     onPlayAll, isDark = expandedDark, expanded = true
                                                 )
                                             }
@@ -771,7 +786,8 @@ fun PlaylistDetailScreen(
                 CompactPlaylistDetailScreen(
                     detail = currentDetail,
                     currentStyle = currentStyle,
-                    dominantDarkColor = solidBackgroundColor,
+                    dominantDarkColor = heroMaskColor,
+                    pageBaseColor = solidBackgroundColor,
                     isDark = isDark,
                     backdrop = backdrop,
                     onClose = onClose,
@@ -843,6 +859,7 @@ fun PlaylistDetailScreen(
 
                 AlertDialog(
                     onDismissRequest = { showDeleteConfirmDialog = false },
+                    containerColor = AppTheme.colors.surfaceElevated,
                     title = {
                         Text(
                             text = "删除歌曲",
@@ -878,7 +895,7 @@ fun PlaylistDetailScreen(
                         TextButton(onClick = { showDeleteConfirmDialog = false }) {
                             Text(
                                 text = "取消",
-                                color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF666666)
+                                color = PlaylistTextSecondary
                             )
                         }
                     }
@@ -1261,6 +1278,7 @@ private fun CompactPlaylistDetailScreen(
     detail: PlaylistDetail,
     currentStyle: PlaylistDetailStyle,
     dominantDarkColor: Color,
+    pageBaseColor: Color,
     isDark: Boolean,
     backdrop: Backdrop,
     onClose: () -> Unit,
@@ -1329,9 +1347,9 @@ private fun CompactPlaylistDetailScreen(
     )
 
     val constantBottomPadding = maxOf(LocalContentBottomPadding.current, 60.dp + navBottom) + 16.dp
-    val pageBaseColor = if (isDark) dominantDarkColor else Color.White
+    val pageBaseColorState = rememberUpdatedState(pageBaseColor)
     val playlistTopBackdrop = rememberLayerBackdrop {
-        drawRect(pageBaseColor)
+        drawRect(pageBaseColorState.value)
         drawContent()
     }
     val topBlurAlphaState = remember(lazyListState, density) {
@@ -1472,7 +1490,7 @@ private fun CompactPlaylistDetailScreen(
                         if (index < detail.tracks.lastIndex && !isElevated) {
                             HorizontalDivider(
                                 thickness = 0.5.dp,
-                                color = if (isDark) Color(0x14FFFFFF) else PlaylistDividerColor,
+                                color = if (isDark) Color(0x14FFFFFF) else Color.Black.copy(alpha = 0.08f),
                                 modifier = Modifier.padding(
                                     start = if (isAlbum) {
                                         if (isEdgeToEdgeHero) 54.dp else 38.dp
@@ -1747,7 +1765,7 @@ private fun CompactPlaylistDetailScreen(
                 }
 
                 HorizontalDivider(
-                    color = if (isDark) Color.White.copy(alpha = 0.08f) else PlaylistDividerColor,
+                    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
                     thickness = 0.5.dp
                 )
             }
@@ -1764,7 +1782,7 @@ private fun CompactPlaylistDetailScreen(
             PlaylistEditBottomBar(
                 selectedCount = selectedTrackIds.size,
                 isDark = isDark,
-                backgroundColor = if (isDark) dominantDarkColor else Color.White,
+                backgroundColor = pageBaseColor,
                 onPlayNext = onPlayNextSelected,
                 onAddToPlaylist = onAddToPlaylistSelected,
                 onDownload = onDownloadSelected,
@@ -1950,7 +1968,7 @@ private fun PlaylistDetailTrackRow(
                 Text(
                     text = index.toString(),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = if (isDark) Color.White.copy(alpha = 0.45f) else PlaylistTextSecondary,
+                        color = if (isDark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.48f),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     )
@@ -1966,7 +1984,7 @@ private fun PlaylistDetailTrackRow(
                     .size(48.dp)
                     .testTag("playlist_track_cover")
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF0F0F3)),
+                    .background(if (isDark) Color(0x14FFFFFF) else Color.Black.copy(alpha = 0.06f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (coverUrl != null) {
@@ -2018,7 +2036,7 @@ private fun PlaylistDetailTrackRow(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = if (isDark) Color(0x9EFFFFFF) else PlaylistTextSecondary,
+                    color = if (isDark) Color(0x9EFFFFFF) else Color.Black.copy(alpha = 0.56f),
                     fontSize = 13.sp
                 ),
                 maxLines = 1,
@@ -2042,7 +2060,7 @@ private fun PlaylistDetailTrackRow(
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "更多操作",
-                    tint = if (isDark) Color(0x9EFFFFFF) else PlaylistTextSecondary,
+                    tint = if (isDark) Color(0x9EFFFFFF) else Color.Black.copy(alpha = 0.54f),
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -2149,7 +2167,7 @@ private fun PlaylistEditBottomBar(
                 .navigationBarsPadding()
         ) {
             HorizontalDivider(
-                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFEAEAEE),
+                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
                 thickness = 0.5.dp
             )
             Row(

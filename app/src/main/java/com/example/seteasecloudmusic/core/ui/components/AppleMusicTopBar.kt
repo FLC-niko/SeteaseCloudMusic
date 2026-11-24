@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawPlainBackdrop
 import com.kyant.backdrop.effects.blur
@@ -115,7 +116,7 @@ fun AppleMusicMorphingTopBar(
                 text = title,
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF111111),
+                color = AppTheme.colors.textPrimary,
                 letterSpacing = (-0.8).sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -207,7 +208,7 @@ fun AppleMusicLargeTitle(
             text = title,
             fontSize = 34.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF111111),
+            color = AppTheme.colors.textPrimary,
             letterSpacing = (-0.8).sp,
             modifier = Modifier.graphicsLayer {
                 alpha = titleAlpha
@@ -398,7 +399,7 @@ fun AppleMusicCollapsedTopBar(
     backdrop: Backdrop? = null,
     showBackButton: Boolean = false,
     onBackClick: (() -> Unit)? = null,
-    isDark: Boolean = false,
+    isDark: Boolean = AppTheme.isDark,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     val fullBlurAlpha = if (showBackButton) {
