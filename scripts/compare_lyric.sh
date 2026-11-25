@@ -2,7 +2,7 @@
 # 在原生/AMLL Web 两种播放页风格间切换并截图，用于像素级对比。
 # 用法: ./compare_lyric.sh <native|web> <out.png>
 set -e
-PKG=com.luna.music
+PKG=com.setease.cloudmusic
 ACT=$PKG/com.example.seteasecloudmusic.feature.main.MainActivity
 MODE=$1
 OUT=$2

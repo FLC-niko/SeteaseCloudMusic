@@ -26,7 +26,7 @@ class BaselineProfileGenerator {
 
     @Test
     fun startup() = rule.collect(
-        packageName = "com.luna.music",
+        packageName = "com.setease.cloudmusic",
         includeInStartupProfile = true
     ) {
         pressHome()

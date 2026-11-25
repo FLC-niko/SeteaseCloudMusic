@@ -408,7 +408,7 @@ private fun MethodSelectionPanel(
             )
             SettingsDivider(dividerColor)
             SettingsToggleRow(
-                title = "灵动岛与状态栏歌词",
+                title = "超级岛与背屏歌词（SuperLyric）",
                 checked = superLyricApiEnabled,
                 onCheckedChange = onSuperLyricApiChange,
                 backdrop = backdrop

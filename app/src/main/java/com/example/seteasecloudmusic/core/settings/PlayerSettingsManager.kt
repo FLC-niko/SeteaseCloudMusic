@@ -116,7 +116,7 @@ class PlayerSettingsManager @Inject constructor(
     }
 
     private fun loadSavedBluetoothLyrics(): Boolean {
-        return prefs.getBoolean(KEY_BLUETOOTH_LYRICS, true)
+        return prefs.getBoolean(KEY_BLUETOOTH_LYRICS, false)
     }
 
     private fun loadSavedSuperLyricApi(): Boolean {

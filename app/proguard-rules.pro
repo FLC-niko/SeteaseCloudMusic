@@ -50,3 +50,6 @@
 -keepclassmembers class androidx.media3.session.MediaSessionLegacyStub {
     public *** getSessionCompat();
 }
+
+# SuperLyricApi AIDL & Parcelable 跨进程传参：保留类名与成员，防止 R8 混淆后远端 super_lyric 服务反序列化 ClassNotFoundException
+-keep class com.hchen.superlyricapi.** { *; }

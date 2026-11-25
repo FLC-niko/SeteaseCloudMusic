@@ -7,7 +7,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = "com.luna.music"
+PACKAGE = "com.setease.cloudmusic"
 
 
 def main():

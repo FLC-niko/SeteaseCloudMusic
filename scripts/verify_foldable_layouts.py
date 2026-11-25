@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_CLASS = "com.example.seteasecloudmusic.AdaptiveLayoutsTest"
-RUNNER = "com.luna.music.test/androidx.test.runner.AndroidJUnitRunner"
+RUNNER = "com.setease.cloudmusic.test/androidx.test.runner.AndroidJUnitRunner"
 
 
 def main():
@@ -80,7 +80,7 @@ def main():
         print(adb("install", "-r", str(ROOT / "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk")), flush=True)
         # Prevent permission dialogs from replacing the deterministic local-library fixture.
         for permission in ["android.permission.READ_MEDIA_AUDIO", "android.permission.POST_NOTIFICATIONS"]:
-            adb("shell", "pm", "grant", "com.luna.music", permission, check=False)
+            adb("shell", "pm", "grant", "com.setease.cloudmusic", permission, check=False)
         for label in scenarios:
             if label in completed:
                 print(f"{label}: reused PASS (identical source and APK)", flush=True)
@@ -108,7 +108,7 @@ def main():
                 time.sleep(0.2)
             adb("shell", "wm", "dismiss-keyguard")
             # The launcher can request portrait on the outer display; settle rotation in our resizable activity.
-            adb("shell", "am", "start", "-W", "-n", "com.luna.music/com.example.seteasecloudmusic.feature.main.MainActivity")
+            adb("shell", "am", "start", "-W", "-n", "com.setease.cloudmusic/com.example.seteasecloudmusic.feature.main.MainActivity")
             adb("shell", "cmd", "window", "fixed-to-user-rotation", "enabled")
             # Display-specific rotation preferences can reset when the physical panel changes.
             target_rotation = "1" if label in {"landscape", "outer-landscape", "tabletop"} else "0"
@@ -143,7 +143,7 @@ def main():
             if not passed:
                 print(result[-5000:], flush=True)
                 raise SystemExit(f"Rendering failed for {label}")
-        print(adb("pull", "/sdcard/Android/data/com.luna.music/files/foldable-qa", str(output)), flush=True)
+        print(adb("pull", "/sdcard/Android/data/com.setease.cloudmusic/files/foldable-qa", str(output)), flush=True)
     finally:
         adb("emu", "fold" if float(original_hinge) < 30 else "unfold", check=False)
         adb("emu", "sensor", "set", "hinge-angle0", original_hinge, check=False)

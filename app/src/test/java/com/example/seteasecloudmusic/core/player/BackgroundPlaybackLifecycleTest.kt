@@ -236,4 +236,52 @@ class BackgroundPlaybackLifecycleTest {
             )
         )
     }
+
+    @Test
+    fun resolveDisplayedMediaText_preservesTrackTitleAndArtistWhenBluetoothLyricsDisabled() {
+        val displayed = MusicService.resolveDisplayedMediaText(
+            trackTitle = "七里香",
+            artist = "周杰伦",
+            lyric = "窗外的麻雀 在电线杆上多嘴",
+            isPlaying = true,
+            bluetoothLyricsEnabled = false
+        )
+        assertEquals("七里香", displayed.title)
+        assertEquals("周杰伦", displayed.artist)
+        assertEquals("周杰伦", displayed.subtitle)
+    }
+
+    @Test
+    fun resolveDisplayedMediaText_swapsLyricIntoTitleOnlyWhenBluetoothLyricsEnabledAndPlaying() {
+        val playingDisplayed = MusicService.resolveDisplayedMediaText(
+            trackTitle = "七里香",
+            artist = "周杰伦",
+            lyric = "窗外的麻雀 在电线杆上多嘴",
+            isPlaying = true,
+            bluetoothLyricsEnabled = true
+        )
+        assertEquals("窗外的麻雀 在电线杆上多嘴", playingDisplayed.title)
+        assertEquals("七里香", playingDisplayed.artist)
+        assertEquals("窗外的麻雀 在电线杆上多嘴", playingDisplayed.subtitle)
+
+        val pausedDisplayed = MusicService.resolveDisplayedMediaText(
+            trackTitle = "七里香",
+            artist = "周杰伦",
+            lyric = "窗外的麻雀 在电线杆上多嘴",
+            isPlaying = false,
+            bluetoothLyricsEnabled = true
+        )
+        assertEquals("七里香", pausedDisplayed.title)
+        assertEquals("周杰伦", pausedDisplayed.artist)
+
+        val blankLyricDisplayed = MusicService.resolveDisplayedMediaText(
+            trackTitle = "七里香",
+            artist = "周杰伦",
+            lyric = "   ",
+            isPlaying = true,
+            bluetoothLyricsEnabled = true
+        )
+        assertEquals("七里香", blankLyricDisplayed.title)
+        assertEquals("周杰伦", blankLyricDisplayed.artist)
+    }
 }

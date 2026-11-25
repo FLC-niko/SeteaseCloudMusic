@@ -47,6 +47,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
@@ -152,6 +153,7 @@ class MusicService : MediaSessionService() {
 
     // 实时歌词同步引擎状态
     private var currentLyricLines: List<LyricLine> = emptyList()
+    private var currentLyricsHasWordTiming: Boolean = false
     private var rawLrcContent: String = ""
     private var currentLyricJob: Job? = null
     private var lyricTickerJob: Job? = null
@@ -347,6 +349,37 @@ class MusicService : MediaSessionService() {
         const val CHANNEL_ID = "playback_channel_id"
         const val NOTIFICATION_ID = 1001
         private const val MEDIA_NOTIFICATION_GROUP_KEY = "media3_group_key"
+
+        internal data class DisplayedMediaText(
+            val title: String,
+            val artist: String,
+            val subtitle: String
+        )
+
+        internal fun resolveDisplayedMediaText(
+            trackTitle: String,
+            artist: String,
+            lyric: String,
+            isPlaying: Boolean,
+            bluetoothLyricsEnabled: Boolean
+        ): DisplayedMediaText {
+            val hasLyric = lyric.isNotBlank() && isPlaying
+            return if (hasLyric && bluetoothLyricsEnabled) {
+                // 车载蓝牙歌词模式：第一行实时歌词，第二行歌曲名
+                DisplayedMediaText(
+                    title = lyric,
+                    artist = trackTitle,
+                    subtitle = lyric
+                )
+            } else {
+                // 默认/SuperLyric 协同模式：保持干净的歌曲名与歌手名，由 SuperLyric 单独推送歌词
+                DisplayedMediaText(
+                    title = trackTitle,
+                    artist = artist,
+                    subtitle = artist
+                )
+            }
+        }
 
         internal data class NotificationRenderKey(
             val trackId: Long?,
@@ -574,6 +607,7 @@ class MusicService : MediaSessionService() {
                     stopLyricTicker()
                     SuperLyricHelper.sendStop()
                     currentLyricLines = emptyList()
+                    currentLyricsHasWordTiming = false
                     rawLrcContent = ""
                     lastBroadcastLyric = ""
                     currentArtworkBitmap = null
@@ -609,6 +643,7 @@ class MusicService : MediaSessionService() {
                         stopLyricTicker()
                         SuperLyricHelper.sendStop()
                         currentLyricLines = emptyList()
+                        currentLyricsHasWordTiming = false
                         rawLrcContent = ""
                         lastBroadcastLyric = ""
                         currentArtworkBitmap = null
@@ -618,6 +653,32 @@ class MusicService : MediaSessionService() {
 
                     if (trackChanged || statusChanged || metaChanged) {
                         updateMetadataAndNotification(track, lastBroadcastLyric)
+                    }
+                }
+            }
+        }
+
+        // 8. 即时响应歌词开关变更（蓝牙歌词 / SuperLyric）
+        serviceScope.launch {
+            playerSettingsManager.bluetoothLyricsEnabled.drop(1).collect {
+                val track = musicPlayerController.playbackState.value.currentTrack ?: return@collect
+                updateMetadataAndNotification(track, lastBroadcastLyric)
+            }
+        }
+        serviceScope.launch {
+            playerSettingsManager.superLyricApiEnabled.drop(1).collect { enabled ->
+                if (!enabled) {
+                    SuperLyricHelper.sendStop()
+                } else {
+                    SuperLyricHelper.registerPublisher()
+                    val p = player
+                    val track = musicPlayerController.playbackState.value.currentTrack
+                    if (p != null && p.isPlaying && track != null && currentLyricLines.isNotEmpty()) {
+                        val pos = p.currentPosition.toInt()
+                        val currentLine = currentLyricLines.lastOrNull { line ->
+                            line.startTime <= pos && (line.endTime <= 0 || pos <= line.endTime + 1500)
+                        }
+                        sendSuperLyric(track, currentLine)
                     }
                 }
             }
@@ -705,6 +766,13 @@ class MusicService : MediaSessionService() {
                 .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, displayArtist)
                 .putString(androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, displayArtist)
 
+            currentTrackId?.let {
+                compatBuilder.putString(
+                    androidx.media3.session.legacy.MediaMetadataCompat.METADATA_KEY_MEDIA_ID,
+                    it.toString()
+                )
+            }
+
             if (lyricLrc.isNotBlank()) {
                 compatBuilder.putString("android.media.metadata.LYRIC", lyricLrc)
                 compatBuilder.putString("METADATA_KEY_LYRIC", lyricLrc)
@@ -733,6 +801,7 @@ class MusicService : MediaSessionService() {
             val parsed = result?.getOrNull()
             if (isActive && parsed != null && currentTrackId == trackId) {
                 currentLyricLines = parsed.lines
+                currentLyricsHasWordTiming = parsed.hasWordTiming
                 rawLrcContent = buildRawLrc(parsed.lines)
                 val track = musicPlayerController.playbackState.value.currentTrack
                 if (track != null) {
@@ -772,7 +841,9 @@ class MusicService : MediaSessionService() {
                     val text = currentLine?.words?.joinToString("") { it.word }?.trim().orEmpty()
                     if (text != lastBroadcastLyric) {
                         lastBroadcastLyric = text
-                        updateMetadataAndNotification(track, text)
+                        if (playerSettingsManager.bluetoothLyricsEnabled.value) {
+                            updateMetadataAndNotification(track, text)
+                        }
                         broadcastLyric(track, text, pos.toLong(), p.duration)
                         sendSuperLyric(track, currentLine)
                     }
@@ -789,28 +860,16 @@ class MusicService : MediaSessionService() {
 
     private fun updateMetadataAndNotification(track: com.example.seteasecloudmusic.core.model.Track, lyric: String) {
         val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
-        val hasLyric = lyric.isNotBlank() && (player?.isPlaying == true)
-        val isBluetoothLyrics = playerSettingsManager.bluetoothLyricsEnabled.value
-
-        val displayTitle: String
-        val displayArtist: String
-
-        if (hasLyric) {
-            if (isBluetoothLyrics) {
-                // 小米 17 Pro 妙享背屏与网易云音乐车载模式：第一行实时歌词，第二行歌曲名
-                displayTitle = lyric
-                displayArtist = track.title
-            } else {
-                displayTitle = track.title
-                displayArtist = lyric
-            }
-        } else {
-            // 无歌词或暂停播放：第一行歌曲名，第二行歌手名
-            displayTitle = track.title
-            displayArtist = artist
-        }
-
-        val displaySubtitle = if (hasLyric) lyric else artist
+        val displayed = resolveDisplayedMediaText(
+            trackTitle = track.title,
+            artist = artist,
+            lyric = lyric,
+            isPlaying = player?.isPlaying == true,
+            bluetoothLyricsEnabled = playerSettingsManager.bluetoothLyricsEnabled.value
+        )
+        val displayTitle = displayed.title
+        val displayArtist = displayed.artist
+        val displaySubtitle = displayed.subtitle
 
         val extras = Bundle().apply {
             if (rawLrcContent.isNotBlank()) {
@@ -870,13 +929,17 @@ class MusicService : MediaSessionService() {
         if (text.isBlank()) return
 
         val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
-        val words = if (line.words.isNotEmpty()) {
+        val startTimeMs = line.startTime.toLong().coerceAtLeast(0L)
+        val endTimeMs = if (line.endTime > line.startTime) line.endTime.toLong() else startTimeMs + 4000L
+        val words = if (currentLyricsHasWordTiming && line.words.size > 1) {
             line.words.map {
-                SuperLyricWord(it.word, it.startTime.toLong(), it.endTime.toLong())
+                val wordStart = it.startTime.toLong().coerceAtLeast(0L)
+                val wordEnd = it.endTime.toLong().coerceAtLeast(wordStart)
+                SuperLyricWord(it.word, wordStart, wordEnd)
             }.toTypedArray()
         } else null
 
-        val lyricLine = SuperLyricLine(text, words, line.startTime.toLong(), line.endTime.toLong())
+        val lyricLine = SuperLyricLine(text, words, startTimeMs, endTimeMs)
         val data = SuperLyricData()
             .setTitle(track.title)
             .setArtist(artist)
@@ -886,8 +949,8 @@ class MusicService : MediaSessionService() {
         if (line.translatedLyric.isNotBlank()) {
             data.translation = SuperLyricLine(
                 line.translatedLyric.trim(),
-                line.startTime.toLong(),
-                line.endTime.toLong()
+                startTimeMs,
+                endTimeMs
             )
         }
 
@@ -1118,6 +1181,7 @@ class MusicService : MediaSessionService() {
         SuperLyricHelper.unregisterPublisher()
         currentLyricJob?.cancel()
         currentLyricLines = emptyList()
+        currentLyricsHasWordTiming = false
         rawLrcContent = ""
         cachedSessionCompat = null
         lastPlatformMetadataKey = null

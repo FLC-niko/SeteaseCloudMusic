@@ -4,7 +4,7 @@
 set -e
 MAX=${1:-8}
 OUT=${2:-/tmp/rich.png}
-PKG=com.luna.music
+PKG=com.setease.cloudmusic
 
 for i in $(seq 1 "$MAX"); do
   adb shell screencap -p /sdcard/_probe.png >/dev/null 2>&1

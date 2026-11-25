@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.luna.music"
+        applicationId = "com.setease.cloudmusic"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
