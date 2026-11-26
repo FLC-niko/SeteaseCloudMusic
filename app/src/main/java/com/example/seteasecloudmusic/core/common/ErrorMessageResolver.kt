@@ -206,6 +206,33 @@ fun Throwable?.toFriendlyError(actionDescription: String = "加载内容"): Frie
     }
 }
 
+private val RISK_CONTROL_ERROR_CODES = setOf(-460, -462, 10003, 250)
+
+/**
+ * 判断异常是否属于网易云账号/网络风控类拦截（例如“您的账号存在风险”、-460/-462/10003）。
+ */
+fun Throwable?.isRiskControlError(): Boolean {
+    if (this == null) return false
+    if (this is ApiHttpException) {
+        if (apiErrorCode in RISK_CONTROL_ERROR_CODES) return true
+        val apiMsg = apiMessage.orEmpty()
+        if (containsRiskControlKeyword(apiMsg)) return true
+    }
+    return containsRiskControlKeyword(message.orEmpty())
+}
+
+private fun containsRiskControlKeyword(text: String): Boolean {
+    if (text.isBlank()) return false
+    val lower = text.lowercase()
+    return text.contains("风险") ||
+        text.contains("风控") ||
+        text.contains("安全验证") ||
+        text.contains("网络太拥挤") ||
+        lower.contains("code=-460") ||
+        lower.contains("code=-462") ||
+        lower.contains("code=10003")
+}
+
 private fun resolveApiHttpExceptionMessage(
     error: ApiHttpException,
     actionDescription: String
@@ -215,7 +242,7 @@ private fun resolveApiHttpExceptionMessage(
         error.httpStatusCode == 401 || error.httpStatusCode == 403 ->
             "登录状态已失效或暂无权限，请重新登录"
         error.httpStatusCode in 500..599 -> "服务器开小差了，请稍后再试"
-        error.apiErrorCode == -460 || error.apiErrorCode == -462 -> {
+        error.apiErrorCode in RISK_CONTROL_ERROR_CODES -> {
             val clean = error.apiMessage?.takeIf { it.isReadableChineseMessage(allowSlashAndHttp = false) }
             clean ?: "当前网络或账号触发风控验证，请稍后再试"
         }

@@ -3,6 +3,7 @@ package com.example.seteasecloudmusic.feature.auth.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.auth.AuthSession
+import com.example.seteasecloudmusic.core.common.isRiskControlError
 import com.example.seteasecloudmusic.core.common.toUserFriendlyMessage
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrStatus
@@ -31,10 +32,12 @@ data class AuthUiState(
     val panel: AuthPanel = AuthPanel.METHODS,
     val phone: String = "",
     val captcha: String = "",
+    val captchaCooldownSeconds: Int = 0,
     val qrLoginStart: QrLoginStart? = null,
     val qrHint: String = "等待扫码登录",
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val isRiskControlError: Boolean = false,
     val isLoggedIn: Boolean = false,
     val authSession: AuthSession? = null,
     val showLogoutConfirmDialog: Boolean = false
@@ -69,6 +72,7 @@ class AuthViewModel @Inject constructor(
 
     private var qrStartJob: Job? = null
     private var qrPollJob: Job? = null
+    private var captchaCooldownJob: Job? = null
     private var qrRequestId = 0L
     private var isRefreshingSessionProfile = false
 
@@ -89,11 +93,23 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onPhoneChanged(phone: String) {
-        _uiState.update { it.copy(phone = phone.filter(Char::isDigit).take(11), errorMessage = null) }
+        _uiState.update {
+            it.copy(
+                phone = phone.filter(Char::isDigit).take(11),
+                errorMessage = null,
+                isRiskControlError = false
+            )
+        }
     }
 
     fun onCaptchaChanged(captcha: String) {
-        _uiState.update { it.copy(captcha = captcha.filter(Char::isDigit), errorMessage = null) }
+        _uiState.update {
+            it.copy(
+                captcha = captcha.filter(Char::isDigit),
+                errorMessage = null,
+                isRiskControlError = false
+            )
+        }
     }
 
     fun onCaptchaPanelOpened() {
@@ -103,6 +119,7 @@ class AuthViewModel @Inject constructor(
                 panel = AuthPanel.CAPTCHA,
                 captcha = "",
                 errorMessage = null,
+                isRiskControlError = false,
                 showLogoutConfirmDialog = false
             )
         }
@@ -115,6 +132,7 @@ class AuthViewModel @Inject constructor(
                 qrLoginStart = null,
                 qrHint = "等待扫码登录",
                 errorMessage = null,
+                isRiskControlError = false,
                 showLogoutConfirmDialog = false
             )
         }
@@ -171,6 +189,7 @@ class AuthViewModel @Inject constructor(
                 qrLoginStart = null,
                 qrHint = "等待扫码登录",
                 errorMessage = null,
+                isRiskControlError = false,
                 showLogoutConfirmDialog = false,
                 isLoading = false
             )
@@ -178,18 +197,26 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onSendCaptcha() {
-        val phone = _uiState.value.phone
+        val current = _uiState.value
+        if (current.isLoading || current.captchaCooldownSeconds > 0) return
+        val phone = current.phone
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, isRiskControlError = false) }
             val result = sendCaptchaUseCase(phone)
             _uiState.update { it.copy(isLoading = false) }
             result.fold(
                 onSuccess = {
+                    startCaptchaCooldown()
                     _snackbarMessage.emit("验证码已发送")
                 },
                 onFailure = { error ->
                     val msg = error.toUserFriendlyMessage("发送验证码")
-                    _uiState.update { it.copy(errorMessage = msg) }
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = msg,
+                            isRiskControlError = error.isRiskControlError()
+                        )
+                    }
                     _snackbarMessage.emit(msg)
                 }
             )
@@ -197,22 +224,36 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onCaptchaLogin() {
-        val phone = _uiState.value.phone
-        val captcha = _uiState.value.captcha
+        val current = _uiState.value
+        if (current.isLoading) return
+        val phone = current.phone
+        val captcha = current.captcha
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, isRiskControlError = false) }
             val result = verifyCaptchaUseCase(phone, captcha)
             _uiState.update { it.copy(isLoading = false) }
             result.fold(
                 onSuccess = { session ->
-                    _uiState.update { it.copy(isLoggedIn = true, authSession = session) }
+                    _uiState.update {
+                        it.copy(
+                            isLoggedIn = true,
+                            authSession = session,
+                            errorMessage = null,
+                            isRiskControlError = false
+                        )
+                    }
                     maybeRefreshProfileIfNeeded(session)
                     _snackbarMessage.emit("登录成功")
                     _dismissSheet.emit(Unit)
                 },
                 onFailure = { error ->
                     val msg = error.toUserFriendlyMessage("登录")
-                    _uiState.update { it.copy(errorMessage = msg) }
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = msg,
+                            isRiskControlError = error.isRiskControlError()
+                        )
+                    }
                     _snackbarMessage.emit(msg)
                 }
             )
@@ -225,12 +266,25 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onDismissError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, isRiskControlError = false) }
     }
 
     override fun onCleared() {
         stopQrLoginFlow()
+        captchaCooldownJob?.cancel()
+        captchaCooldownJob = null
         super.onCleared()
+    }
+
+    private fun startCaptchaCooldown(durationSeconds: Int = CAPTCHA_COOLDOWN_SECONDS) {
+        captchaCooldownJob?.cancel()
+        captchaCooldownJob = viewModelScope.launch {
+            for (remaining in durationSeconds downTo 1) {
+                _uiState.update { it.copy(captchaCooldownSeconds = remaining) }
+                delay(1_000L)
+            }
+            _uiState.update { it.copy(captchaCooldownSeconds = 0) }
+        }
     }
 
     private fun startQrLogin() {
@@ -344,5 +398,9 @@ class AuthViewModel @Inject constructor(
     private fun needsProfileRefresh(session: AuthSession?): Boolean {
         return session?.isLoggedIn == true &&
             (session.userId == null || session.nickname.isNullOrBlank() || session.avatarUrl.isNullOrBlank())
+    }
+
+    companion object {
+        private const val CAPTCHA_COOLDOWN_SECONDS = 60
     }
 }

@@ -178,14 +178,17 @@ fun AccountLoginSheetContent(
                         CaptchaPanel(
                             red = red,
                             helperText = uiState.errorMessage,
+                            isRiskControlError = uiState.isRiskControlError,
                             phone = uiState.phone,
                             captcha = uiState.captcha,
+                            captchaCooldownSeconds = uiState.captchaCooldownSeconds,
                             isLoading = uiState.isLoading,
                             onPhoneChange = { viewModel.onPhoneChanged(it) },
                             onCaptchaChange = { viewModel.onCaptchaChanged(it) },
                             onBack = { viewModel.onBackToMethods() },
                             onSendCaptcha = { viewModel.onSendCaptcha() },
-                            onLogin = { viewModel.onCaptchaLogin() }
+                            onLogin = { viewModel.onCaptchaLogin() },
+                            onSwitchToQr = { viewModel.onQrPanelOpened() }
                         )
                     }
 
@@ -746,16 +749,20 @@ private fun LoginMethodRow(
 private fun CaptchaPanel(
     red: Color,
     helperText: String?,
+    isRiskControlError: Boolean,
     phone: String,
     captcha: String,
+    captchaCooldownSeconds: Int,
     isLoading: Boolean,
     onPhoneChange: (String) -> Unit,
     onCaptchaChange: (String) -> Unit,
     onBack: () -> Unit,
     onSendCaptcha: () -> Unit,
-    onLogin: () -> Unit
+    onLogin: () -> Unit,
+    onSwitchToQr: () -> Unit
 ) {
     val colors = AppTheme.colors
+    val canSendCaptcha = !isLoading && captchaCooldownSeconds <= 0
     Column(modifier = Modifier.fillMaxWidth()) {
         PanelTitle(
             title = "手机验证码登录",
@@ -821,11 +828,13 @@ private fun CaptchaPanel(
                 OutlinedButton(
                     onClick = onSendCaptcha,
                     shape = RoundedCornerShape(16.dp),
-                    enabled = !isLoading,
+                    enabled = canSendCaptcha,
                     modifier = Modifier.weight(1f)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else if (captchaCooldownSeconds > 0) {
+                        Text("${captchaCooldownSeconds}s 后重试")
                     } else {
                         Text("发送验证码")
                     }
@@ -856,6 +865,43 @@ private fun CaptchaPanel(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             )
+
+            if (isRiskControlError) {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "网易云对手机号验证码登录风控较严，建议直接改用更稳定的二维码扫码登录。",
+                            color = colors.textSecondary,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                        OutlinedButton(
+                            onClick = onSwitchToQr,
+                            shape = RoundedCornerShape(14.dp),
+                            enabled = !isLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "改用二维码登录",
+                                color = red,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
