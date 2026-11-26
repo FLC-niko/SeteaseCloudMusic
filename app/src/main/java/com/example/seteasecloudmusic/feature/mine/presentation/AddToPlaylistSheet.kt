@@ -2,20 +2,19 @@ package com.example.seteasecloudmusic.feature.mine.presentation
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,7 +38,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -52,6 +50,8 @@ import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -404,86 +404,67 @@ private fun PlaylistPickerItem(
     val contentAlpha = if (isAlreadyAdded) 0.52f else 1f
     val colors = AppTheme.colors
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isLikedHero && !isAlreadyAdded) colors.accent else colors.surfaceVariant)
-                .graphicsLayer { alpha = contentAlpha },
-            contentAlignment = Alignment.Center
-        ) {
-            if (!playlist.coverUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = playlist.coverUrl.toCoverThumbnailUrl(120),
-                    contentDescription = playlist.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else if (isLikedHero) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_heart_filled),
-                    contentDescription = "我喜欢的音乐",
-                    tint = if (isAlreadyAdded) colors.textSecondary else Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            } else {
-                Icon(
-                    imageVector = MiuixIcons.Music,
-                    contentDescription = null,
-                    tint = colors.textSecondary,
-                    modifier = Modifier.size(24.dp)
+    BasicComponent(
+        startAction = {
+            Box(
+                modifier = Modifier
+                    .padding(end = 14.dp)
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isLikedHero && !isAlreadyAdded) colors.accent else colors.surfaceVariant)
+                    .graphicsLayer { alpha = contentAlpha },
+                contentAlignment = Alignment.Center
+            ) {
+                if (!playlist.coverUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = playlist.coverUrl.toCoverThumbnailUrl(120),
+                        contentDescription = playlist.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else if (isLikedHero) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_heart_filled),
+                        contentDescription = "我喜欢的音乐",
+                        tint = if (isAlreadyAdded) colors.textSecondary else Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = MiuixIcons.Music,
+                        contentDescription = null,
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        },
+        title = playlist.name,
+        titleColor = BasicComponentDefaults.titleColor(
+            color = if (isAlreadyAdded) colors.textSecondary else colors.textPrimary
+        ),
+        summary = "${playlist.trackCount} 首",
+        summaryColor = BasicComponentDefaults.summaryColor(color = colors.textSecondary),
+        endActions = if (isAlreadyAdded) {
+            {
+                Text(
+                    text = "已添加",
+                    style = MiuixTheme.textStyles.footnote1.copy(
+                        color = colors.textSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = Modifier
+                        .background(colors.surfaceVariant, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
                 )
             }
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .graphicsLayer { alpha = contentAlpha }
-        ) {
-            Text(
-                text = playlist.name,
-                style = MiuixTheme.textStyles.body2.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = if (isAlreadyAdded) colors.textSecondary else colors.textPrimary,
-                    fontSize = 15.sp
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "${playlist.trackCount} 首",
-                style = MiuixTheme.textStyles.footnote1.copy(
-                    color = colors.textSecondary,
-                    fontSize = 12.sp
-                )
-            )
-        }
-
-        if (isAlreadyAdded) {
-            Text(
-                text = "已添加",
-                style = MiuixTheme.textStyles.footnote1.copy(
-                    color = colors.textSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                ),
-                modifier = Modifier
-                    .background(colors.surfaceVariant, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            )
-        }
-    }
+        } else {
+            null
+        },
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        onClick = onClick
+    )
 }
 
 @Composable
@@ -491,53 +472,31 @@ private fun NewPlaylistPickerItem(
     onClick: () -> Unit
 ) {
     val colors = AppTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = MiuixIcons.Add,
-                contentDescription = "新建歌单",
-                tint = colors.iconSecondary,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "新建歌单",
-                style = MiuixTheme.textStyles.body2.copy(
-                    color = colors.textPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "创建新歌单并加入此歌曲",
-                style = MiuixTheme.textStyles.footnote1.copy(
-                    color = colors.textSecondary,
-                    fontSize = 12.sp
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    BasicComponent(
+        startAction = {
+            Box(
+                modifier = Modifier
+                    .padding(end = 14.dp)
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Add,
+                    contentDescription = "新建歌单",
+                    tint = colors.iconSecondary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        },
+        title = "新建歌单",
+        titleColor = BasicComponentDefaults.titleColor(color = colors.textPrimary),
+        summary = "创建新歌单并加入此歌曲",
+        summaryColor = BasicComponentDefaults.summaryColor(color = colors.textSecondary),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        onClick = onClick
+    )
 }
 
 /**

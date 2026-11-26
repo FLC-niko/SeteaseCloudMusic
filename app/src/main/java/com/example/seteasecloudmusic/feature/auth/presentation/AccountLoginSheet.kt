@@ -3,41 +3,36 @@ package com.example.seteasecloudmusic.feature.auth.presentation
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.settings.AppThemeMode
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import com.example.seteasecloudmusic.core.ui.components.UserAvatar
+import com.example.seteasecloudmusic.core.ui.components.formatTopAmbientColorLabel
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,17 +40,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -63,44 +56,37 @@ import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonLocation
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.example.seteasecloudmusic.core.ui.components.BloomStrokeDefaults
-import com.example.seteasecloudmusic.core.ui.components.UserAvatar
-import com.example.seteasecloudmusic.core.ui.components.bloomStroke
-import com.example.seteasecloudmusic.core.ui.components.formatTopAmbientColorLabel
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun AccountLoginSheetContent(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    backdrop: Backdrop? = null,
+    @Suppress("UNUSED_PARAMETER") backdrop: Backdrop? = null,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val contentScrollState = rememberScrollState()
     var showAudioQualityDialog by remember { mutableStateOf(false) }
     var showThemeModeDialog by remember { mutableStateOf(false) }
@@ -160,7 +146,6 @@ fun AccountLoginSheetContent(
                             avatarUrl = uiState.authSession?.avatarUrl,
                             displayName = uiState.authSession?.nickname,
                             isProcessingLogout = uiState.isLoading,
-                            backdrop = backdrop,
                             onCaptchaClick = { viewModel.onCaptchaPanelOpened() },
                             onQrClick = { viewModel.onQrPanelOpened() },
                             audioQuality = audioQuality,
@@ -331,7 +316,6 @@ private fun MethodSelectionPanel(
     avatarUrl: String?,
     displayName: String?,
     isProcessingLogout: Boolean,
-    backdrop: Backdrop?,
     onCaptchaClick: () -> Unit,
     onQrClick: () -> Unit,
     audioQuality: OnlineAudioQuality,
@@ -353,7 +337,6 @@ private fun MethodSelectionPanel(
     onLogoutClick: () -> Unit
 ) {
     val colors = AppTheme.colors
-    val dividerColor = colors.divider
 
     Column(modifier = Modifier.fillMaxWidth()) {
         if (isLoggedIn) {
@@ -363,30 +346,22 @@ private fun MethodSelectionPanel(
             )
         } else {
             Card(
-                cornerRadius = 24.dp,
                 colors = CardDefaults.defaultColors(color = colors.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                LoginMethodRow(
-                    text = "手机验证码登录",
-                    red = red,
+                ArrowPreference(
+                    title = "手机验证码登录",
+                    titleColor = BasicComponentDefaults.titleColor(color = red),
                     onClick = onCaptchaClick
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    color = dividerColor,
-                    thickness = 1.dp
-                )
-
-                LoginMethodRow(
-                    text = "二维码登录",
-                    red = red,
+                ArrowPreference(
+                    title = "二维码登录",
+                    titleColor = BasicComponentDefaults.titleColor(color = red),
                     onClick = onQrClick
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = "登录账户以同步你的歌单、收藏和听歌记录。",
@@ -395,133 +370,141 @@ private fun MethodSelectionPanel(
                 lineHeight = 19.sp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        Text(
-            text = "音乐设置",
-            color = secondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp)
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        SettingsSectionCard {
-            SettingsNavigationRow(
-                title = "在线播放音质",
-                trailingText = audioQuality.playerMenuLabel,
-                onClick = onAudioQualityClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "外观模式",
-                trailingText = themeMode.title,
-                onClick = onThemeModeClick
-            )
-            SettingsDivider(dividerColor)
-            SettingsToggleRow(
-                title = "顶部氛围颜色",
-                checked = topAmbientEnabled,
-                onCheckedChange = onTopAmbientEnabledChange,
-                backdrop = backdrop
-            )
-            SettingsDivider(dividerColor)
-            SettingsNavigationRow(
-                title = "氛围调色盘",
-                trailingText = if (topAmbientEnabled) {
-                    formatTopAmbientColorLabel(topAmbientColorArgb)
-                } else {
-                    "已关闭"
-                },
-                trailingBadge = {
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Color(topAmbientColorArgb).copy(
-                                    alpha = if (topAmbientEnabled) 1f else 0.35f
-                                )
-                            )
-                            .border(1.dp, colors.coverBorder, CircleShape)
-                    )
-                },
-                onClick = onTopAmbientColorClick
+                    .padding(horizontal = 12.dp)
             )
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        SettingsSectionCard {
-            SettingsToggleRow(
+        SmallTitle(
+            text = "音乐设置",
+            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        )
+
+        Card(
+            colors = CardDefaults.defaultColors(color = colors.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            ArrowPreference(
+                title = "在线播放音质",
+                endActions = {
+                    Text(
+                        text = audioQuality.playerMenuLabel,
+                        fontSize = 14.sp,
+                        color = colors.textSecondary
+                    )
+                },
+                onClick = onAudioQualityClick
+            )
+            ArrowPreference(
+                title = "外观模式",
+                endActions = {
+                    Text(
+                        text = themeMode.title,
+                        fontSize = 14.sp,
+                        color = colors.textSecondary
+                    )
+                },
+                onClick = onThemeModeClick
+            )
+            SwitchPreference(
+                title = "顶部氛围颜色",
+                checked = topAmbientEnabled,
+                onCheckedChange = onTopAmbientEnabledChange
+            )
+            ArrowPreference(
+                title = "氛围调色盘",
+                endActions = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Color(topAmbientColorArgb).copy(
+                                        alpha = if (topAmbientEnabled) 1f else 0.35f
+                                    )
+                                )
+                                .border(1.dp, colors.coverBorder, CircleShape)
+                        )
+                        Text(
+                            text = if (topAmbientEnabled) {
+                                formatTopAmbientColorLabel(topAmbientColorArgb)
+                            } else {
+                                "已关闭"
+                            },
+                            fontSize = 14.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                },
+                onClick = onTopAmbientColorClick
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        SmallTitle(
+            text = "歌词与实验性功能",
+            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        )
+
+        Card(
+            colors = CardDefaults.defaultColors(color = colors.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SwitchPreference(
                 title = "车载蓝牙歌词",
                 checked = bluetoothLyricsEnabled,
-                onCheckedChange = onBluetoothLyricsChange,
-                backdrop = backdrop
+                onCheckedChange = onBluetoothLyricsChange
             )
-            SettingsDivider(dividerColor)
-            SettingsToggleRow(
+            SwitchPreference(
                 title = "超级岛与背屏歌词（SuperLyric）",
                 checked = superLyricApiEnabled,
-                onCheckedChange = onSuperLyricApiChange,
-                backdrop = backdrop
+                onCheckedChange = onSuperLyricApiChange
             )
-            SettingsDivider(dividerColor)
-            SettingsToggleRow(
+            SwitchPreference(
                 title = "预测性返回手势",
                 checked = predictiveBackEnabled,
-                onCheckedChange = onPredictiveBackChange,
-                backdrop = backdrop
+                onCheckedChange = onPredictiveBackChange
             )
-            SettingsDivider(dividerColor)
-            SettingsToggleRow(
+            SwitchPreference(
                 title = "本地直连接口（免服务器）",
                 checked = localDirectApiEnabled,
-                onCheckedChange = onLocalDirectApiChange,
-                backdrop = backdrop
+                onCheckedChange = onLocalDirectApiChange
             )
         }
 
         if (isLoggedIn) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            Card(
-                cornerRadius = 24.dp,
-                colors = CardDefaults.defaultColors(color = colors.surface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        enabled = !isProcessingLogout,
-                        onClick = onLogoutClick
-                    )
+            Button(
+                onClick = onLogoutClick,
+                enabled = !isProcessingLogout,
+                colors = ButtonDefaults.buttonColors(
+                    color = colors.surface,
+                    disabledColor = colors.surface,
+                    contentColor = red,
+                    disabledContentColor = red.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isProcessingLogout) {
-                        AppLoadingIndicator(
-                            color = red,
-                            strokeWidth = 2.dp,
-                            size = 20.dp
-                        )
-                    } else {
-                        Text(
-                            text = "退出登录",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = red
-                        )
-                    }
+                if (isProcessingLogout) {
+                    AppLoadingIndicator(
+                        color = red,
+                        strokeWidth = 2.dp,
+                        size = 20.dp
+                    )
+                } else {
+                    Text(
+                        text = "退出登录",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = red
+                    )
                 }
             }
         }
@@ -535,7 +518,6 @@ private fun ProfileCard(
 ) {
     val colors = AppTheme.colors
     Card(
-        cornerRadius = 24.dp,
         colors = CardDefaults.defaultColors(color = colors.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -567,240 +549,6 @@ private fun ProfileCard(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SettingsSectionCard(
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        cornerRadius = 24.dp,
-        colors = CardDefaults.defaultColors(color = AppTheme.colors.surface),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.fillMaxWidth(), content = content)
-    }
-}
-
-@Composable
-private fun SettingsDivider(color: Color) {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        color = color,
-        thickness = 1.dp
-    )
-}
-
-@Composable
-private fun SettingsNavigationRow(
-    title: String,
-    trailingText: String? = null,
-    trailingBadge: (@Composable () -> Unit)? = null,
-    onClick: () -> Unit
-) {
-    val colors = AppTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.textPrimary,
-            modifier = Modifier.weight(1f)
-        )
-        if (trailingBadge != null) {
-            trailingBadge()
-            Spacer(modifier = Modifier.size(8.dp))
-        }
-        if (!trailingText.isNullOrBlank()) {
-            Text(
-                text = trailingText,
-                fontSize = 16.sp,
-                color = colors.textSecondary
-            )
-            Spacer(modifier = Modifier.size(4.dp))
-        }
-        Icon(
-            imageVector = MiuixIcons.ChevronForward,
-            contentDescription = null,
-            tint = colors.textTertiary,
-            modifier = Modifier.size(22.dp)
-        )
-    }
-}
-
-@Composable
-private fun SettingsToggleRow(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    backdrop: Backdrop?
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = AppTheme.colors.textPrimary,
-            modifier = Modifier.weight(1f)
-        )
-        LiquidGlassSwitch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            backdrop = backdrop
-        )
-    }
-}
-
-@Composable
-private fun LiquidGlassSwitch(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    backdrop: Backdrop?,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    val isDark = AppTheme.isDark
-    val trackWidth = 51.dp
-    val trackHeight = 31.dp
-    val thumbSize = 27.dp
-    val thumbPadding = 2.dp
-
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val uncheckedTrackColor = if (isDark) Color(0xFF3A3A3C) else Color(0xFFD6D6DC)
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) Color(0xFF30D158) else uncheckedTrackColor,
-        animationSpec = tween(durationMillis = 170),
-        label = "liquidSwitchTrackColor"
-    )
-    val thumbOffsetX by animateDpAsState(
-        targetValue = if (checked) trackWidth - thumbSize - thumbPadding else thumbPadding,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = 640f),
-        label = "liquidSwitchThumbOffset"
-    )
-    val thumbScale by animateFloatAsState(
-        targetValue = if (isPressed) 1.12f else 1f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 700f),
-        label = "liquidSwitchThumbScale"
-    )
-    val switchBloomStyle = remember(isDark) {
-        BloomStrokeDefaults.CompactControl.copy(
-            lightSurfaceSubtleOutlineAlpha = if (isDark) 0f else 0.06f
-        )
-    }
-
-    val baseModifier = modifier
-        .size(trackWidth, trackHeight)
-        .clickable(
-            enabled = enabled,
-            interactionSource = interactionSource,
-            indication = null
-        ) {
-            onCheckedChange(!checked)
-        }
-
-    val decoratedModifier = if (backdrop != null) {
-        baseModifier
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { RoundedRectangle(trackHeight / 2) },
-                highlight = null,
-                effects = {
-                    vibrancy()
-                    blur(1.2f.dp.toPx())
-                    lens(
-                        refractionHeight = 2.2f.dp.toPx(),
-                        refractionAmount = 4.5f.dp.toPx(),
-                        chromaticAberration = false
-                    )
-                },
-                onDrawSurface = {
-                    drawRect(trackColor)
-                }
-            )
-            .bloomStroke(
-                cornerRadius = trackHeight / 2,
-                style = switchBloomStyle,
-                extraDegrees = -45f
-            )
-    } else {
-        baseModifier
-            .background(trackColor, CircleShape)
-            .bloomStroke(
-                cornerRadius = trackHeight / 2,
-                style = switchBloomStyle,
-                extraDegrees = -45f
-            )
-    }
-
-    Box(
-        modifier = decoratedModifier,
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Box(
-            modifier = Modifier
-                .offset(x = thumbOffsetX)
-                .size(thumbSize)
-                .graphicsLayer {
-                    scaleX = thumbScale
-                    scaleY = thumbScale
-                }
-                .shadow(
-                    elevation = if (isPressed) 3.dp else 2.dp,
-                    shape = CircleShape,
-                    clip = false
-                )
-                .background(
-                    color = Color.White.copy(alpha = if (isPressed) 0.88f else 1f),
-                    shape = CircleShape
-                )
-                .then(
-                    if (isPressed) {
-                        Modifier.bloomStroke(
-                            cornerRadius = thumbSize / 2,
-                            style = BloomStrokeDefaults.DropletPill,
-                            extraDegrees = 90f
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
-        )
-    }
-}
-
-@Composable
-private fun LoginMethodRow(
-    text: String,
-    red: Color,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = text,
-            color = red,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
@@ -1217,7 +965,7 @@ private fun <T> SettingsOptionDialog(
 ) {
     val colors = AppTheme.colors
     val isDark = AppTheme.isDark
-    val unselectedItemBg = if (isDark) Color(0xFF1C1C1E) else colors.surfaceVariant
+    val containerColor = if (isDark) Color(0xFF1C1C1E) else colors.surfaceVariant
 
     AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
@@ -1227,46 +975,19 @@ private fun <T> SettingsOptionDialog(
         dismissText = null,
         onConfirm = onDismiss
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Card(
+            colors = CardDefaults.defaultColors(color = containerColor),
+            modifier = Modifier.fillMaxWidth()
         ) {
             options.forEach { option ->
                 val isSelected = selectedOption == option
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            if (isSelected) colors.accentSubtle else unselectedItemBg
-                        )
-                        .clickable { onSelect(option) }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = optionTitle(option),
-                            fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) colors.accent else colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = optionSubtitle(option),
-                            fontSize = 12.sp,
-                            color = colors.textSecondary
-                        )
-                    }
-                    if (isSelected) {
-                        Icon(
-                            imageVector = MiuixIcons.Basic.Check,
-                            contentDescription = null,
-                            tint = colors.accent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                RadioButtonPreference(
+                    title = optionTitle(option),
+                    summary = optionSubtitle(option),
+                    selected = isSelected,
+                    radioButtonLocation = RadioButtonLocation.End,
+                    onClick = { onSelect(option) }
+                )
             }
         }
     }

@@ -12,9 +12,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Music
@@ -211,85 +214,72 @@ private fun QueueTrackItemRow(
     modifier: Modifier = Modifier
 ) {
     val colors = AppTheme.colors
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isCurrent) colors.accentSubtle else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+    val artistText = remember(track) {
+        val names = track.artists.joinToString(" / ") { it.name }
+        val album = track.album.title
+        if (album.isNotBlank()) "$names - $album" else names
+    }
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (isCurrent) colors.accentSubtle else Color.Transparent,
+        modifier = modifier.fillMaxWidth()
     ) {
-        // 序号或当前播放状态图标
-        Box(
-            modifier = Modifier.width(32.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            if (isCurrent) {
-                if (isPlaying) {
+        BasicComponent(
+            startAction = {
+                Box(
+                    modifier = Modifier.width(32.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (isCurrent) {
+                        if (isPlaying) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_volume_high),
+                                contentDescription = null,
+                                tint = colors.accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_mini_play),
+                                contentDescription = null,
+                                tint = colors.accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "${index + 1}",
+                            fontSize = 13.sp,
+                            color = colors.textTertiary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            title = track.title,
+            titleColor = BasicComponentDefaults.titleColor(
+                color = if (isCurrent) colors.accent else colors.textPrimary
+            ),
+            summary = artistText,
+            summaryColor = BasicComponentDefaults.summaryColor(
+                color = if (isCurrent) colors.accent.copy(alpha = 0.82f) else colors.textSecondary
+            ),
+            endActions = {
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.size(30.dp)
+                ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_volume_high),
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_mini_play),
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(18.dp)
+                        painter = painterResource(id = R.drawable.ic_nav_close),
+                        contentDescription = "移出播放列表",
+                        tint = colors.textTertiary,
+                        modifier = Modifier.size(15.dp)
                     )
                 }
-            } else {
-                Text(
-                    text = "${index + 1}",
-                    fontSize = 13.sp,
-                    color = colors.textTertiary,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        // 歌曲标题与副标题（歌手 / 专辑）
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                fontSize = 15.sp,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                color = if (isCurrent) colors.accent else colors.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            val artistText = remember(track) {
-                val names = track.artists.joinToString(" / ") { it.name }
-                val album = track.album.title
-                if (album.isNotBlank()) "$names - $album" else names
-            }
-            Text(
-                text = artistText,
-                fontSize = 12.sp,
-                color = if (isCurrent) colors.accent.copy(alpha = 0.82f) else colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // 右侧从队列移除按钮
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier.size(30.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_nav_close),
-                contentDescription = "移出播放列表",
-                tint = colors.textTertiary,
-                modifier = Modifier.size(15.dp)
-            )
-        }
+            },
+            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            onClick = onClick
+        )
     }
 }
 

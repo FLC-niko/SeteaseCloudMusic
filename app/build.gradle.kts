@@ -105,6 +105,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation(libs.miuix.ui)
     implementation(libs.miuix.icons)
+    implementation(libs.miuix.preference)
     
     // Navigation
     implementation(libs.androidx.navigation.compose)

@@ -11,12 +11,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +29,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -195,135 +198,134 @@ fun TrackActionSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            HorizontalDivider(
-                color = colors.dividerSubtle,
-                thickness = 0.5.dp,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
             val likedTrackIds by FavoriteTracksManager.likedTrackIds.collectAsState()
             val isLiked = track.id in likedTrackIds
+            val artistNames = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
+            val albumTitle = track.album.title.ifBlank { "未知专辑" }
 
-            // 1. 下一首播放
-            TrackActionItem(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_action_play_next),
-                        contentDescription = "下一首播放",
-                        tint = colors.iconSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                title = "下一首播放",
-                onClick = {
-                    runCatching {
-                        PlayerEntryPoints.playerController().insertNext(track)
-                    }
-                    Toast.makeText(context, "已添加到下一首播放", Toast.LENGTH_SHORT).show()
-                    onDismiss()
-                }
-            )
-
-            // 2. 喜欢 / 取消喜欢
-            TrackActionItem(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = if (isLiked) R.drawable.ic_heart_filled else R.drawable.ic_heart),
-                        contentDescription = if (isLiked) "取消喜欢" else "喜欢",
-                        tint = if (isLiked) colors.accent else colors.iconSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                title = if (isLiked) "取消喜欢" else "喜欢",
-                onClick = {
-                    val willBeLiked = FavoriteTracksManager.toggleLiked(track.id)
-                    onToggleLiked?.invoke(track, willBeLiked)
-                    val msg = if (willBeLiked) "已添加到我喜欢的音乐" else "已从我喜欢的音乐中移除"
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    if (!willBeLiked) {
+            Card(
+                colors = CardDefaults.defaultColors(color = colors.surfaceVariant),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
+                // 1. 下一首播放
+                TrackActionItem(
+                    icon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_action_play_next),
+                            contentDescription = "下一首播放",
+                            tint = colors.iconSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    title = "下一首播放",
+                    onClick = {
+                        runCatching {
+                            PlayerEntryPoints.playerController().insertNext(track)
+                        }
+                        Toast.makeText(context, "已添加到下一首播放", Toast.LENGTH_SHORT).show()
                         onDismiss()
                     }
-                }
-            )
-
-            // 3. 收藏到歌单
-            TrackActionItem(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_action_add_to_playlist),
-                        contentDescription = "收藏到歌单",
-                        tint = colors.iconSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                title = "收藏到歌单",
-                onClick = {
-                    currentPage = TrackActionSheetPage.ADD_TO_PLAYLIST
-                    onAddToPlaylistClick?.invoke(track)
-                }
-            )
-
-            // 4. 下载
-            TrackActionItem(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_action_download),
-                        contentDescription = "下载",
-                        tint = colors.iconSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                title = "下载",
-                onClick = {
-                    Toast.makeText(context, "已加入下载队列", Toast.LENGTH_SHORT).show()
-                    onDismiss()
-                }
-            )
-
-            // 5. 歌手
-            val artistNames = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
-            TrackActionItem(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_action_artist),
-                        contentDescription = "歌手",
-                        tint = colors.iconSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                title = "歌手：$artistNames",
-                onClick = {
-                    Toast.makeText(context, "歌手：$artistNames", Toast.LENGTH_SHORT).show()
-                    onDismiss()
-                }
-            )
-
-            // 6. 专辑
-            val albumTitle = track.album.title.ifBlank { "未知专辑" }
-            TrackActionItem(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_action_album),
-                        contentDescription = "专辑",
-                        tint = colors.iconSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                title = "专辑：$albumTitle",
-                onClick = {
-                    Toast.makeText(context, "专辑：$albumTitle", Toast.LENGTH_SHORT).show()
-                    onDismiss()
-                }
-            )
-
-            // 7. 音频详细信息（播放页更多菜单融合项）
-            if (audioDetails != null) {
-                TrackAudioDetailsItem(
-                    trackId = track.id,
-                    details = audioDetails
                 )
+
+                // 2. 喜欢 / 取消喜欢
+                TrackActionItem(
+                    icon = {
+                        Icon(
+                            painter = painterResource(id = if (isLiked) R.drawable.ic_heart_filled else R.drawable.ic_heart),
+                            contentDescription = if (isLiked) "取消喜欢" else "喜欢",
+                            tint = if (isLiked) colors.accent else colors.iconSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    title = if (isLiked) "取消喜欢" else "喜欢",
+                    onClick = {
+                        val willBeLiked = FavoriteTracksManager.toggleLiked(track.id)
+                        onToggleLiked?.invoke(track, willBeLiked)
+                        val msg = if (willBeLiked) "已添加到我喜欢的音乐" else "已从我喜欢的音乐中移除"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        if (!willBeLiked) {
+                            onDismiss()
+                        }
+                    }
+                )
+
+                // 3. 收藏到歌单
+                TrackActionItem(
+                    icon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_action_add_to_playlist),
+                            contentDescription = "收藏到歌单",
+                            tint = colors.iconSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    title = "收藏到歌单",
+                    onClick = {
+                        currentPage = TrackActionSheetPage.ADD_TO_PLAYLIST
+                        onAddToPlaylistClick?.invoke(track)
+                    }
+                )
+
+                // 4. 下载
+                TrackActionItem(
+                    icon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_action_download),
+                            contentDescription = "下载",
+                            tint = colors.iconSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    title = "下载",
+                    onClick = {
+                        Toast.makeText(context, "已加入下载队列", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    }
+                )
+
+                // 5. 歌手
+                TrackActionItem(
+                    icon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_action_artist),
+                            contentDescription = "歌手",
+                            tint = colors.iconSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    title = "歌手：$artistNames",
+                    onClick = {
+                        Toast.makeText(context, "歌手：$artistNames", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    }
+                )
+
+                // 6. 专辑
+                TrackActionItem(
+                    icon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_action_album),
+                            contentDescription = "专辑",
+                            tint = colors.iconSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    title = "专辑：$albumTitle",
+                    onClick = {
+                        Toast.makeText(context, "专辑：$albumTitle", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    }
+                )
+
+                // 7. 音频详细信息（播放页更多菜单融合项）
+                if (audioDetails != null) {
+                    TrackAudioDetailsItem(
+                        trackId = track.id,
+                        details = audioDetails
+                    )
+                }
             }
         }
     }
@@ -349,60 +351,45 @@ private fun TrackAudioDetailsItem(
     )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { isExpanded = !isExpanded }
-                .padding(horizontal = 20.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_action_audio_info),
-                    contentDescription = null,
-                    tint = colors.iconSecondary,
-                    modifier = Modifier.size(22.dp)
+        BasicComponent(
+            startAction = {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_action_audio_info),
+                        contentDescription = null,
+                        tint = colors.iconSecondary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            },
+            title = "音频详细信息",
+            titleColor = BasicComponentDefaults.titleColor(color = colors.textPrimary),
+            endActions = {
+                Text(
+                    text = details.summaryBadge,
+                    color = colors.textSecondary,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Text(
-                text = "音频详细信息",
-                style = MiuixTheme.textStyles.body1.copy(
-                    color = colors.textPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-                maxLines = 1
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Text(
-                text = details.summaryBadge,
-                color = colors.textSecondary,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-                modifier = Modifier.weight(1f)
-            )
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            Icon(
-                imageVector = MiuixIcons.ExpandMore,
-                contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
-                tint = colors.textSecondary,
-                modifier = Modifier
-                    .size(20.dp)
-                    .graphicsLayer { rotationZ = chevronRotation }
-            )
-        }
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(
+                    imageVector = MiuixIcons.ExpandMore,
+                    contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
+                    tint = colors.textSecondary,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .graphicsLayer { rotationZ = chevronRotation }
+                )
+            },
+            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
+            onClick = { isExpanded = !isExpanded }
+        )
 
         AnimatedVisibility(
             visible = isExpanded,
@@ -421,13 +408,14 @@ private fun TrackAudioDetailsItem(
         ) {
             val chipBg = if (isDark) Color(0xFF3A3A3E) else Color(0xFFE9E9EE)
             val chipText = if (isDark) Color(0xFFE5E5EA) else Color(0xFF3A3A3C)
+            val detailsBg = if (isDark) Color.Black.copy(alpha = 0.25f) else colors.surface
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 2.dp, bottom = 8.dp)
+                    .padding(horizontal = 14.dp)
+                    .padding(bottom = 12.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surfaceVariant)
+                    .background(detailsBg)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 FlowRow(
@@ -536,37 +524,21 @@ private fun TrackActionItem(
     badge: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            icon()
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Text(
-            text = title,
-            style = MiuixTheme.textStyles.body1.copy(
-                color = AppTheme.colors.textPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Normal
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-
-        if (badge != null) {
-            Spacer(modifier = Modifier.width(8.dp))
-            badge()
-        }
-    }
+    BasicComponent(
+        startAction = {
+            Box(
+                modifier = Modifier
+                    .padding(end = 12.dp)
+                    .size(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                icon()
+            }
+        },
+        title = title,
+        titleColor = BasicComponentDefaults.titleColor(color = AppTheme.colors.textPrimary),
+        endActions = badge?.let { { it() } },
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
+        onClick = onClick
+    )
 }

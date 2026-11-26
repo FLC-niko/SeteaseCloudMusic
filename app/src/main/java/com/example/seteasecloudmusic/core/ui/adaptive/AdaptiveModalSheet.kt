@@ -1,45 +1,41 @@
 package com.example.seteasecloudmusic.core.ui.adaptive
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.sp
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
-import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
-import com.example.seteasecloudmusic.core.ui.theme.AppTheme
-import top.yukonga.miuix.kmp.basic.Surface
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
+import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.window.WindowBottomSheet
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 /** Hosts modal content wholly in one display segment; its scrim can still cover the full window. */
 @Composable
@@ -126,18 +122,22 @@ fun AdaptiveAlertDialog(
     dismissButton: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     text: (@Composable () -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(32.dp),
+    @Suppress("UNUSED_PARAMETER") shape: Shape = RoundedCornerShape(32.dp),
     containerColor: Color = if (AppTheme.isDark) Color.Black else Color.White
 ) {
-    FloatingBottomDialogContainer(
-        onDismissRequest = onDismissRequest,
-        shape = shape,
-        containerColor = containerColor
+    val window = LocalAdaptiveWindow.current
+    var dialogVisible by remember { mutableStateOf(true) }
+    WindowDialog(
+        show = dialogVisible,
+        onDismissRequest = { dialogVisible = false },
+        onDismissFinished = onDismissRequest,
+        backgroundColor = containerColor,
+        largeScreen = window.width >= 600.dp || window.separatingFold != null
     ) {
         Column(
             modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 22.dp),
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             title?.invoke()
@@ -155,8 +155,8 @@ fun AdaptiveAlertDialog(
 }
 
 /**
- * 贴底悬浮圆角弹窗（深色模式纯黑 #000000，浅色模式纯白 #FFFFFF），
- * 底部配备对称胶囊操作按钮（单按钮铺满 / 双按钮左右等宽）。
+ * 基于 Miuix [WindowDialog] 的自适应弹窗（紧凑屏幕贴底弹出、大屏居中缩放），
+ * 底部使用 Miuix [TextButton] 与 [Button] 操作按钮（单按钮铺满 / 双按钮左右等宽）。
  */
 @Composable
 fun AdaptiveAlertDialog(
@@ -172,52 +172,35 @@ fun AdaptiveAlertDialog(
     confirmEnabled: Boolean = true,
     dismissEnabled: Boolean = true,
     isConfirmLoading: Boolean = false,
-    shape: Shape = RoundedCornerShape(32.dp),
+    @Suppress("UNUSED_PARAMETER") shape: Shape = RoundedCornerShape(32.dp),
     containerColor: Color = if (AppTheme.isDark) Color.Black else Color.White,
     content: (@Composable () -> Unit)? = null
 ) {
     val colors = AppTheme.colors
-    val centerHeader = content == null
+    val window = LocalAdaptiveWindow.current
+    var dialogVisible by remember { mutableStateOf(true) }
 
-    FloatingBottomDialogContainer(
-        onDismissRequest = onDismissRequest,
-        shape = shape,
-        containerColor = containerColor,
+    WindowDialog(
+        show = dialogVisible,
+        title = title,
+        titleColor = colors.textPrimary,
+        summary = text?.takeIf { it.isNotBlank() },
+        summaryColor = colors.textSecondary,
+        backgroundColor = containerColor,
+        onDismissRequest = { dialogVisible = false },
+        onDismissFinished = onDismissRequest,
+        largeScreen = window.width >= 600.dp || window.separatingFold != null,
         modifier = modifier
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 22.dp),
-            horizontalAlignment = if (centerHeader) Alignment.CenterHorizontally else Alignment.Start
         ) {
-            Text(
-                text = title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary,
-                textAlign = if (centerHeader) TextAlign.Center else TextAlign.Start,
-                lineHeight = 24.sp
-            )
-
-            if (!text.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = text,
-                    fontSize = 14.sp,
-                    color = colors.textSecondary,
-                    textAlign = if (centerHeader) TextAlign.Center else TextAlign.Start,
-                    lineHeight = 20.sp
-                )
-            }
-
             if (content != null) {
-                Spacer(modifier = Modifier.height(16.dp))
                 content()
+                Spacer(modifier = Modifier.height(20.dp))
             }
-
-            Spacer(modifier = Modifier.height(22.dp))
 
             if (!dismissText.isNullOrBlank()) {
                 Row(
@@ -225,185 +208,68 @@ fun AdaptiveAlertDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FloatingDialogPillButton(
+                    TextButton(
                         text = dismissText,
-                        isPrimary = false,
-                        enabled = dismissEnabled,
                         onClick = onDismiss,
+                        enabled = dismissEnabled,
+                        colors = ButtonDefaults.textButtonColors(),
                         modifier = Modifier.weight(1f)
                     )
-                    FloatingDialogPillButton(
-                        text = confirmText,
-                        isPrimary = true,
-                        primaryColor = confirmColor,
-                        enabled = confirmEnabled,
-                        isLoading = isConfirmLoading,
+                    Button(
                         onClick = onConfirm,
+                        enabled = confirmEnabled && !isConfirmLoading,
+                        colors = ButtonDefaults.buttonColorsPrimary(
+                            color = confirmColor,
+                            contentColor = Color.White,
+                            disabledColor = confirmColor.copy(alpha = 0.42f),
+                            disabledContentColor = Color.White.copy(alpha = 0.75f)
+                        ),
                         modifier = Modifier.weight(1f)
-                    )
+                    ) {
+                        if (isConfirmLoading) {
+                            AppLoadingIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                size = 18.dp
+                            )
+                        } else {
+                            Text(
+                                text = confirmText,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White
+                            )
+                        }
+                    }
                 }
             } else {
-                FloatingDialogPillButton(
-                    text = confirmText,
-                    isPrimary = true,
-                    primaryColor = confirmColor,
-                    enabled = confirmEnabled,
-                    isLoading = isConfirmLoading,
+                Button(
                     onClick = onConfirm,
+                    enabled = confirmEnabled && !isConfirmLoading,
+                    colors = ButtonDefaults.buttonColorsPrimary(
+                        color = confirmColor,
+                        contentColor = Color.White,
+                        disabledColor = confirmColor.copy(alpha = 0.42f),
+                        disabledContentColor = Color.White.copy(alpha = 0.75f)
+                    ),
                     modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun FloatingBottomDialogContainer(
-    onDismissRequest: () -> Unit,
-    shape: Shape,
-    containerColor: Color,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    val isDark = AppTheme.isDark
-    val scrimColor = AppTheme.colors.scrim
-    val borderColor = if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.06f)
-    val slideDistancePx = with(LocalDensity.current) { 42.dp.toPx() }
-
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-    ) {
-        var appeared by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { appeared = true }
-        val reveal by animateFloatAsState(
-            targetValue = if (appeared) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
-            label = "floatingDialogReveal"
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(scrimColor.copy(alpha = scrimColor.alpha * reveal))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismissRequest
-                )
-        ) {
-            AdaptiveOverlayPane(
-                Modifier
-                    .fillMaxSize()
-                    .safeDrawingPadding()
-                    .imePadding()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    Surface(
-                        modifier = modifier
-                            .widthIn(max = 440.dp)
-                            .fillMaxWidth()
-                            .graphicsLayer {
-                                alpha = reveal
-                                translationY = (1f - reveal) * slideDistancePx
-                                val scale = 0.96f + 0.04f * reveal
-                                scaleX = scale
-                                scaleY = scale
-                            }
-                            .shadow(
-                                elevation = if (isDark) 24.dp else 18.dp,
-                                shape = shape,
-                                clip = false,
-                                spotColor = Color.Black.copy(alpha = if (isDark) 0.55f else 0.18f),
-                                ambientColor = Color.Black.copy(alpha = if (isDark) 0.35f else 0.10f)
-                            )
-                            .border(0.5.dp, borderColor, shape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {}
-                            ),
-                        shape = shape,
-                        color = containerColor
-                    ) {
-                        content()
+                    if (isConfirmLoading) {
+                        AppLoadingIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            size = 18.dp
+                        )
+                    } else {
+                        Text(
+                            text = confirmText,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White
+                        )
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun FloatingDialogPillButton(
-    text: String,
-    isPrimary: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    primaryColor: Color = AppTheme.colors.accent,
-    enabled: Boolean = true,
-    isLoading: Boolean = false
-) {
-    val isDark = AppTheme.isDark
-    val colors = AppTheme.colors
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 620f),
-        label = "floatingDialogButtonScale"
-    )
-
-    val pillShape = RoundedCornerShape(24.dp)
-    val bgColor = when {
-        isPrimary && enabled -> primaryColor
-        isPrimary -> primaryColor.copy(alpha = 0.42f)
-        isDark -> Color(0xFF1C1C1E)
-        else -> Color(0xFFF2F2F7)
-    }
-    val textColor = when {
-        isPrimary && enabled -> Color.White
-        isPrimary -> Color.White.copy(alpha = 0.75f)
-        enabled -> colors.textPrimary
-        else -> colors.textTertiary
-    }
-
-    Box(
-        modifier = modifier
-            .height(48.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(pillShape)
-            .background(bgColor)
-            .clickable(
-                enabled = enabled && !isLoading,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (isLoading) {
-            AppLoadingIndicator(
-                modifier = Modifier.size(18.dp),
-                color = textColor,
-                strokeWidth = 2.dp,
-                size = 18.dp
-            )
-        } else {
-            Text(
-                text = text,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = textColor
-            )
         }
     }
 }

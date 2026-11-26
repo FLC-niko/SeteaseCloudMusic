@@ -49,6 +49,7 @@ androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchm
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui", version.ref = "miuix" }
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons", version.ref = "miuix" }
+miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference", version.ref = "miuix" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

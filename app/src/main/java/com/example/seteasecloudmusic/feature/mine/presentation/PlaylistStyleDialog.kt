@@ -7,24 +7,20 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,16 +41,17 @@ import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.Surface
-import top.yukonga.miuix.kmp.basic.Switch
-import top.yukonga.miuix.kmp.basic.SwitchDefaults
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Check
-import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Sort
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonLocation
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 /**
  * 更多操作弹窗层级定义
@@ -111,7 +108,6 @@ fun PlaylistMoreActionSheet(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            // 头部：仅展示标题，去除右上角的叉号
                             Text(
                                 text = "更多操作",
                                 fontSize = 19.sp,
@@ -120,80 +116,68 @@ fun PlaylistMoreActionSheet(
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
 
-                            // 1. 歌单壁纸（二级菜单入口）
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(colors.surfaceVariant)
-                                    .border(
-                                        width = 0.5.dp,
-                                        color = colors.coverBorder,
-                                        shape = RoundedCornerShape(18.dp)
-                                    )
-                                    .clickable {
-                                        currentLevel = PlaylistMoreMenuLevel.WALLPAPER
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Card(
+                                colors = CardDefaults.defaultColors(color = colors.surfaceVariant),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(colors.accentSubtle),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_wallpaper),
-                                        contentDescription = "歌单壁纸",
-                                        tint = colors.accent,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(14.dp))
-
-                                Text(
-                                    text = "歌单壁纸",
-                                    style = MiuixTheme.textStyles.headline1.copy(
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textPrimary
-                                    ),
-                                    modifier = Modifier.weight(1f)
+                                ArrowPreference(
+                                    title = "歌单壁纸",
+                                    startAction = {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(end = 14.dp)
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.accentSubtle),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_wallpaper),
+                                                contentDescription = "歌单壁纸",
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    },
+                                    endActions = {
+                                        Text(
+                                            text = currentStyle.title,
+                                            fontSize = 14.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    },
+                                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                                    onClick = { currentLevel = PlaylistMoreMenuLevel.WALLPAPER }
                                 )
 
-                                Text(
-                                    text = currentStyle.title,
-                                    style = MiuixTheme.textStyles.body2.copy(
-                                        fontSize = 14.sp,
-                                        color = colors.textSecondary
-                                    )
-                                )
-
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                Icon(
-                                    imageVector = MiuixIcons.ChevronForward,
-                                    contentDescription = null,
-                                    tint = colors.textTertiary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            // 2. 歌曲排序（待实现功能入口）
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(colors.surfaceVariant)
-                                    .border(
-                                        width = 0.5.dp,
-                                        color = colors.coverBorder,
-                                        shape = RoundedCornerShape(18.dp)
-                                    )
-                                    .clickable {
+                                ArrowPreference(
+                                    title = "歌曲排序",
+                                    startAction = {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(end = 14.dp)
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.accentBlue.copy(alpha = 0.14f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = MiuixIcons.Sort,
+                                                contentDescription = "歌曲排序",
+                                                tint = colors.accentBlue,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    },
+                                    endActions = {
+                                        Text(
+                                            text = "默认",
+                                            fontSize = 14.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    },
+                                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                                    onClick = {
                                         if (onEnterEditMode != null) {
                                             onDismiss()
                                             onEnterEditMode()
@@ -201,57 +185,11 @@ fun PlaylistMoreActionSheet(
                                             Toast.makeText(context, "歌曲排序功能即将推出", Toast.LENGTH_SHORT).show()
                                         }
                                     }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(colors.accentBlue.copy(alpha = 0.14f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = MiuixIcons.Sort,
-                                        contentDescription = "歌曲排序",
-                                        tint = colors.accentBlue,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(14.dp))
-
-                                Text(
-                                    text = "歌曲排序",
-                                    style = MiuixTheme.textStyles.headline1.copy(
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textPrimary
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                Text(
-                                    text = "默认",
-                                    style = MiuixTheme.textStyles.body2.copy(
-                                        fontSize = 14.sp,
-                                        color = colors.textSecondary
-                                    )
-                                )
-
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                Icon(
-                                    imageVector = MiuixIcons.ChevronForward,
-                                    contentDescription = null,
-                                    tint = colors.textTertiary,
-                                    modifier = Modifier.size(20.dp)
                                 )
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            // 底部主题红关闭按钮
                             Button(
                                 onClick = onDismiss,
                                 cornerRadius = 24.dp,
@@ -277,7 +215,6 @@ fun PlaylistMoreActionSheet(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            // 头部：仅展示标题，去除返回和关闭按钮
                             Text(
                                 text = "歌单壁纸",
                                 fontSize = 19.sp,
@@ -286,134 +223,49 @@ fun PlaylistMoreActionSheet(
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
 
-                            // 1. 取色背景开关选项
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(colors.surfaceVariant)
-                                    .border(
-                                        width = 0.5.dp,
-                                        color = colors.coverBorder,
-                                        shape = RoundedCornerShape(18.dp)
-                                    )
-                                    .clickable {
-                                        onToggleColorBackground(!useColorBackground)
-                                    }
-                                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Card(
+                                colors = CardDefaults.defaultColors(color = colors.surfaceVariant),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "取色背景",
-                                        style = MiuixTheme.textStyles.headline1.copy(
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.textPrimary
-                                        )
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = if (useColorBackground) "根据封面智能取色沉浸背景" else "已恢复默认纯色背景与遮罩",
-                                        style = MiuixTheme.textStyles.footnote1.copy(
-                                            fontSize = 12.sp,
-                                            color = colors.textSecondary
-                                        )
-                                    )
-                                }
-
-                                Switch(
+                                SwitchPreference(
+                                    title = "取色背景",
+                                    summary = if (useColorBackground) "根据封面智能取色沉浸背景" else "已恢复默认纯色背景与遮罩",
                                     checked = useColorBackground,
-                                    onCheckedChange = onToggleColorBackground,
-                                    colors = SwitchDefaults.switchColors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = colors.accent,
-                                        uncheckedThumbColor = Color.White,
-                                        uncheckedTrackColor = colors.divider
-                                    )
+                                    onCheckedChange = onToggleColorBackground
                                 )
                             }
 
-                            // 2. 歌单壁纸选项列表（仅保留标题，去除描述，选中高亮红钩）
-                            PlaylistDetailStyle.values().forEach { style ->
-                                val isSelected = style == currentStyle
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(
-                                            if (isSelected) colors.accentSubtle
-                                            else colors.surfaceVariant
-                                        )
-                                        .border(
-                                            width = if (isSelected) 1.5.dp else 0.5.dp,
-                                            color = if (isSelected) colors.accent else colors.coverBorder,
-                                            shape = RoundedCornerShape(18.dp)
-                                        )
-                                        .clickable {
-                                            onSelectStyle(style)
-                                        }
-                                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = style.title,
-                                        style = MiuixTheme.textStyles.headline1.copy(
-                                            fontSize = 16.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                            color = if (isSelected) colors.accent else colors.textPrimary
-                                        ),
-                                        modifier = Modifier.weight(1f)
+                            Card(
+                                colors = CardDefaults.defaultColors(color = colors.surfaceVariant),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                PlaylistDetailStyle.entries.forEach { style ->
+                                    val isSelected = style == currentStyle
+                                    RadioButtonPreference(
+                                        title = style.title,
+                                        selected = isSelected,
+                                        radioButtonLocation = RadioButtonLocation.End,
+                                        onClick = { onSelectStyle(style) }
                                     )
-
-                                    if (isSelected) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(CircleShape)
-                                                .background(colors.accent),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = MiuixIcons.Basic.Check,
-                                                contentDescription = "已选中",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            // 底部操作区：返回上一级 + 主题红关闭
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
+                                TextButton(
+                                    text = "返回",
                                     onClick = { currentLevel = PlaylistMoreMenuLevel.MAIN },
-                                    shape = RoundedCornerShape(24.dp),
-                                    color = colors.surfaceVariant,
+                                    cornerRadius = 24.dp,
+                                    colors = ButtonDefaults.textButtonColors(),
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(48.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "返回",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.textPrimary
-                                        )
-                                    }
-                                }
+                                )
 
                                 Button(
                                     onClick = onDismiss,

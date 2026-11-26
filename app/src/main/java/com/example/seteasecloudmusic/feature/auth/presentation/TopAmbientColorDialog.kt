@@ -1,19 +1,15 @@
 package com.example.seteasecloudmusic.feature.auth.presentation
 
 import android.graphics.Color as AndroidColor
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,30 +17,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
@@ -53,6 +40,13 @@ import com.example.seteasecloudmusic.core.ui.components.TopAmbientPresets
 import com.example.seteasecloudmusic.core.ui.components.formatTopAmbientColorLabel
 import com.example.seteasecloudmusic.core.ui.components.resolveAmbientTopColors
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import top.yukonga.miuix.kmp.basic.HsvHueSlider
+import top.yukonga.miuix.kmp.basic.HsvSaturationSlider
+import top.yukonga.miuix.kmp.basic.HsvValueSlider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
 
 @Composable
 internal fun TopAmbientColorPickerDialog(
@@ -218,197 +212,54 @@ internal fun TopAmbientColorPickerDialog(
                 }
             }
 
-            // 2D 饱和度 / 明度调色盘
-            SaturationValueColorPad(
-                hue = hue,
-                saturation = saturation,
-                brightness = brightness,
-                selectedColor = Color(selectedColorArgb),
-                onChanged = { newSat, newVal ->
-                    saturation = newSat
-                    brightness = newVal
-                    exactOverrideArgb = null
-                }
-            )
-
-            // 色相调节滑条
-            HueSpectrumSlider(
-                hue = hue,
-                onHueChanged = { newHue ->
-                    hue = newHue
-                    exactOverrideArgb = null
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun SaturationValueColorPad(
-    hue: Float,
-    saturation: Float,
-    brightness: Float,
-    selectedColor: Color,
-    onChanged: (Float, Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val currentOnChanged by rememberUpdatedState(onChanged)
-    val pureHueColor = remember(hue) { Color.hsv(hue.coerceIn(0f, 360f), 1f, 1f) }
-    val borderColor = AppTheme.colors.coverBorder
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    updateSvFromPosition(down.position, size, currentOnChanged)
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) {
-                            change.consume()
-                            break
-                        }
-                        change.consume()
-                        updateSvFromPosition(change.position, size, currentOnChanged)
-                    }
-                }
-            }
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(Color.White, pureHueColor)
+            // Miuix 原生 HSV 滑块调节（色相 / 饱和度 / 明度）
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "色相",
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
                 )
-            )
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Black)
-                )
-            )
-
-            val cx = (saturation.coerceIn(0f, 1f)) * size.width
-            val cy = (1f - brightness.coerceIn(0f, 1f)) * size.height
-            val center = Offset(cx, cy)
-            val radius = 10.dp.toPx()
-
-            drawCircle(
-                color = selectedColor,
-                radius = radius,
-                center = center
-            )
-            drawCircle(
-                color = Color.Black.copy(alpha = 0.35f),
-                radius = radius + 1.dp.toPx(),
-                center = center,
-                style = Stroke(width = 2.dp.toPx())
-            )
-            drawCircle(
-                color = Color.White,
-                radius = radius,
-                center = center,
-                style = Stroke(width = 2.5.dp.toPx())
-            )
-        }
-    }
-}
-
-@Composable
-private fun HueSpectrumSlider(
-    hue: Float,
-    onHueChanged: (Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val currentOnHueChanged by rememberUpdatedState(onHueChanged)
-    val rainbowColors = remember {
-        listOf(
-            Color(0xFFFF0000),
-            Color(0xFFFFFF00),
-            Color(0xFF00FF00),
-            Color(0xFF00FFFF),
-            Color(0xFF0000FF),
-            Color(0xFFFF00FF),
-            Color(0xFFFF0000)
-        )
-    }
-    val borderColor = AppTheme.colors.coverBorder
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .clip(CircleShape)
-            .border(1.dp, borderColor, CircleShape)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    updateHueFromPosition(down.position, size, currentOnHueChanged)
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) {
-                            change.consume()
-                            break
-                        }
-                        change.consume()
-                        updateHueFromPosition(change.position, size, currentOnHueChanged)
+                HsvHueSlider(
+                    currentHue = hue.coerceIn(0f, 360f),
+                    onHueChanged = { normalizedHue ->
+                        hue = (normalizedHue * 360f).coerceIn(0f, 360f)
+                        exactOverrideArgb = null
                     }
-                }
+                )
             }
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(brush = Brush.horizontalGradient(colors = rainbowColors))
-            val radius = 11.dp.toPx()
-            val usableWidth = (size.width - radius * 2f).coerceAtLeast(1f)
-            val cx = radius + (hue.coerceIn(0f, 360f) / 360f) * usableWidth
-            val center = Offset(cx, size.height / 2f)
-            val thumbColor = Color.hsv(hue.coerceIn(0f, 360f), 1f, 1f)
 
-            drawCircle(
-                color = thumbColor,
-                radius = radius,
-                center = center
-            )
-            drawCircle(
-                color = Color.Black.copy(alpha = 0.30f),
-                radius = radius + 0.5.dp.toPx(),
-                center = center,
-                style = Stroke(width = 1.5.dp.toPx())
-            )
-            drawCircle(
-                color = Color.White,
-                radius = radius - 1.dp.toPx(),
-                center = center,
-                style = Stroke(width = 2.5.dp.toPx())
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "饱和度",
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
+                )
+                HsvSaturationSlider(
+                    currentHue = hue.coerceIn(0f, 360f),
+                    currentSaturation = saturation.coerceIn(0f, 1f),
+                    onSaturationChanged = { newSaturation ->
+                        saturation = newSaturation.coerceIn(0f, 1f)
+                        exactOverrideArgb = null
+                    }
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "明度",
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
+                )
+                HsvValueSlider(
+                    currentHue = hue.coerceIn(0f, 360f),
+                    currentSaturation = saturation.coerceIn(0f, 1f),
+                    currentValue = brightness.coerceIn(0f, 1f),
+                    onValueChanged = { newBrightness ->
+                        brightness = newBrightness.coerceIn(0f, 1f)
+                        exactOverrideArgb = null
+                    }
+                )
+            }
         }
     }
-}
-
-private fun updateSvFromPosition(
-    position: Offset,
-    size: IntSize,
-    onChanged: (Float, Float) -> Unit
-) {
-    val w = size.width.toFloat().coerceAtLeast(1f)
-    val h = size.height.toFloat().coerceAtLeast(1f)
-    val sat = (position.x / w).coerceIn(0f, 1f)
-    val valBright = (1f - position.y / h).coerceIn(0f, 1f)
-    onChanged(sat, valBright)
-}
-
-private fun updateHueFromPosition(
-    position: Offset,
-    size: IntSize,
-    onHueChanged: (Float) -> Unit
-) {
-    val w = size.width.toFloat().coerceAtLeast(1f)
-    val newHue = ((position.x / w) * 360f).coerceIn(0f, 360f)
-    onHueChanged(newHue)
 }
