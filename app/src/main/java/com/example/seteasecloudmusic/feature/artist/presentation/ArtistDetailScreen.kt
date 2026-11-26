@@ -63,6 +63,8 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -565,7 +567,7 @@ fun ArtistDetailScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            Box(Modifier.clip(RoundedCornerShape(24.dp))) {
+                            Box(Modifier.squircleClip(24.dp)) {
                                 ArtistHeroSection(
                                     artistName = uiState.artistName,
                                     artistCoverUrl = uiState.artistCoverUrl,
@@ -1071,7 +1073,7 @@ private fun ArtistTrackRow(
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .squircleClip(10.dp)
                 .background(ArtistCardSurface)
         ) {
             AsyncImage(
@@ -1157,9 +1159,9 @@ private fun AlbumCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp))
+                .squircleClip(12.dp)
                 .background(ArtistCardSurface)
-                .border(0.5.dp, ArtistCardBorder, RoundedCornerShape(12.dp))
+                .squircleBorder(0.5.dp, ArtistCardBorder, 12.dp)
         ) {
             AsyncImage(
                 model = album.coverUrl.toCoverThumbnailUrl(320),
@@ -1199,9 +1201,9 @@ private fun ArtistFavoritesSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .squircleClip(16.dp)
                     .background(ArtistCardSurface)
-                    .border(0.5.dp, ArtistCardBorder, RoundedCornerShape(16.dp))
+                    .squircleBorder(0.5.dp, ArtistCardBorder, 16.dp)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1209,7 +1211,7 @@ private fun ArtistFavoritesSection(
                 Box(
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .squircleClip(10.dp)
                         .background(ArtistSubtleSurface),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1249,9 +1251,9 @@ private fun ArtistFavoritesSection(
                 Box(
                     modifier = Modifier
                         .size(ArtistHorizontalCardWidth)
-                        .clip(RoundedCornerShape(12.dp))
+                        .squircleClip(12.dp)
                         .background(ArtistCardSurface)
-                        .border(0.5.dp, ArtistCardBorder, RoundedCornerShape(12.dp))
+                        .squircleBorder(0.5.dp, ArtistCardBorder, 12.dp)
                 ) {
                     AsyncImage(
                         model = playlist.coverUrl.toCoverThumbnailUrl(320),
@@ -1327,9 +1329,9 @@ private fun SimilarArtistsCardSection(
             Column(
                 modifier = Modifier
                     .width(142.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .squircleClip(18.dp)
                     .background(ArtistCardSurface)
-                    .border(0.5.dp, ArtistCardBorder, RoundedCornerShape(18.dp))
+                    .squircleBorder(0.5.dp, ArtistCardBorder, 18.dp)
                     .clickable { onArtistClick(artist) }
                     .padding(horizontal = 12.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1484,7 +1486,7 @@ private fun DescriptionSection(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .squircleClip(8.dp)
                     .clickable { expanded = !expanded }
                     .padding(vertical = 4.dp)
             )

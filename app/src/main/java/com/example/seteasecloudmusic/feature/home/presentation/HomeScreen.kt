@@ -70,6 +70,8 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -113,6 +115,7 @@ import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.ui.components.AmbientTopPinkBackground
+import com.example.seteasecloudmusic.core.ui.components.AppPullToRefresh
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.LocalPageVisible
@@ -124,7 +127,6 @@ import com.example.seteasecloudmusic.core.ui.components.extractCachedDominantDar
 import com.example.seteasecloudmusic.core.ui.components.getCachedBottomEdgeColor
 import com.example.seteasecloudmusic.core.ui.components.getCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
-import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
@@ -274,11 +276,15 @@ internal fun HomeScreenContent(
                 Box(modifier = Modifier.fillMaxSize().layerBackdrop(homeBackdrop)) {
                     AmbientTopPinkBackground(baseColor = HomeBackground)
                 AdaptiveContent {
+                AppPullToRefresh(
+                    isRefreshing = uiState.isLoading && uiState.tracks.isNotEmpty(),
+                    onRefresh = onRefreshClick,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = statusBarHeight + 56.dp)
+                ) {
                 AdaptiveSectionColumn(
                     state = lazyListState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalElasticOverscroll(),
+                    modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
                 bottom = bottomContentPadding
@@ -410,6 +416,7 @@ internal fun HomeScreenContent(
                 )
             }
         }
+                }
 
         }
         }
@@ -529,7 +536,7 @@ private fun DailyRecommendPosterWall(
         modifier = modifier
             .heightIn(max = if (LocalAdaptiveWindow.current.width >= 600.dp) 380.dp else Dp.Unspecified)
             .aspectRatio(1.08f)
-            .clip(RoundedCornerShape(24.dp))
+            .squircleClip(24.dp)
             .background(PosterWallSurface)
             .clickable(onClick = onClick)
     ) {
@@ -753,7 +760,7 @@ private fun DailyTrackRow(
         Box(
             modifier = Modifier
                 .size(56.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .squircleClip(10.dp)
                 .background(AppTheme.colors.placeholder),
             contentAlignment = Alignment.Center
         ) {
@@ -1061,7 +1068,7 @@ private fun SongRecommendRowItem(
         Box(
             modifier = Modifier
                 .size(54.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .squircleClip(8.dp)
                 .background(AppTheme.colors.placeholder),
             contentAlignment = Alignment.Center
         ) {
@@ -1332,7 +1339,7 @@ private fun BigCardPlaylistItem(
         modifier = modifier
             .width(160.dp)
             .height(215.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .squircleClip(18.dp)
             .drawBehind { drawRect(animatedExtendColor) }
             .clickable(onClick = onClick)
     ) {
@@ -1465,9 +1472,9 @@ private fun SimiSongsRoamStyleCard(
         modifier = modifier
             .width(160.dp)
             .height(215.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .squircleClip(18.dp)
             .drawBehind { drawRect(animatedBgState.value) }
-            .border(0.5.dp, AppTheme.colors.coverBorder, RoundedCornerShape(18.dp))
+            .squircleBorder(0.5.dp, AppTheme.colors.coverBorder, 18.dp)
             .clickable(onClick = onClick)
     ) {
         Column(

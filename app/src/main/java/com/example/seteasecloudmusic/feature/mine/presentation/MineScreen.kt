@@ -79,9 +79,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -91,6 +94,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Folder
 import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
@@ -99,6 +103,7 @@ import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AmbientTopPinkBackground
+import com.example.seteasecloudmusic.core.ui.components.AppPullToRefresh
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSurface
@@ -106,7 +111,6 @@ import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassSegmentedBar
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
-import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.kyant.backdrop.Backdrop
@@ -265,11 +269,15 @@ fun MineScreen(
                 label = "tabsBg"
             )
 
+            AppPullToRefresh(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = statusBarHeight + 56.dp)
+            ) {
             LazyColumn(
                 state = lazyListState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalElasticOverscroll(),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     top = statusBarHeight + 8.dp,
                     bottom = bottomContentPadding
@@ -350,14 +358,29 @@ fun MineScreen(
                             }
                         }
                     } else {
-                        itemsIndexed(uiState.createdPlaylists, key = { _, playlist -> playlist.id }) { index, playlist ->
-                            PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
-                            if (index < uiState.createdPlaylists.lastIndex) {
-                                HorizontalDivider(
-                                    color = MineDividerColor,
-                                    thickness = 0.5.dp,
-                                    modifier = Modifier.padding(start = 90.dp, end = 20.dp)
-                                )
+                        item(key = "created_header") {
+                            SmallTitle(
+                                text = "自建歌单 (${uiState.createdPlaylists.size})",
+                                insideMargin = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                            )
+                        }
+                        item(key = "created_playlists_card") {
+                            Card(
+                                colors = CardDefaults.defaultColors(color = AppTheme.colors.surface),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                uiState.createdPlaylists.forEachIndexed { index, playlist ->
+                                    PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
+                                    if (index < uiState.createdPlaylists.lastIndex) {
+                                        HorizontalDivider(
+                                            color = MineDividerColor,
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(start = 86.dp, end = 16.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -382,28 +405,62 @@ fun MineScreen(
                             }
                         }
                     } else {
-                        itemsIndexed(uiState.favoritedPlaylists, key = { _, playlist -> playlist.id }) { index, playlist ->
-                            PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
-                            if (index < uiState.favoritedPlaylists.lastIndex) {
-                                HorizontalDivider(
-                                    color = MineDividerColor,
-                                    thickness = 0.5.dp,
-                                    modifier = Modifier.padding(start = 90.dp, end = 20.dp)
-                                )
+                        item(key = "favorited_header") {
+                            SmallTitle(
+                                text = "收藏歌单 (${uiState.favoritedPlaylists.size})",
+                                insideMargin = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                            )
+                        }
+                        item(key = "favorited_playlists_card") {
+                            Card(
+                                colors = CardDefaults.defaultColors(color = AppTheme.colors.surface),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                uiState.favoritedPlaylists.forEachIndexed { index, playlist ->
+                                    PlaylistRowItem(playlist = playlist, onClick = { handlePlaylistClick(playlist) })
+                                    if (index < uiState.favoritedPlaylists.lastIndex) {
+                                        HorizontalDivider(
+                                            color = MineDividerColor,
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(start = 86.dp, end = 16.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
                 MinePlaylistTab.LOCAL -> {
+                    item(key = "local_header") {
+                        SmallTitle(
+                            text = "本地音乐",
+                            insideMargin = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                        )
+                    }
                     item(key = "local_playlist_entry") {
-                        PlaylistRowItem(
-                            playlist = uiState.localPlaylist,
-                            onClick = { handlePlaylistClick(uiState.localPlaylist) }
+                        Card(
+                            colors = CardDefaults.defaultColors(color = AppTheme.colors.surface),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            PlaylistRowItem(
+                                playlist = uiState.localPlaylist,
+                                onClick = { handlePlaylistClick(uiState.localPlaylist) }
+                            )
+                        }
+                    }
+                    item(key = "local_dir_header") {
+                        SmallTitle(
+                            text = "扫描目录",
+                            insideMargin = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
                         )
                     }
                     item(key = "local_dir_control_bar") {
-                        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                             LocalMusicDirectoryBar(
                                 backdrop = mineBackdrop,
                                 directoryPath = uiState.localDirectoryPath,
@@ -436,6 +493,7 @@ fun MineScreen(
                 }
             }
         }
+            }
         }
         }
 
@@ -619,7 +677,7 @@ private fun MineAmbientBackground() {
 
 @Composable
 private fun LocalMusicDirectoryBar(
-    backdrop: Backdrop,
+    @Suppress("UNUSED_PARAMETER") backdrop: Backdrop,
     directoryPath: String?,
     hasPermission: Boolean,
     isScanning: Boolean,
@@ -627,11 +685,9 @@ private fun LocalMusicDirectoryBar(
     onRequestPermission: () -> Unit,
     onRescan: () -> Unit
 ) {
-    GlassSurface(
-        backdrop = backdrop,
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = 18.dp,
-        surfaceAlpha = 0.26f
+    Card(
+        colors = CardDefaults.defaultColors(color = AppTheme.colors.surfaceVariant),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
@@ -947,7 +1003,7 @@ private fun LikedSongsHeroCard(
             Box(
                 modifier = Modifier
                     .size(70.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .squircleClip(18.dp)
                     .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.10f else 0.32f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -1150,13 +1206,13 @@ private fun PlaylistRowItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(56.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .squircleClip(10.dp)
                 .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.12f else 0.42f)),
             contentAlignment = Alignment.Center
         ) {

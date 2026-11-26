@@ -46,11 +46,13 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -681,7 +683,7 @@ private fun SearchArtworkCard(
         is SearchRowItem.Suggestion -> { image = null; title = item.keyword; subtitle = "搜索建议"; action = { onQuery(title) } }
     }
     Column(Modifier.fillMaxWidth().clickable(onClick = action).padding(4.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(if (item is SearchRowItem.Artist) CircleShape else RoundedCornerShape(20.dp)).background(AppTheme.colors.placeholder), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).then(if (item is SearchRowItem.Artist) Modifier.clip(CircleShape) else Modifier.squircleClip(20.dp)).background(AppTheme.colors.placeholder), contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_nav_search),
                 contentDescription = null,
@@ -939,12 +941,11 @@ private fun Artwork(
     size: Dp,
     isCircle: Boolean
 ) {
-    val shape = if (isCircle) CircleShape else RoundedCornerShape(8.dp)
     val colors = AppTheme.colors
     Box(
         modifier = Modifier
             .size(size)
-            .clip(shape)
+            .then(if (isCircle) Modifier.clip(CircleShape) else Modifier.squircleClip(10.dp))
             .background(colors.placeholder),
         contentAlignment = Alignment.Center
     ) {
@@ -958,9 +959,7 @@ private fun Artwork(
             AsyncImage(
                 model = imageUrl,
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(shape),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
         }
@@ -1104,11 +1103,10 @@ private fun SearchHistorySection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
+            SmallTitle(
                 text = "搜索历史",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = PrimaryText
+                textColor = PrimaryText,
+                insideMargin = PaddingValues(0.dp)
             )
             Icon(
                 painter = painterResource(id = R.drawable.ic_delete_history),
@@ -1164,11 +1162,10 @@ private fun HotSearchSection(
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        Text(
+        SmallTitle(
             text = "热搜榜",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = PrimaryText
+            textColor = PrimaryText,
+            insideMargin = PaddingValues(0.dp)
         )
 
         Spacer(modifier = Modifier.height(12.dp))

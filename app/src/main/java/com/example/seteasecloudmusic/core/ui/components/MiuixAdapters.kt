@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.core.ui.components
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -11,6 +12,8 @@ import com.example.seteasecloudmusic.core.ui.theme.DarkAppColors
 import com.example.seteasecloudmusic.core.ui.theme.LightAppColors
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
+import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.PullToRefreshDefaults
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
@@ -115,5 +118,36 @@ fun AppLoadingIndicator(
         ),
         strokeWidth = strokeWidth,
         size = size
+    )
+}
+
+private val AppPullToRefreshTexts = listOf(
+    "下拉刷新",
+    "释放立即刷新",
+    "正在刷新...",
+    "刷新成功"
+)
+
+/**
+ * 统一的 Miuix 下拉刷新容器封装，内置中文提示与主题配色。
+ */
+@Composable
+fun AppPullToRefresh(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    content: @Composable () -> Unit
+) {
+    val colors = AppTheme.colors
+    PullToRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+        contentPadding = contentPadding,
+        color = colors.textSecondary,
+        refreshTexts = AppPullToRefreshTexts,
+        refreshTextStyle = PullToRefreshDefaults.refreshTextStyle.copy(color = colors.textSecondary),
+        content = content
     )
 }

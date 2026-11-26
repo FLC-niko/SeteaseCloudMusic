@@ -61,20 +61,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Checkbox
+import top.yukonga.miuix.kmp.basic.CheckboxDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Music
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -2042,7 +2043,7 @@ private fun PlaylistDetailTrackRow(
 }
 
 /**
- * 多选模式勾选框：圆形设计，选中时红底白对勾，未选中时细边框空心圆
+ * 多选模式勾选框：切换为 Miuix 原生 [Checkbox]
  */
 @Composable
 private fun SelectionCheckbox(
@@ -2050,32 +2051,17 @@ private fun SelectionCheckbox(
     isDark: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .size(22.dp)
-            .clip(CircleShape)
-            .then(
-                if (isSelected) {
-                    Modifier.background(PlaylistAccentColor)
-                } else {
-                    Modifier.border(
-                        1.5.dp,
-                        if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFFC7C7CC),
-                        CircleShape
-                    )
-                }
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (isSelected) {
-            Icon(
-                imageVector = MiuixIcons.Basic.Check,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
+    Checkbox(
+        state = if (isSelected) ToggleableState.On else ToggleableState.Off,
+        onClick = null,
+        modifier = modifier,
+        colors = CheckboxDefaults.checkboxColors(
+            checkedForegroundColor = Color.White,
+            uncheckedForegroundColor = Color.Transparent,
+            checkedBackgroundColor = PlaylistAccentColor,
+            uncheckedBackgroundColor = if (isDark) Color.White.copy(alpha = 0.24f) else Color(0xFFD6D6DC)
+        )
+    )
 }
 
 /**

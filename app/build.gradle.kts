@@ -106,6 +106,7 @@ dependencies {
     implementation(libs.miuix.ui)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.preference)
+    implementation(libs.miuix.squircle)
     
     // Navigation
     implementation(libs.androidx.navigation.compose)

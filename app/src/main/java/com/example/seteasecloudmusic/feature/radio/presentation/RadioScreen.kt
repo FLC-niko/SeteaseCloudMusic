@@ -41,10 +41,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import com.example.seteasecloudmusic.core.ui.components.AppPullToRefresh
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,7 +95,6 @@ import com.example.seteasecloudmusic.core.ui.components.deriveDarkHueFromId
 import com.example.seteasecloudmusic.core.ui.components.extractCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.getCachedDominantDarkColor
 import com.example.seteasecloudmusic.core.ui.components.rememberAppleMusicCollapseFraction
-import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
@@ -197,7 +199,8 @@ fun RadioRoute(
         onPlayFollowedNewSong = viewModel::playFollowedNewSong,
         onRetryClick = viewModel::onRetryClick,
         lazyListState = lazyListState,
-        isForeground = isForeground
+        isForeground = isForeground,
+        onRefreshClick = viewModel::onRefreshClick
     )
 }
 
@@ -224,7 +227,8 @@ internal fun RadioScreenContent(
     onPlayFollowedNewSong: (RadioFollowedArtistNewSongItem) -> Unit,
     onRetryClick: () -> Unit,
     lazyListState: LazyListState = rememberLazyListState(),
-    isForeground: Boolean = true
+    isForeground: Boolean = true,
+    onRefreshClick: () -> Unit = onRetryClick
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val collapseFractionState = rememberAppleMusicCollapseFraction(
@@ -255,11 +259,15 @@ internal fun RadioScreenContent(
         ) {
             AmbientTopPinkBackground(baseColor = RadioBackground)
         val sectionTopPadding = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp
+        AppPullToRefresh(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = onRefreshClick,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = statusBarHeight + 56.dp)
+        ) {
         AdaptiveSectionColumn(
             state = lazyListState,
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalElasticOverscroll(),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 top = statusBarHeight + 8.dp,
                 bottom = bottomContentPadding
@@ -441,6 +449,7 @@ internal fun RadioScreenContent(
             item(key = "radio_bottom_spacer", fullSpan = true) {
                 Spacer(modifier = Modifier.height(20.dp))
             }
+        }
         }
         }
 
@@ -652,8 +661,8 @@ private fun ToplistSection(
                     Box(
                         modifier = Modifier
                             .size(RadioHorizontalCardWidth)
-                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
-                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleClip(RadioCoverCornerRadius)
+                            .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
                     ) {
                         ToplistCoverArtwork(
                             item = item,
@@ -994,9 +1003,9 @@ private fun RadarSection(
                     Box(
                         modifier = Modifier
                             .size(RadioHorizontalCardWidth)
-                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleClip(RadioCoverCornerRadius)
                             .background(Color(0xFF222222))
-                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
                     ) {
                         AsyncImage(
                             model = item.coverUrl?.toCoverThumbnailUrl(320),
@@ -1095,9 +1104,9 @@ private fun RoamCardItem(
     Box(
         modifier = Modifier
             .size(width = RadioHorizontalCardWidth, height = 204.dp)
-            .clip(RoundedCornerShape(RadioCoverCornerRadius))
+            .squircleClip(RadioCoverCornerRadius)
             .drawBehind { drawRect(animatedBgState.value) }
-            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+            .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
             .clickable { onClick() }
     ) {
         Column(
@@ -1140,7 +1149,7 @@ private fun RoamCardItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(bottomStart = RadioCoverCornerRadius, bottomEnd = RadioCoverCornerRadius))
+                    .squircleClip(topStart = 0.dp, topEnd = 0.dp, bottomEnd = RadioCoverCornerRadius, bottomStart = RadioCoverCornerRadius)
                     .background(Color.Black.copy(alpha = 0.28f))
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
@@ -1249,9 +1258,9 @@ private fun RecommendedPlaylistsSection(
                     Box(
                         modifier = Modifier
                             .size(RadioHorizontalCardWidth)
-                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleClip(RadioCoverCornerRadius)
                             .background(AppTheme.colors.placeholder)
-                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
                     ) {
                         AsyncImage(
                             model = item.coverUrl?.toCoverThumbnailUrl(320),
@@ -1338,9 +1347,9 @@ private fun ArtistHotSection(
                     Box(
                         modifier = Modifier
                             .size(RadioHorizontalCardWidth)
-                            .clip(RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleClip(RadioCoverCornerRadius)
                             .background(Color(0xFF333333))
-                            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+                            .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
                     ) {
                         AsyncImage(
                             model = item.coverUrl?.toCoverThumbnailUrl(320),
@@ -1414,9 +1423,9 @@ private fun OverlayLabeledCoverCard(
         Box(
             modifier = Modifier
                 .size(RadioHorizontalCardWidth)
-                .clip(RoundedCornerShape(RadioCoverCornerRadius))
+                .squircleClip(RadioCoverCornerRadius)
                 .background(Color(0xFF333333))
-                .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+                .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
         ) {
             AsyncImage(
                 model = coverUrl?.toCoverThumbnailUrl(320),
@@ -1605,9 +1614,9 @@ private fun FollowedArtistCardItem(
     Box(
         modifier = Modifier
             .size(width = 296.dp, height = 112.dp)
-            .clip(RoundedCornerShape(RadioCoverCornerRadius))
+            .squircleClip(RadioCoverCornerRadius)
             .drawBehind { drawRect(animatedBgState.value) }
-            .border(0.5.dp, RadioCoverBorder, RoundedCornerShape(RadioCoverCornerRadius))
+            .squircleBorder(0.5.dp, RadioCoverBorder, RadioCoverCornerRadius)
             .clickable { onClick() }
             .padding(12.dp)
     ) {
@@ -1619,7 +1628,7 @@ private fun FollowedArtistCardItem(
             Box(
                 modifier = Modifier
                     .size(88.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .squircleClip(10.dp)
             ) {
                 AsyncImage(
                     model = item.coverUrl?.toCoverThumbnailUrl(240),

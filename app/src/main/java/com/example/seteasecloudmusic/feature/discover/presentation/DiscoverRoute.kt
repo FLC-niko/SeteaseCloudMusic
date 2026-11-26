@@ -22,6 +22,7 @@ fun DiscoverRoute(
         onRetryPersonalized = viewModel::refreshPersonalizedPlaylists,
         onRetryHotPlaylists = viewModel::refreshHotPlaylists,
         onRetryNewsongs = viewModel::refreshNewsongs,
-        onRetryToplists = viewModel::refreshToplists
+        onRetryToplists = viewModel::refreshToplists,
+        onRefreshAll = viewModel::refreshAll
     )
 }

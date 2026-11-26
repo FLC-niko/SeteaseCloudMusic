@@ -48,6 +48,7 @@ import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import com.example.seteasecloudmusic.core.ui.components.AppPullToRefresh
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -59,6 +60,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlaylist
@@ -97,7 +100,8 @@ fun DiscoverScreen(
     onRetryPersonalized: () -> Unit,
     onRetryHotPlaylists: () -> Unit,
     onRetryNewsongs: () -> Unit,
-    onRetryToplists: () -> Unit
+    onRetryToplists: () -> Unit,
+    onRefreshAll: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -107,6 +111,16 @@ fun DiscoverScreen(
         drawRect(discoverBgState.value)
         drawContent()
     }
+    val hasAnyContent = uiState.personalizedPlaylists.isNotEmpty() ||
+        uiState.hotPlaylists.isNotEmpty() ||
+        uiState.newsongs.isNotEmpty() ||
+        uiState.toplists.isNotEmpty()
+    val isRefreshing = hasAnyContent && (
+        uiState.isPersonalizedLoading ||
+            uiState.isHotPlaylistsLoading ||
+            uiState.isNewsongsLoading ||
+            uiState.isToplistsLoading
+        )
     val topBlurAlpha by remember(listState, density) {
         val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
         derivedStateOf {
@@ -120,10 +134,16 @@ fun DiscoverScreen(
             .fillMaxSize()
             .background(DiscoverBackground)
     ) {
-        AdaptiveSectionColumn(
+        AppPullToRefresh(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefreshAll,
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdrop(discoverBackdrop),
+            contentPadding = PaddingValues(top = topContentPadding)
+        ) {
+        AdaptiveSectionColumn(
+            modifier = Modifier.fillMaxSize(),
             state = listState,
             contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding + 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -176,6 +196,7 @@ fun DiscoverScreen(
                 )
                 }
             }
+        }
         }
 
         ProgressiveTopBlur(
@@ -265,7 +286,7 @@ private fun DiscoverChipCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .border(1.dp, DiscoverDivider, RoundedCornerShape(28.dp))
+                .squircleBorder(1.dp, DiscoverDivider, 28.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
@@ -339,7 +360,7 @@ private fun DiscoverToplistCard(
         colors = CardDefaults.defaultColors(color = DiscoverCardSurface),
         modifier = Modifier
             .width(320.dp)
-            .border(1.dp, DiscoverDivider, RoundedCornerShape(28.dp))
+            .squircleBorder(1.dp, DiscoverDivider, 28.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -447,7 +468,7 @@ private fun DiscoverSongSection(
         else -> Column(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .squircleClip(24.dp)
                 .background(DiscoverCardSurface)
         ) {
             tracks.take(10).forEachIndexed { index, track ->
@@ -525,7 +546,7 @@ private fun DiscoverPlaylistListSection(
         else -> Column(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .squircleClip(24.dp)
                 .background(DiscoverCardSurface)
         ) {
             playlists.take(6).forEachIndexed { index, playlist ->
@@ -609,7 +630,7 @@ private fun DiscoverLoadingRow(
                 modifier = Modifier
                     .width(132.dp)
                     .height(cardHeight)
-                    .clip(RoundedCornerShape(28.dp))
+                    .squircleClip(28.dp)
                     .background(DiscoverCardSurface),
                 contentAlignment = Alignment.Center
             ) {
@@ -630,7 +651,7 @@ private fun DiscoverLoadingColumn(
     Column(
         modifier = Modifier
             .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .squircleClip(24.dp)
             .background(DiscoverCardSurface)
     ) {
         repeat(rowCount) { index ->
@@ -644,7 +665,7 @@ private fun DiscoverLoadingColumn(
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .squircleClip(14.dp)
                         .background(DiscoverSurface),
                     contentAlignment = Alignment.Center
                 ) {
@@ -671,7 +692,7 @@ private fun DiscoverErrorPanel(
     Column(
         modifier = Modifier
             .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .squircleClip(24.dp)
             .background(DiscoverCardSurface)
             .padding(20.dp),
         horizontalAlignment = Alignment.Start,
@@ -723,7 +744,7 @@ private fun DiscoverEmptyPanel(
     Box(
         modifier = Modifier
             .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .squircleClip(24.dp)
             .background(DiscoverCardSurface)
             .fillMaxWidth()
             .height(120.dp),
