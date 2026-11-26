@@ -143,8 +143,10 @@ fun AccountLoginSheetContent(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            // 已登录状态下强制展示账户主页，兜底避免再次打开时停留在登录子面板
+            val effectivePanel = if (uiState.isLoggedIn) AuthPanel.METHODS else uiState.panel
             Crossfade(
-                targetState = uiState.panel,
+                targetState = effectivePanel,
                 animationSpec = tween(220),
                 label = "accountPanelTransition",
                 modifier = Modifier.fillMaxWidth()
