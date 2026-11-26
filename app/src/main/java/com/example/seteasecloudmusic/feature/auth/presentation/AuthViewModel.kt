@@ -79,11 +79,23 @@ class AuthViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             observeAuthStateUseCase().collect { session ->
+                val isLoggedIn = session?.isLoggedIn == true
+                if (isLoggedIn) {
+                    stopQrLoginFlow()
+                    stopCaptchaCooldown()
+                }
                 _uiState.update {
-                    val isLoggedIn = session?.isLoggedIn == true
                     it.copy(
                         isLoggedIn = isLoggedIn,
                         authSession = session,
+                        // 一旦确认已登录，自动切回账户主页（展示头像与设置），避免停留在验证码/扫码子面板
+                        panel = if (isLoggedIn) AuthPanel.METHODS else it.panel,
+                        captcha = if (isLoggedIn) "" else it.captcha,
+                        captchaCooldownSeconds = if (isLoggedIn) 0 else it.captchaCooldownSeconds,
+                        qrLoginStart = if (isLoggedIn) null else it.qrLoginStart,
+                        qrHint = if (isLoggedIn) "等待扫码登录" else it.qrHint,
+                        errorMessage = if (isLoggedIn) null else it.errorMessage,
+                        isRiskControlError = if (isLoggedIn) false else it.isRiskControlError,
                         showLogoutConfirmDialog = if (isLoggedIn) it.showLogoutConfirmDialog else false
                     )
                 }
@@ -140,7 +152,21 @@ class AuthViewModel @Inject constructor(
     }
 
     fun onAccountSheetOpened() {
-        maybeRefreshProfileIfNeeded(_uiState.value.authSession)
+        val current = _uiState.value
+        if (current.isLoggedIn && current.panel != AuthPanel.METHODS) {
+            stopQrLoginFlow()
+            _uiState.update {
+                it.copy(
+                    panel = AuthPanel.METHODS,
+                    captcha = "",
+                    qrLoginStart = null,
+                    qrHint = "等待扫码登录",
+                    errorMessage = null,
+                    isRiskControlError = false
+                )
+            }
+        }
+        maybeRefreshProfileIfNeeded(current.authSession)
     }
 
     fun onRequestLogout() {
@@ -234,10 +260,14 @@ class AuthViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = false) }
             result.fold(
                 onSuccess = { session ->
+                    stopCaptchaCooldown()
                     _uiState.update {
                         it.copy(
                             isLoggedIn = true,
                             authSession = session,
+                            panel = AuthPanel.METHODS,
+                            captcha = "",
+                            captchaCooldownSeconds = 0,
                             errorMessage = null,
                             isRiskControlError = false
                         )
@@ -277,7 +307,7 @@ class AuthViewModel @Inject constructor(
     }
 
     private fun startCaptchaCooldown(durationSeconds: Int = CAPTCHA_COOLDOWN_SECONDS) {
-        captchaCooldownJob?.cancel()
+        stopCaptchaCooldown()
         captchaCooldownJob = viewModelScope.launch {
             for (remaining in durationSeconds downTo 1) {
                 _uiState.update { it.copy(captchaCooldownSeconds = remaining) }
@@ -285,6 +315,11 @@ class AuthViewModel @Inject constructor(
             }
             _uiState.update { it.copy(captchaCooldownSeconds = 0) }
         }
+    }
+
+    private fun stopCaptchaCooldown() {
+        captchaCooldownJob?.cancel()
+        captchaCooldownJob = null
     }
 
     private fun startQrLogin() {
@@ -348,7 +383,11 @@ class AuthViewModel @Inject constructor(
                                     it.copy(
                                         isLoggedIn = true,
                                         authSession = pollResult.session,
-                                        qrHint = "登录成功"
+                                        panel = AuthPanel.METHODS,
+                                        qrLoginStart = null,
+                                        qrHint = "等待扫码登录",
+                                        errorMessage = null,
+                                        isRiskControlError = false
                                     )
                                 }
                                 maybeRefreshProfileIfNeeded(pollResult.session)
