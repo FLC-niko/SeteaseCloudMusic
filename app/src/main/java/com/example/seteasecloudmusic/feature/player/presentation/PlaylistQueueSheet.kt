@@ -13,11 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.example.seteasecloudmusic.core.ui.adaptive.*
@@ -110,7 +106,7 @@ fun PlaylistQueueSheet(
                     ) {
                         val isShuffle = playbackState.playbackMode == PlaybackMode.SHUFFLE
                         Icon(
-                            imageVector = if (isShuffle) Icons.Filled.Shuffle else Icons.Filled.Repeat,
+                            painter = painterResource(id = if (isShuffle) R.drawable.ic_shuffle else R.drawable.ic_repeat),
                             contentDescription = null,
                             tint = if (isShuffle) colors.accent else colors.iconPrimary,
                             modifier = Modifier.size(15.dp)
@@ -133,7 +129,7 @@ fun PlaylistQueueSheet(
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.Delete,
+                                painter = painterResource(id = R.drawable.ic_delete_history),
                                 contentDescription = "清空播放列表",
                                 tint = colors.textSecondary,
                                 modifier = Modifier.size(19.dp)
@@ -288,7 +284,7 @@ private fun QueueTrackItemRow(
             modifier = Modifier.size(30.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.Close,
+                painter = painterResource(id = R.drawable.ic_nav_close),
                 contentDescription = "移出播放列表",
                 tint = colors.textTertiary,
                 modifier = Modifier.size(15.dp)

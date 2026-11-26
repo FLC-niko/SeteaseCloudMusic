@@ -83,7 +83,7 @@ import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -756,7 +756,7 @@ private fun UserProfileCenterpiece(
                 }
                 GlassIconButton(
                     backdrop = backdrop,
-                    icon = Icons.Filled.Refresh,
+                    painter = painterResource(id = R.drawable.ic_refresh),
                     contentDescription = "刷新歌单",
                     tint = if (isLoading) MineAccentRed else MineTextPrimary,
                     onClick = onRefresh,
@@ -798,7 +798,7 @@ private fun UserProfileCenterpiece(
 @Composable
 private fun GlassIconButton(
     backdrop: Backdrop,
-    icon: ImageVector,
+    painter: Painter,
     contentDescription: String,
     tint: Color,
     onClick: () -> Unit,
@@ -813,7 +813,7 @@ private fun GlassIconButton(
         contentDescription = contentDescription
     ) {
         Icon(
-            imageVector = icon,
+            painter = painter,
             contentDescription = contentDescription,
             tint = tint,
             modifier = Modifier.size(18.dp)
