@@ -21,6 +21,10 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 import javax.inject.Inject
 
+/**
+ * 歌手详情页数据仓库实现。
+ * 负责拉取歌手资料、简介、热门歌曲、专辑、爱听歌单与相似歌手，并映射为领域模型。
+ */
 class ArtistRepositoryImpl @Inject constructor(
     private val artistService: ArtistService
 ) : ArtistRepository {
@@ -90,6 +94,7 @@ class ArtistRepositoryImpl @Inject constructor(
     override suspend fun getArtistTopSongs(artistId: Long): Result<ArtistTopSongsResult> =
         withContext(Dispatchers.IO) {
             try {
+                // 优先请求热门 50 首接口，空结果时回退按热度排序的分页曲目接口（上限 50 首）
                 val topResponse = runCatching { artistService.getArtistTopSongs(artistId) }.getOrNull()
                 val rawSongs = if (topResponse != null && topResponse.code == 200 && topResponse.songs.isNotEmpty()) {
                     topResponse.songs.take(50)
@@ -143,6 +148,7 @@ class ArtistRepositoryImpl @Inject constructor(
                 .map(::mapSongToTrack)
                 .distinctBy { it.id }
             val nextOffset = offset + tracks.size
+            // 结合服务端 more 标志与当前页返回数量判断是否还有下一页
             val hasMore = response.more || tracks.size >= limit
 
             Result.success(
@@ -178,6 +184,7 @@ class ArtistRepositoryImpl @Inject constructor(
                 .map(::mapAlbum)
                 .distinctBy { it.id }
             val nextOffset = offset + albums.size
+            // 结合服务端 more 标志与当前页返回数量判断是否还有下一页
             val hasMore = response.more || albums.size >= limit
 
             Result.success(
@@ -259,6 +266,7 @@ class ArtistRepositoryImpl @Inject constructor(
                             coverUrl = item.coverImgUrl.normalizeHttps(),
                             trackCount = item.trackCount,
                             playCount = item.playCount,
+                            // specialType == 5 为账号默认“我喜欢的音乐”歌单
                             isLikedPlaylist = item.specialType == 5
                         )
                     }
@@ -283,6 +291,7 @@ class ArtistRepositoryImpl @Inject constructor(
                 val sourceList = if (simiArtists.isNotEmpty()) {
                     simiArtists
                 } else {
+                    // 相似歌手接口为空时回退拉取热门歌手列表（单次拉取 16 位）
                     val topResponse = artistService.getTopArtistsFallback(limit = 16, offset = 0)
                     if (topResponse.code != 200) {
                         return@withContext Result.failure(Exception("API error code: ${topResponse.code}"))
@@ -343,7 +352,7 @@ class ArtistRepositoryImpl @Inject constructor(
             qualityTags = qualityTags,
             coverUrl = albumCover,
             durationMs = song.dt,
-            // fee == 4 表示单独付费数字专辑，VIP歌曲(fee == 1)正常允许播放
+            // fee == 4 为单独付费数字专辑（无法直接播放）；VIP 歌曲（fee == 1）允许正常播放
             isPlayable = song.fee != 4
         )
     }

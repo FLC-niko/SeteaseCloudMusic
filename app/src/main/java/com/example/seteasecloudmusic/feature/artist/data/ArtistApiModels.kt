@@ -3,7 +3,7 @@ package com.example.seteasecloudmusic.feature.artist.data
 import com.google.gson.annotations.SerializedName
 
 /**
- * /artist/songs & /artist/top/song response.
+ * `/artist/songs` 与 `/artist/top/song` 接口响应模型。
  */
 data class ArtistSongsResponse(
     val code: Int = 0,
@@ -53,7 +53,7 @@ data class ArtistSongQualityResponse(
 )
 
 /**
- * /artist/album response.
+ * `/artist/album` 接口响应模型。
  */
 data class ArtistAlbumsResponse(
     val code: Int = 0,
@@ -74,7 +74,7 @@ data class ArtistAlbumItemResponse(
 )
 
 /**
- * /album response.
+ * `/album` 专辑详情接口响应模型。
  */
 data class ArtistAlbumDetailResponse(
     val code: Int = 0,
@@ -83,7 +83,7 @@ data class ArtistAlbumDetailResponse(
 )
 
 /**
- * /artist/desc response.
+ * `/artist/desc` 歌手简介与百科分段响应模型。
  */
 data class ArtistDescriptionResponse(
     val code: Int = 0,
@@ -99,7 +99,7 @@ data class ArtistDescriptionSectionResponse(
 )
 
 /**
- * /artist/detail response.
+ * `/artist/detail` 歌手基础资料响应模型。
  */
 data class ArtistDetailResponse(
     val code: Int = 0,
@@ -132,7 +132,7 @@ data class ArtistProfileResponse(
 )
 
 /**
- * /simi/artist & /top/artists response.
+ * `/simi/artist` 与 `/top/artists` 相似/热门歌手列表响应模型。
  */
 data class SimilarArtistsResponse(
     val code: Int = 0,
@@ -152,7 +152,7 @@ data class SimilarArtistItemResponse(
 )
 
 /**
- * /user/playlist response for artist favorite playlists.
+ * `/user/playlist` 艺人关联账号爱听歌单响应模型。
  */
 data class ArtistUserPlaylistsResponse(
     val code: Int = 0,

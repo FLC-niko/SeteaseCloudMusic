@@ -5,24 +5,15 @@ import java.net.InetAddress
 import okhttp3.Dns
 
 /**
- * 直连（不走系统 VPN / 代理）的 DNS 兜底工具。
+ * 直连网易云官方节点的 DNS 兜底工具，供主网络模块 [NetworkModule] 与日志上报 [com.example.seteasecloudmusic.core.network.ncbl.NcblReporter] 共用。
  *
- * 本项目有两条独立的自建 OkHttpClient：主网络模块 [NetworkModule] 与匿名登录上报
- * [com.example.seteasecloudmusic.core.network.ncbl.NcblReporter]。两者都需要
- * “先走系统 DNS，失败时回退到网易云固定 IP”的能力，此前各自写了一份，
- * 硬编码 IP 以 byte 数组形式重复出现 —— 一旦节点变更需要改两处，容易漏改。
- *
- * 这里只收敛**完全相同**的两部分：
- * 1. 系统 DNS 查询 + 失败日志
- * 2. 兜底 IP 列表的构造
- *
- * 具体的兜底策略（对哪些域名生效、回退几个节点）仍由调用方决定，避免改变各自的解析行为。
+ * 先查询系统 DNS；失败时提供预置的网易云固定 IPv4 节点列表，具体启用哪些节点由调用方按域名策略决定。
  */
 object SmartDns {
 
     /**
-     * 网易云直连兜底节点（IPv4）。
-     * 顺序即优先级：clientlog3 使用全部三个节点，其余 clientlog 域名只用前两个。
+     * 网易云直连兜底节点（IPv4），按顺序排列优先级：
+     * `clientlog3` 使用全部 3 个节点，其余 `clientlog` 域名使用前 2 个。
      */
     private val FALLBACK_IP_V4: List<ByteArray> = listOf(
         byteArrayOf(220.toByte(), 197.toByte(), 30.toByte(), 68.toByte()),  // 220.197.30.68

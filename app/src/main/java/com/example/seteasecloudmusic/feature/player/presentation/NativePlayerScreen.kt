@@ -126,9 +126,9 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * 播放页原生页面类型：
- * - [ALBUM]: 截图 1 大封面专辑页（播放/暂停弹性呼吸缩放、曲目信息、五角星收藏与三点菜单）
- * - [LYRIC]: 截图 2 / 3 / 4 AMLL 沉浸式逐字辉光歌词页（含控制栏自动沉浸收起）
+ * 播放页原生视图模式：
+ * - [ALBUM]: 大封面专辑主视图（支持播放/暂停封面缩放、曲目信息及快捷操作）
+ * - [LYRIC]: 沉浸式逐字歌词视图（支持无操作自动隐藏控制栏）
  */
 enum class NativePlayerPage {
     ALBUM,
@@ -181,7 +181,7 @@ fun NativePlayerScreen(
         playerViewModel::playQueueTrackAt, playerViewModel::removeQueueTrackAt, playerViewModel::clearQueue)
 }
 
-/** Same content and saved hierarchy for every width; the screen wrapper supplies live playback actions. */
+/** 播放页通用内容容器，保持各屏幕宽度下一致的页面状态树，由上层注入实时播放回调。 */
 @Composable
 internal fun NativePlayerContent(
     playbackState: PlaybackState,
@@ -235,7 +235,7 @@ internal fun NativePlayerContent(
     var showQueueSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
 
-    // 截图 3 沉浸态控制栏显隐状态（无操作播放 4.8s 自动收起控制栏，点击或滑动立即唤醒）
+    // 歌词页控制栏显隐状态（播放中无操作 4.8s 自动收起，点击或滑动恢复显示）
     var lyricsControlsVisible by rememberSaveable { mutableStateOf(true) }
     var interactionTick by remember { mutableLongStateOf(0L) }
     val notifyUserActivity = remember {
@@ -278,17 +278,18 @@ internal fun NativePlayerContent(
             !anySheetOpen &&
             parsedLyrics.lines.isNotEmpty()
         ) {
+            // 歌词页无操作自动隐藏控制栏的超时时长（ms）
             delay(4800L)
             lyricsControlsVisible = false
         }
     }
 
-    // 在歌词页按系统返回键优先顺滑退回专辑大封面页；在专辑页按返回交由上层关闭播放器
+    // 歌词页按系统返回键时优先退回专辑封面页；专辑页按返回交由上层关闭播放器
     BackHandler(enabled = currentPage == NativePlayerPage.LYRIC && !anySheetOpen) {
         currentPage = NativePlayerPage.ALBUM
     }
 
-    // 折叠屏与大屏分栏自适应
+    // 更多操作菜单弹窗（含音质与曲目详情）
     val moreSheet: @Composable () -> Unit = {
         if (showMoreSheet && track != null) {
             val resolvedDetails = rememberResolvedTrackAudioDetails(
@@ -361,7 +362,7 @@ internal fun NativePlayerContent(
         }
     }
 
-    // ── ALBUM <-> LYRIC 连续可逆弹簧进度（参照 MeiloX-main lyricAnimFraction）──
+    // 专辑页 <-> 歌词页连续可逆弹簧动画进度（0f = 专辑页，1f = 歌词页）
     val lyricAnimFraction = remember {
         Animatable(if (currentPage == NativePlayerPage.LYRIC) 1f else 0f)
     }
@@ -411,10 +412,12 @@ internal fun NativePlayerContent(
         val statusBarTopDp = with(density) { statusBarTopPx.toDp() }
         val navBarBottomDp = with(density) { navBarBottomPx.toDp() }
 
+        // 底部控制栏预估初始高度（首帧测得真实高度后更新）
         var measuredControlsHeightPx by remember {
             mutableIntStateOf(with(density) { 232.dp.roundToPx() })
         }
 
+        // 竖屏大屏下限制内容区最大宽度 680dp 并居中留白
         val contentWidthDp = maxWidth.coerceAtMost(680.dp)
         val horizontalPaddingDp = (maxWidth - contentWidthDp) / 2 + 28.dp
         val horizontalPaddingPx = with(density) { horizontalPaddingDp.toPx() }
@@ -429,7 +432,7 @@ internal fun NativePlayerContent(
         val albumInfoTopPx = (maxHeightPx - controlsTotalOccupiedPx - albumInfoBottomGapPx - albumInfoHeightPx)
             .coerceAtLeast(statusBarTopPx + grabberRegionHeightPx + with(density) { 120.dp.toPx() })
 
-        // 截图 1 大封面几何边界（左右 28dp 边距，在顶栏与曲目信息之间垂直居中）
+        // 专辑页大封面几何边界（在顶栏与曲目信息之间垂直居中）
         val coverBandTopPx = statusBarTopPx + grabberRegionHeightPx + with(density) { 8.dp.toPx() }
         val coverBandBottomPx = (albumInfoTopPx - with(density) { 22.dp.toPx() }).coerceAtLeast(coverBandTopPx + 1f)
         val maxCoverSizePx = min(
@@ -445,7 +448,7 @@ internal fun NativePlayerContent(
             bottom = normalCoverTopPx + maxCoverSizePx
         )
 
-        // 截图 2 / 3 / 4 歌词页顶部 54dp 小封面几何边界
+        // 歌词页顶部 54dp 小封面几何边界
         val headerCoverSizeDp = 54.dp
         val headerCoverSizePx = with(density) { headerCoverSizeDp.toPx() }
         val headerTopPx = statusBarTopPx + grabberRegionHeightPx + with(density) { 2.dp.toPx() }
@@ -456,6 +459,7 @@ internal fun NativePlayerContent(
             bottom = headerTopPx + headerCoverSizePx
         )
 
+        // 大封面与顶栏小封面的圆角（dp）及大封面阴影半径
         val normalRadiusPx = with(density) { 14.dp.toPx() }
         val headerRadiusPx = with(density) { 8.dp.toPx() }
         val normalShadowPx = with(density) { 26.dp.toPx() }
@@ -472,7 +476,7 @@ internal fun NativePlayerContent(
             )
         }
 
-        // 向外层 MiniPlayer <-> FullPlayer 双向共享封面报告精确终点几何信息
+        // 向外层双向共享封面容器报告终点几何信息（暂停态大封面缩放为 0.78x）
         val settledTargetProgress = if (currentPage == NativePlayerPage.LYRIC) 1f else 0f
         val settledTargetScale = if (isPlaying) 1f else 0.78f
         val settledTargetFrame = appleMusicArtworkFrame(
@@ -498,6 +502,7 @@ internal fun NativePlayerContent(
             }
         }
 
+        // 控制栏显隐时动态调整歌词视口底部内边距（展开刚度 380f，收起刚度 190f）
         val controlsShown = currentPage != NativePlayerPage.LYRIC || lyricsControlsVisible
         val lyricsBottomInsetDp by animateDpAsState(
             targetValue = if (controlsShown) {
@@ -512,7 +517,7 @@ internal fun NativePlayerContent(
             label = "lyricsBottomInset"
         )
 
-        // ── Layer 0: 1:1 AMLL 流体网格封面取色背景 ──
+        // Layer 0: 封面动态流体网格背景
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -523,7 +528,7 @@ internal fun NativePlayerContent(
             if (LocalPlayerBackdrop.current == null) PlayerBackdrop(track, isPlaying = isPlaying)
         }
 
-        // ── Layer 1: 前景交互内容层（随外层容器展开/收起渐变）──
+        // Layer 1: 前景交互内容层（随外层展开/收起透明度渐变）
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -537,8 +542,7 @@ internal fun NativePlayerContent(
                     }
                 }
         ) {
-            // ── 1. 歌词视口层（截图 2 / 3 / 4）：外层视口固定驻留在顶部小封面与底部控制栏之间并严格裁切遮挡，
-            //       仅内部歌词内容执行 translationY 上滑/下滑过渡，彻底杜绝歌词穿过下方控制栏 ──
+            // 1. 歌词视口层：固定裁切在顶部小封面与底部控制栏之间，内部仅执行垂直位移动画防止遮挡控制栏
             val lyricViewportTopPx = headerTopPx + headerCoverSizePx + with(density) { 4.dp.toPx() }
             val lyricViewportTopDp = with(density) { lyricViewportTopPx.toDp() }
             val lyricEntryOffsetY = {
@@ -626,7 +630,7 @@ internal fun NativePlayerContent(
                 }
             }
 
-            // ── 2. 截图 1 专辑页曲目信息与收藏/更多按钮（随切页平滑上移淡出）──
+            // 2. 专辑页曲目信息与收藏/更多按钮（切向歌词页时上移并淡出）
             val albumTextOrigin = Offset(horizontalPaddingPx, albumInfoTopPx)
             val headerTextLeftPx = horizontalPaddingPx + headerCoverSizePx + with(density) { 14.dp.toPx() }
             val headerTextOrigin = Offset(headerTextLeftPx, headerTopPx)
@@ -732,7 +736,7 @@ internal fun NativePlayerContent(
                 }
             }
 
-            // ── 3. 截图 2 / 3 / 4 歌词页顶部紧凑 Header 信息与收藏/更多按钮 ──
+            // 3. 歌词页顶部紧凑曲目信息与收藏/更多按钮
             if (showHeaderInfo) {
                 val headerTextWidthDp = viewportWidthDp - with(density) { headerTextLeftPx.toDp() } - horizontalPaddingDp
                 Row(
@@ -849,7 +853,7 @@ internal fun NativePlayerContent(
                 }
             }
 
-            // ── 4. 底部统一播放控制栏（置顶遮挡下边界，截图 1 / 2 / 4 显示，截图 3 沉浸态下顺滑收起隐藏）──
+            // 4. 底部播放控制栏（歌词页无操作时向下收起并淡出隐藏）
             Column(
                 modifier = Modifier
                     .zIndex(2f)
@@ -948,7 +952,7 @@ internal fun NativePlayerContent(
                 }
             }
 
-            // ── 5. 顶部唯一下滑小白条（严格限制仅顶部小白条区域可下拉收起/点击收起，底部与页面主体绝不误触下拉！）──
+            // 5. 顶部收起手势小白条（仅此区域响应下拉与点击收起，避免页面主体误触）
             Box(
                 modifier = Modifier
                     .zIndex(3f)
@@ -995,6 +999,7 @@ internal fun NativePlayerContent(
                                 if (onGrabberDragEnd != null) {
                                     onGrabberDragEnd(velocityY)
                                 } else {
+                                    // 下拉关闭的距离阈值（120dp）与快速甩动速度阈值（900dp/s）
                                     val dismissThresholdPx = 120.dp.toPx()
                                     if (localTotalDrag > dismissThresholdPx || velocityY > 900.dp.toPx()) {
                                         onClose()
@@ -1009,7 +1014,7 @@ internal fun NativePlayerContent(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // 截图 1 / 2 / 3 / 4 顶部半透明胶囊横条
+                // 顶部半透明胶囊指示条
                 Box(
                     modifier = Modifier
                         .size(width = 42.dp, height = 4.5.dp)
@@ -1021,7 +1026,7 @@ internal fun NativePlayerContent(
             }
         }
 
-        // ── Layer 2: 常驻共享封面层（ALBUM 大封面 <-> LYRIC 顶栏 54dp 小封面 连续插值，并与外层 MiniPlayer 无缝交接）──
+        // Layer 2: 常驻共享封面层（在专辑大封面与歌词页顶栏 54dp 小封面间连续插值，并与外层迷你播放器衔接）
         val sharedArtwork = LocalPlayerArtwork.current
         val layoutCoverSizeDp = with(density) { maxCoverSizePx.roundToInt().coerceAtLeast(1).toDp() }
         Box(
@@ -1242,7 +1247,7 @@ internal fun resolveTrackAudioDetails(
         effectiveQualityLevel in setOf("lossless", "hires", "jymaster") ||
             (actualBitrateKbps != null && actualBitrateKbps > 320)
         )
-    // 防御旧缓存或网易云 encodeType 误报的 "MP3"：若 URL 明确是无损后缀或码率/档位属于无损流，优先以真实格式为准
+    // 规避接口或缓存误报为 "MP3" 的情况：若 URL 含无损后缀或码率/档位属于无损流，优先采用真实格式
     val actualFormat = when {
         !isLocalTrack && rawTrackFormat == "MP3" && urlFormat in LosslessAudioFormats -> urlFormat
         isLosslessOnlineStream && rawTrackFormat == "MP3" -> urlFormat ?: rawProbedFormat?.takeUnless { it == "MP3" }

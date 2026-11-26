@@ -11,6 +11,9 @@ import com.example.seteasecloudmusic.feature.mine.data.PlaylistDetailResponse
 import retrofit2.http.GET
 import retrofit2.http.Query
 
+/**
+ * 电台页 Retrofit 接口定义，提供排行榜、雷达歌单、智能漫游、推荐歌手/歌单及关注歌手新歌等端点。
+ */
 interface RadioService {
 
     /**
@@ -141,7 +144,7 @@ interface RadioService {
     ): RadioSimiSongResponse
 
     /**
-     * 15. App 首页发现聚合模块（包含真实雷达歌单 MGC_PLAYLIST 等）
+     * 15. App 首页发现聚合模块（包含雷达歌单 MGC_PLAYLIST 等）
      */
     @GET("homepage/block/page")
     suspend fun getHomepageBlockPage(

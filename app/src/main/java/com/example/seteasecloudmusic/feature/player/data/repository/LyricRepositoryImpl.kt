@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+/** 基础歌词仓库实现，请求网易云 `/lyric/new` 并映射为领域模型 [Lyrics]。 */
 class LyricRepositoryImpl @Inject constructor(
     private val lyricService: LyricService
 ) : LyricRepository {

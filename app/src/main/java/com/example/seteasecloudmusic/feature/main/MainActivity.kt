@@ -23,15 +23,7 @@ import com.example.seteasecloudmusic.core.ui.theme.TopAmbientAppearance
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 
 /**
- * `presentation` 模块说明：
- *
- * 这一层只关心“界面如何展示”和“用户如何交互”，
- * 不直接处理网络细节，也不直接实现业务规则。
- *
- * `MainActivity` 是 Android 入口，职责很单一：
- * 1. 初始化 Compose 宿主。
- * 2. 打开沉浸式边到边布局。
- * 3. 把应用的根界面 `AppNavigation()` 挂载出来。
+ * 应用主入口 Activity：初始化播放器与点赞回调、请求通知权限、启用边到边布局并挂载 Compose 根界面。
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -60,9 +52,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionOnceIfNeeded()
         enableEdgeToEdge()
 
-        // P1a：这台小米默认跑 144Hz（帧预算仅 6.9ms），而常驻动效
-        // （海报墙无限滚动 + backdrop + 进度动画）稳态约 7ms， chronic  miss vsync。
-        // 上限 120Hz（预算 8.3ms，视觉无差）换 20% 余量；常驻动效的根治见 P1b/c。
+        // 将窗口首选刷新率上限设为 120Hz（帧预算 8.3ms），为常驻动效与实时毛玻璃保留帧时间余量
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 display
@@ -72,7 +62,7 @@ class MainActivity : ComponentActivity() {
             }
             val modes = currentDisplay?.supportedModes
             val cappedMode = modes
-                ?.filter { it.refreshRate <= 120.01f }
+                ?.filter { it.refreshRate <= 120.01f } // 刷新率上限阈值（Hz，保留 0.01f 浮点容差）
                 ?.maxByOrNull { it.refreshRate }
                 ?: modes?.minByOrNull { it.refreshRate }
             if (cappedMode != null) {

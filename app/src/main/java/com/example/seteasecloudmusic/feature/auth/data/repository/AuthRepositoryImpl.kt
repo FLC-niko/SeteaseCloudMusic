@@ -21,6 +21,9 @@ import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * 认证仓储实现，负责登录、二维码扫码轮询、登出及本地会话与 Cookie 的持久化同步。
+ */
 @Singleton
 class AuthRepositoryImpl @Inject constructor(
     private val authService: AuthService,
@@ -45,6 +48,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun loginByEmail(email: String, password: String): Result<AuthSession> {
+        // 当前服务端接入方式仅开放手机验证码与二维码登录
         return Result.failure(NotImplementedError("邮箱登录暂不支持"))
     }
 
@@ -71,7 +75,7 @@ class AuthRepositoryImpl @Inject constructor(
             val codeResponse = authService.getQrCode(
                 key = unikey,
                 timestamp = System.currentTimeMillis(),
-                qrimg = 1
+                qrimg = 1 // 请求服务端返回 Base64 编码的二维码图片
             )
             if (!codeResponse.isSuccessful) {
                 throw Exception("获取 QR Code 失败: ${codeResponse.code()}")
@@ -199,6 +203,7 @@ class AuthRepositoryImpl @Inject constructor(
         )
     }
 
+    // 登录或扫码接口有时省略用户资料，缺失时补查 /user/account
     private suspend fun completeSessionProfileIfMissing(session: AuthSession): AuthSession {
         if (!session.isLoggedIn || !hasMissingProfile(session)) {
             return session
@@ -336,7 +341,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     companion object {
-        private const val PREF_NAME = "auth_prefs"
+        private const val PREF_NAME = "auth_prefs" // 本地登录会话存储文件名
         private const val KEY_USER_ID = "user_id"
         private const val KEY_NICKNAME = "nickname"
         private const val KEY_AVATAR_URL = "avatar_url"

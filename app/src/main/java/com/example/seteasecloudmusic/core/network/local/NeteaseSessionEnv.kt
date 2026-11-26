@@ -7,6 +7,9 @@ import java.net.URLEncoder
 import java.security.SecureRandom
 import java.util.concurrent.ThreadLocalRandom
 
+/**
+ * 本地直连会话与设备标识存储抽象：提供设备 ID、匿名游客令牌、`clientSign`、追踪 Cookie 及内存预登录 Cookie。
+ */
 internal interface NeteaseTokenStore {
     fun getOrCreateDeviceId(): String
     fun getAnonymousToken(): String?
@@ -21,6 +24,9 @@ internal interface NeteaseTokenStore {
     fun clearPreLoginCookies() {}
 }
 
+/**
+ * 基于 `SharedPreferences` 持久化设备与会话伪装参数（内存中同步缓存预登录临时 Cookie）。
+ */
 internal class SharedPreferencesNeteaseTokenStore(
     private val context: Context
 ) : NeteaseTokenStore {
@@ -171,6 +177,7 @@ internal class SharedPreferencesNeteaseTokenStore(
     }
 
     companion object {
+        // 设备伪装标识持久化文件名与键名
         private const val PREFS_NAME = "netease_local_session"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_ANONYMOUS_TOKEN = "anonymous_token"
@@ -193,6 +200,7 @@ internal class SharedPreferencesNeteaseTokenStore(
             }
         }
 
+        // 生成 52 位十六进制随机设备 ID
         internal fun generateDeviceId(): String {
             val hexChars = "0123456789ABCDEF"
             val rnd = SecureRandom()
@@ -204,7 +212,7 @@ internal class SharedPreferencesNeteaseTokenStore(
         }
 
         /**
-         * 为当前设备生成唯一且持久化的桌面端硬件指纹（`clientSign`），避免所有用户共用固定指纹。
+         * 为当前设备生成唯一且持久化的桌面端硬件指纹（`clientSign`，格式为 `MAC@@@磁盘序列@@@@@@校验哈希`）。
          */
         internal fun generateClientSign(): String {
             val rnd = SecureRandom()
@@ -249,15 +257,16 @@ internal data class OsProfile(
 )
 
 /**
- * 对齐 `@neteasecloudmusicapienhanced/api/util/request.js` 的 Cookie 补全、客户端请求头组装与 UA 选择逻辑。
+ * 网易云上游请求上下文构造器：负责补全设备/追踪 Cookie、组装 EAPI `header` 元数据以及按加密模式选择 User-Agent。
  */
 internal object NeteaseRequestContextBuilder {
 
-    const val DOMAIN = "https://music.163.com"
-    const val API_DOMAIN = "https://interface.music.163.com"
+    const val DOMAIN = "https://music.163.com"               // WEAPI / LINUXAPI 主域名
+    const val API_DOMAIN = "https://interface.music.163.com" // EAPI / API 接口域名
 
     private const val LOWER_ALPHA = "abcdefghijklmnopqrstuvwxyz"
 
+    // 各端伪装系统档案（版本号、系统描述与分发渠道）
     val OS_MAP: Map<String, OsProfile> = mapOf(
         "pc" to OsProfile(
             os = "pc",
@@ -285,6 +294,7 @@ internal object NeteaseRequestContextBuilder {
         )
     )
 
+    // 各加密模式与平台对应的默认 User-Agent
     private const val UA_WEAPI_PC =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
     private const val UA_LINUX =
@@ -337,6 +347,10 @@ internal object NeteaseRequestContextBuilder {
         return "v1_${deviceId}_web_login_$nowMs"
     }
 
+    /**
+     * 补全请求所需的设备伪装字段（`_ntes_nuid`、`WNMCID`、`deviceId`、`osver`、`appver` 等），
+     * 非登录接口额外填充 `NMTID`，未登录时回退注入匿名令牌 `MUSIC_A`。
+     */
     fun processCookieMap(
         rawCookie: String?,
         uri: String,
@@ -383,6 +397,9 @@ internal object NeteaseRequestContextBuilder {
         }
     }
 
+    /**
+     * 组装 EAPI 加密载荷内嵌的 `header` 设备元数据对象（含默认分辨率 `1920x1080` 与版本号 `140`）。
+     */
     fun buildEapiHeaderJson(
         processedCookie: Map<String, String>,
         requestId: String = generateRequestId(),
@@ -419,7 +436,7 @@ internal object NeteaseRequestContextBuilder {
     fun sessionChineseIp(): String = stableSessionChineseIp
 
     fun generateRandomChineseIp(): String {
-        // 经确认的中国大陆常用运营商 /24 网段（电信 / 联通 / 移动）
+        // 中国大陆常用运营商 /24 网段前缀（电信 / 联通 / 移动），随机生成最后一段主机号 2..253
         val prefixes = arrayOf(
             "116.25.146",
             "113.108.186",

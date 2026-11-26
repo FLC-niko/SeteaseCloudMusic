@@ -29,6 +29,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** 本地音乐虚拟歌单 ID（负数避免与云端歌单 ID 冲突） */
 const val LOCAL_PLAYLIST_ID = -9999L
 
 enum class MinePlaylistTab(val title: String) {
@@ -65,6 +66,7 @@ data class MineUiState(
         )
 }
 
+/** “我的”页面 ViewModel：管理用户歌单加载、本地音乐扫描索引、歌单详情缓存及曲目增删排序。 */
 @HiltViewModel
 class MineViewModel @Inject constructor(
     private val authStateProvider: AuthStateProvider,
@@ -79,8 +81,9 @@ class MineViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MineUiState())
     val uiState: StateFlow<MineUiState> = _uiState.asStateFlow()
 
-    // 内存高速缓存：二次点击秒开（0ms 延迟）
+    // 内存缓存：已加载过的歌单详情，再次打开时直接回显
     private val playlistDetailCache = mutableMapOf<Long, PlaylistDetail>()
+    // 协程任务与递增请求序号：用于取消在途请求并丢弃过期回调，防止快速切换导致状态错乱
     private var localScanJob: Job? = null
     private var localScanRequestId = 0L
     private var playlistRefreshJob: Job? = null
@@ -330,14 +333,14 @@ class MineViewModel @Inject constructor(
     }
 
     /**
-     * 极速打开歌单（0ms 秒级弹出，统一在线歌单与本地歌单）
+     * 打开歌单详情：优先使用内存缓存或本地预览缓存立即展示，再异步拉取完整曲目；本地歌单直接取本地列表
      */
     fun openPlaylist(playlist: UserPlaylist) {
         playlistDetailJob?.cancel()
         playlistDetailJob = null
         val requestId = ++playlistDetailRequestId
 
-        // 1. 本地音乐歌单统一秒开逻辑
+        // 1. 本地音乐歌单直接构建详情
         if (playlist.id == LOCAL_PLAYLIST_ID) {
             val songs = _uiState.value.localSongs
             val localDetail = PlaylistDetail(
@@ -367,6 +370,7 @@ class MineViewModel @Inject constructor(
         val isLikedPlaylist = playlist.isLikedHero || playlist.name.contains("喜欢") || playlist.id == _uiState.value.likedPlaylist?.id
         val hasLikedIds = FavoriteTracksManager.likedTrackIds.value.isNotEmpty()
 
+        // 优先取内存缓存，否则读取磁盘首屏预览缓存（最多 20 首）
         val inMemoryCached = playlistDetailCache[playlist.id]
         val cached = inMemoryCached
             ?: getPlaylistDetailUseCase.getCachedPreview(playlist.id)
@@ -394,7 +398,7 @@ class MineViewModel @Inject constructor(
             tracks = emptyList()
         )
 
-        // 立即弹出界面（0ms 响应）
+        // 先行展示缓存或基础信息，避免等待网络请求才进入详情页
         _uiState.update {
             it.copy(
                 activePlaylistDetail = instantPreview,
@@ -441,8 +445,8 @@ class MineViewModel @Inject constructor(
             result.fold(
                 onSuccess = { detail ->
                     if (requestId != playlistDetailRequestId) return@fold
-                    // 若当前打开的是“我喜欢的音乐”，以本地 FavoriteTracksManager 的喜欢状态为准强校验过滤，
-                    // 彻底阻断任何服务端内存旧缓存中已取消喜欢的曲目被带回复活。
+                    // 若当前打开的是“我喜欢的音乐”，以本地 FavoriteTracksManager 的喜欢状态为准过滤，
+                    // 避免服务端旧缓存中已取消喜欢的曲目重新出现。
                     val likedIdsReady = FavoriteTracksManager.likedTrackIds.value.isNotEmpty()
                     val finalTracks = if (isLikedPlaylist && likedIdsReady) {
                         detail.tracks.filter { t -> FavoriteTracksManager.isLiked(t.id) }

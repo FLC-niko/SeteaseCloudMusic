@@ -33,8 +33,11 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
+/** 主暗色调内存 LRU 缓存容量（按封面 URL 缓存 256 条）。 */
 private val CoverDominantColorCache = LruCache<String, Int>(256)
+/** 底部边缘延伸色内存 LRU 缓存容量（按封面 URL 缓存 256 条）。 */
 private val BottomEdgeColorCache = LruCache<String, Int>(256)
+/** 限制并发取色任务数（最多 2 个），避免列表快速滚动时解码占用过高 CPU/内存。 */
 private val CoverColorExtractSemaphore = Semaphore(2)
 
 internal fun getCachedDominantDarkColor(coverUrl: String?): Color? {
@@ -47,6 +50,7 @@ internal fun getCachedBottomEdgeColor(coverUrl: String?): Color? {
     return BottomEdgeColorCache.get(validUrl)?.let(::Color)
 }
 
+/** 根据歌单或歌曲 ID 哈希从 6 组深色基础色调中生成确定性兜底底色。 */
 internal fun deriveDarkHueFromId(id: Long): Color {
     val hues = listOf(
         Color(0xFF1E2F38), // deep teal
@@ -89,6 +93,7 @@ private suspend fun extractCachedColor(
         cache.get(coverUrl)?.let { return@withPermit Color(it) }
         val bitmap = withContext(Dispatchers.IO) {
             try {
+                // 请求 100px 缩略图并在 24x24 软件位图下采样，兼顾取色速度与内存开销
                 val req = ImageRequest.Builder(context)
                     .data(coverUrl.toCoverThumbnailUrl(100))
                     .size(24, 24)
@@ -107,6 +112,7 @@ private suspend fun extractCachedColor(
     }
 }
 
+/** 采样封面底部 1/4 区域（y: 18..23）平均颜色并调校 HSV 明度/饱和度，用于底部文字延伸底色。 */
 private fun extractBottomEdgeExtendColor(bitmap: Bitmap): Color {
     val needsScale = bitmap.width != 24 || bitmap.height != 24
     val scaled = if (needsScale) Bitmap.createScaledBitmap(bitmap, 24, 24, false) else bitmap
@@ -143,7 +149,7 @@ private fun extractBottomEdgeExtendColor(bitmap: Bitmap): Color {
     val avgB = (sumB / count).toInt().coerceIn(0, 255)
     val hsv = FloatArray(3)
     android.graphics.Color.RGBToHSV(avgR, avgG, avgB, hsv)
-    // 保证底部白字对比度：若封面底部过亮则温和压暗，保持色调一致延伸
+    // 保证底部白色文字对比度：明度超过 0.50 时乘 0.68 压暗并限制上限 0.48，饱和度限制在 [0, 0.85]
     if (hsv[2] > 0.50f) {
         hsv[2] = (hsv[2] * 0.68f).coerceAtMost(0.48f)
     }
@@ -151,6 +157,7 @@ private fun extractBottomEdgeExtendColor(bitmap: Bitmap): Color {
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
+/** 按 12 个 30° 色相桶统计封面主色调，过滤低饱和/极暗像素后将饱和度与明度收束至深色卡片范围。 */
 private fun extractDominantDarkColor(bitmap: Bitmap): Color {
     val needsScale = bitmap.width != 24 || bitmap.height != 24
     val scaled = if (needsScale) Bitmap.createScaledBitmap(bitmap, 24, 24, false) else bitmap
@@ -174,7 +181,7 @@ private fun extractDominantDarkColor(bitmap: Bitmap): Color {
         android.graphics.Color.colorToHSV(p, hsv)
         val s = hsv[1]
         val v = hsv[2]
-        // 排除黑白灰无彩色以及极暗像素
+        // 排除低饱和灰阶（s < 0.16）与极暗噪点像素（v < 0.15）
         if (s >= 0.16f && v >= 0.15f) {
             val bucket = ((hsv[0] % 360f) / 30f).toInt().coerceIn(0, 11)
             hueBuckets[bucket]++
@@ -194,6 +201,7 @@ private fun extractDominantDarkColor(bitmap: Bitmap): Color {
             }
         }
         val countInBucket = hueBuckets[bestBucket].coerceAtLeast(1)
+        // 饱和度钳制在 [0.40, 0.75]，明度按均值 0.55x 压暗并钳制在 [0.24, 0.40]
         val avgSat = (bucketSat[bestBucket] / countInBucket).coerceIn(0.40f, 0.75f)
         val targetHue = bestBucket * 30f + 15f
         val avgVal = bucketVal[bestBucket] / countInBucket

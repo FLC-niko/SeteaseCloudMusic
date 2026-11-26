@@ -30,7 +30,7 @@ import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import com.kyant.backdrop.Backdrop
 
-/** Expanded lyrics keep related actions in a floating bar; narrow fold segments retain every action. */
+/** 歌词展开态底部悬浮液态玻璃控制栏，依据可用宽度动态显隐曲目信息、音量滑条与待播队列按钮。 */
 @Composable
 internal fun ExpandedPlaybackBar(
     state: PlaybackState,
@@ -61,7 +61,9 @@ internal fun ExpandedPlaybackBar(
 
     LiquidGlassPanel(modifier.testTag("player_controls"), backdrop, Color(0xFF1C1C24), 28.dp) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            // 宽屏阈值（>= 700dp 时在单行内集成曲目信息与滑块音量条）
             val wide = maxWidth >= 700.dp
+            // 窄屏显示待播队列与音量弹窗入口的最小宽度阈值
             val showQueue = maxWidth >= 360.dp
             val showVolume = maxWidth >= 320.dp
             val trackLabel: @Composable (Modifier) -> Unit = { labelModifier ->

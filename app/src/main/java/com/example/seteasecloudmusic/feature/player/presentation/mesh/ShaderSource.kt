@@ -1,6 +1,14 @@
 package com.example.seteasecloudmusic.feature.player.presentation.mesh
 
+/** 流体背景 AGSL 着色器源码定义（Android 13+）。 */
 internal object ShaderSource {
+    /**
+     * 网格流体背景片段着色器：
+     * - `albumTexture` / `textureSize`：32x32 预处理封面纹理及尺寸
+     * - `time`：累计播放时间倍率，驱动 `time * 2.0` rad 旋转
+     * - `audioResponse`：x=UV 缩放、y=对比度、z=饱和度
+     * - 末尾叠加 `gradientNoise` 蓝噪声抖动（抑制暗部 8-bit 色带）与 `smoothstep(0.3, 0.8)` 径向暗角
+     */
     const val MESH_SHADER = """
 uniform shader albumTexture;
 uniform float2 textureSize;

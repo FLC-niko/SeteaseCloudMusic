@@ -13,6 +13,8 @@ interface MineService {
 
     /**
      * 获取用户歌单（包括我喜欢的音乐、创建的歌单、收藏的歌单）
+     * @param limit 单页拉取歌单数上限（默认 100）
+     * @param offset 分页偏移量
      */
     @GET("user/playlist")
     suspend fun getUserPlaylists(

@@ -11,6 +11,9 @@ import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistSummary
 import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistTopSongsResult
 import com.example.seteasecloudmusic.feature.artist.domain.model.PagedResult
 
+/**
+ * 歌手详情页领域层数据仓库接口。
+ */
 interface ArtistRepository {
     suspend fun getArtistDetail(artistId: Long): Result<ArtistDetailInfo>
 
@@ -21,13 +24,13 @@ interface ArtistRepository {
     suspend fun getArtistSongs(
         artistId: Long,
         order: ArtistSongOrder = ArtistSongOrder.HOT,
-        limit: Int = 50,
+        limit: Int = 50, // 默认单页拉取曲目数
         offset: Int = 0
     ): Result<PagedResult<Track>>
 
     suspend fun getArtistAlbums(
         artistId: Long,
-        limit: Int = 30,
+        limit: Int = 30, // 默认单页拉取专辑数
         offset: Int = 0
     ): Result<PagedResult<ArtistAlbum>>
 

@@ -15,12 +15,14 @@ import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.theme.AppColorPalette
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 
+/** 顶部氛围背景预设调色项。 */
 @Immutable
 data class TopAmbientPreset(
     val name: String,
     val colorArgb: Int
 )
 
+/** 供外观设置调色盘选用的顶部氛围背景预设列表。 */
 val TopAmbientPresets: List<TopAmbientPreset> = listOf(
     TopAmbientPreset("樱花粉", PlayerSettingsManager.DEFAULT_TOP_AMBIENT_COLOR_ARGB),
     TopAmbientPreset("薰衣紫", 0xFFECE8FF.toInt()),
@@ -32,7 +34,7 @@ val TopAmbientPresets: List<TopAmbientPreset> = listOf(
 )
 
 /**
- * 将调色盘选中的基础颜色解析为适用于当前浅/深色模式的顶部渐变双色 `(warmTopStart, warmTopMid)`。
+ * 将调色盘选中的基础颜色按 HSL 调校为适用于当前浅/深色模式的顶部渐变双色 `(warmTopStart, warmTopMid)`。
  */
 fun resolveAmbientTopColors(colorArgb: Int, isDark: Boolean): Pair<Color, Color> {
     if (colorArgb == PlayerSettingsManager.DEFAULT_TOP_AMBIENT_COLOR_ARGB) {
@@ -45,14 +47,17 @@ fun resolveAmbientTopColors(colorArgb: Int, isDark: Boolean): Pair<Color, Color>
 
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(colorArgb, hsl)
+    // 饱和度低于 0.05 视为无彩色灰阶，保持 0 饱和度避免偏色
     val isNeutral = hsl[1] < 0.05f
 
     return if (isDark) {
+        // 深色模式：主色饱和度调校至 [0.35, 0.72]、明度压低至 [0.15, 0.27]，避免抢占前景对比度
         val startHsl = floatArrayOf(
             hsl[0],
             if (isNeutral) 0f else (hsl[1] * 0.65f + 0.20f).coerceIn(0.35f, 0.72f),
             (hsl[2] * 0.12f + 0.15f).coerceIn(0.15f, 0.27f)
         )
+        // 过渡色：色相顺延 +28°，饱和度按 0.85x 衰减（上限 0.65），明度 [0.13, 0.24]
         val midHsl = floatArrayOf(
             (hsl[0] + 28f) % 360f,
             if (isNeutral) 0f else (startHsl[1] * 0.85f).coerceIn(0f, 0.65f),
@@ -61,11 +66,13 @@ fun resolveAmbientTopColors(colorArgb: Int, isDark: Boolean): Pair<Color, Color>
         Color(ColorUtils.HSLToColor(startHsl)).copy(alpha = 0.45f) to
             Color(ColorUtils.HSLToColor(midHsl)).copy(alpha = 0.28f)
     } else {
+        // 浅色模式：主色饱和度下限 0.28、明度提亮至 [0.80, 0.955]，保证浅底文字可读性
         val startHsl = floatArrayOf(
             hsl[0],
             if (isNeutral) 0f else hsl[1].coerceIn(0.28f, 1.0f),
             (hsl[2] * 0.18f + 0.80f).coerceIn(0.80f, 0.955f)
         )
+        // 过渡色：色相顺延 +22°，饱和度按 0.75x 衰减（上限 0.85），明度 [0.88, 0.96]
         val midHsl = floatArrayOf(
             (hsl[0] + 22f) % 360f,
             if (isNeutral) 0f else (startHsl[1] * 0.75f).coerceIn(0f, 0.85f),

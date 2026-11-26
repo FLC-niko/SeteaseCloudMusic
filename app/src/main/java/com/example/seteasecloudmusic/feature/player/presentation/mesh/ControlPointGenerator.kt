@@ -54,6 +54,7 @@ private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
     return t * t * (3f - 2f * t)
 }
 
+/** 对内部控制点执行 3x3 高斯核邻域平滑（边界点保持固定以贴合画布边缘）。 */
 private fun smoothifyControlPoints(
     conf: MutableList<ControlPointConf>,
     w: Int, h: Int,
@@ -115,6 +116,18 @@ private fun smoothifyControlPoints(
     }
 }
 
+/**
+ * 程序化生成随机的双三次网格控制点布局，并对内部点施加噪声梯度偏移与邻域平滑。
+ *
+ * @param width 控制点列数
+ * @param height 控制点行数
+ * @param variationFraction 内部点随机位移幅度（占单格步长比例，越大扭曲越明显）
+ * @param normalOffset 沿噪声梯度法向的偏移强度
+ * @param blendFactor 梯度偏移混合权重（[0, 1]）
+ * @param smoothIters 高斯核平滑迭代次数
+ * @param smoothFactor 单轮平滑混合系数
+ * @param smoothModifier 每轮迭代平滑系数的递减步长
+ */
 internal fun generateControlPoints(
     random: Random = Random.Default,
     width: Int = 5,
@@ -145,6 +158,7 @@ internal fun generateControlPoints(
             var x = baseX + pertX
             var y = baseY + pertY
 
+            // 内部点切线角度偏转范围 [-60°, 60°] 与张力倍率 [0.8, 1.2]
             val ur = if (isBorder) 0f else randomRange(random, -60f, 60f) * (PI.toFloat() / 180f)
             val vr = if (isBorder) 0f else randomRange(random, -60f, 60f) * (PI.toFloat() / 180f)
             val up = if (isBorder) 1f else randomRange(random, 0.8f, 1.2f)

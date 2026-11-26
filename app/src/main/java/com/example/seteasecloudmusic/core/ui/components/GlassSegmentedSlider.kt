@@ -70,57 +70,57 @@ import kotlin.math.abs
 import kotlin.math.absoluteValue
 
 /**
- * 液态玻璃分段滑块（LSPosed 阻尼水滴物理 + 双层采样透镜）统一参数与组件。
+ * 液态玻璃分段滑块（阻尼水滴物理 + 双层采样透镜）统一参数与组件。
  *
- * - **静息态**：轻量半透明柔和胶囊，零额外透镜/色散 GPU 开销。
- * - **按压/拖动激活态**：弹起放大（1.22x~1.35x）、速度耦合果冻拉伸/挤压、
- *   球面 `depthEffect` + 7 光谱色散折射底层文字与图标（`CombinedBackdrop`）、
- *   `InnerShadow` 内阴影厚度感与 `+90°` 重力旋转 `BloomStroke` 高光。
+ * - 静息态：半透明柔和胶囊，无额外透镜与色散 GPU 开销。
+ * - 按压/拖动激活态：弹起放大（1.22x..1.35x）、速度耦合形变、
+ *   球面 `depthEffect` + 色散折射底层文字与图标（`CombinedBackdrop`）、
+ *   `InnerShadow` 内阴影与 `+90°` 重力旋转 `BloomStroke` 高光。
  */
 object GlassSliderDefaults {
-    /** 滑块与容器内壁的间距 */
+    /** 滑块与容器内壁的间距（dp） */
     val ThumbPadding: Dp = 4.dp
 
-    /** 兼容旧调用的透明度默认值 */
+    /** [GlassThumb] 使用的滑块表面填充透明度 */
     const val ThumbSurfaceAlpha: Float = 0.6f
 
-    /** 跟手时的弹簧：偏硬，保证滑块紧贴手指 */
+    /** 拖动跟手弹簧参数：高刚度（800）紧贴手指，0.8 阻尼比抑制过冲 */
     const val TRACKING_STIFFNESS = 800f
     const val TRACKING_DAMPING = 0.8f
 
-    /** 回弹吸附时的弹簧：偏软，产生自然的落位感 */
+    /** 松手落位弹簧参数：中等刚度（300）与较低阻尼比（0.6），产生回弹落位感 */
     const val SETTLE_STIFFNESS = 300f
     const val SETTLE_DAMPING = 0.6f
 
-    /** 兼容旧 API 的拉伸系数 */
+    /** [rememberGlassThumbGeometry] 使用的速度拉伸系数 */
     const val STRETCH_FACTOR = 0.35f
 
-    /** 兼容旧 API 的模糊半径 */
+    /** [GlassThumb] 使用的高斯模糊半径（dp） */
     val BlurRadius: Dp = 3.dp
 
-    /** 底部主导航栏水滴按压最大放大倍率（接近 LSPosed 1.3929x 并兼顾边缘留白） */
+    /** 底部主导航栏水滴按压最大放大倍率（越大弹起越明显，需兼顾容器外缘留白） */
     const val MaxPressScale: Float = 1.35f
 
     /** 紧凑分段条/弹出菜单水滴按压最大放大倍率 */
     const val CompactMaxPressScale: Float = 1.22f
 
-    /** 激活态水滴凸透镜折射高度与折射量 */
+    /** 激活态水滴凸透镜折射高度（控制边缘玻璃厚度感）与折射量（控制边缘扭曲强度） */
     val DropletRefractionHeight: Dp = 12.dp
     val DropletRefractionAmount: Dp = 18.dp
 
-    /** 激活态水滴内阴影半径 */
+    /** 激活态水滴内阴影半径（dp） */
     val DropletInnerShadowRadius: Dp = 8.dp
 
-    /** 静息态半透明胶囊底色透明度 */
+    /** 静息态半透明胶囊底色透明度（浅色 / 深色表面） */
     const val RestingPillAlphaLight: Float = 0.135f
     const val RestingPillAlphaDark: Float = 0.19f
 }
 
 /**
- * 根据按压进度 [pressProgress] 与主轴速度 [velocity]（单位：槽位/秒）计算阻尼果冻形变缩放比例。
+ * 根据按压进度 [pressProgress] 与主轴速度 [velocity]（槽位/秒）计算果冻形变缩放比例。
  *
- * 按下时整体水滴等比弹起至 [maxPressScale]，高速拖动时沿运动方向拉伸、垂直方向轻微压缩，
- * 最大形变量钳制在 20% 内以保证形状与物理真实感。
+ * 按下时整体弹起至 [maxPressScale]，高速拖动时沿运动方向拉伸、垂直方向压缩，
+ * 最大拉伸与挤压幅度均钳制在 20%（0.20f）以内。
  */
 internal fun computeJellyScale(
     pressProgress: Float,
@@ -194,8 +194,7 @@ internal fun computeSegmentPillBounds(
 }
 
 /**
- * LSPosed 阻尼水滴拖拽状态机：位置、按压进度、速度全部托管在 [Animatable] 中，
- * 仅在 Draw/Layer 阶段读取，拖拽和动画期间零重组。
+ * 阻尼水滴拖拽状态机：位置、按压进度、速度均托管在 [Animatable] 中，仅在 Draw/Layer 阶段读取以减少重组。
  */
 @Stable
 class LiquidSegmentState(
@@ -215,8 +214,11 @@ class LiquidSegmentState(
 
     private var pressJob: Job? = null
     private var settleJob: Job? = null
+    /** 按下弹起弹簧（阻尼比 0.65，刚度 420） */
     private val pressSpring = spring<Float>(dampingRatio = 0.65f, stiffness = 420f)
+    /** 点击跨格切换时的瞬时弹起弹簧（阻尼比 0.65，刚度 480） */
     private val tapPopSpring = spring<Float>(dampingRatio = 0.65f, stiffness = 480f)
+    /** 激活水滴回落至静息态的缓动时长（150ms） */
     private val releaseTween = tween<Float>(durationMillis = 150, easing = FastOutSlowInEasing)
     private val trackingSpring = spring<Float>(
         dampingRatio = GlassSliderDefaults.TRACKING_DAMPING,
@@ -226,6 +228,7 @@ class LiquidSegmentState(
         dampingRatio = GlassSliderDefaults.SETTLE_DAMPING,
         stiffness = GlassSliderDefaults.SETTLE_STIFFNESS
     )
+    /** 拖动速度阻尼平滑弹簧（阻尼比 0.7，刚度 250），控制形变与回正节奏 */
     private val velocitySpring = spring<Float>(dampingRatio = 0.7f, stiffness = 250f)
 
     fun onPressStart() {
@@ -275,6 +278,7 @@ class LiquidSegmentState(
                 if (wasDragging) {
                     launch { velocity.animateTo(0f, velocitySpring) }
                 }
+                // 点击跨格时保证水滴弹起至少维持 110ms，且距目标槽位 <= 0.12 后再回落
                 if (!wasDragging) {
                     delay(110L)
                 }
@@ -328,9 +332,8 @@ fun rememberLiquidSegmentState(
 }
 
 /**
- * LSPosed 阻尼水滴分段交互手势：
- * 按下立即触发水滴弹起（`pressProgress → 1f`），支持单击直接切换与越过 `touchSlop` 后的跟手拖动，
- * 结合 [VelocityTracker] 实时驱动果冻拉丝形变，松手吸附提交 [onSettle]。
+ * 阻尼水滴分段交互手势：按下触发弹起（`pressProgress -> 1f`），支持单击直接切换与越过 `touchSlop` 后的跟手拖动，
+ * 结合 [VelocityTracker] 实时驱动形变，松手后通过 [onSettle] 提交目标索引。
  */
 fun Modifier.liquidSegmentDrag(
     state: LiquidSegmentState,
@@ -406,10 +409,8 @@ fun Modifier.liquidSegmentDrag(
 }
 
 /**
- * 静息态底层柔和半透明胶囊：置于外框容器内、Tab 图标与文字之下。
- *
- * 随着 [LiquidSegmentState.pressProgress] 从 0→1 自动淡出，由顶层 [LiquidGlassActiveDroplet] 接管。
- * 静息时零折射、零模糊、零阴影开销。
+ * 静息态半透明胶囊，置于外框容器内、Tab 图标与文字之下。
+ * 随着 [LiquidSegmentState.pressProgress] 从 0->1 淡出并由 [LiquidGlassActiveDroplet] 接替。
  */
 @Composable
 fun LiquidGlassRestingThumb(
@@ -463,10 +464,10 @@ fun LiquidGlassRestingThumb(
 }
 
 /**
- * LSPosed 风格像素级双色滑块内容容器：
- * 1. [unselectedContent] 通过 `ClipOp.Difference` 裁剪掉滑块胶囊内部区域，在胶囊外渲染普通深/浅色图标与文字；
- * 2. 中间渲染轻量半透明静息胶囊 [LiquidGlassRestingThumb]（按下时平滑淡出）；
- * 3. [selectedContent] 通过 `ClipOp.Intersect` 仅在胶囊内部渲染高亮强调色（即使滑块半跨某个图标/文字也能精确分割双色）。
+ * 双色滑块内容容器：
+ * 1. [unselectedContent] 通过 `ClipOp.Difference` 裁除胶囊覆盖区域，避免叠色；
+ * 2. 中间渲染静息态半透明胶囊 [LiquidGlassRestingThumb]；
+ * 3. [selectedContent] 通过 `ClipOp.Intersect` 仅在胶囊内部渲染高亮激活色，支持滑块半跨图标时的双色分割。
  */
 @Composable
 fun LiquidGlassDualColorTabs(
@@ -510,7 +511,7 @@ fun LiquidGlassDualColorTabs(
     }
 
     Box(modifier = modifier.size(containerWidth, containerHeight)) {
-        // 1. 胶囊外部：普通态图标与文字（裁剪掉胶囊覆盖区域，杜绝穿透叠色）
+        // 1. 胶囊外部：普通态图标与文字（裁除胶囊覆盖区域）
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -571,10 +572,10 @@ fun LiquidGlassDualColorTabs(
 }
 
 /**
- * LSPosed 同款离屏激活层录制器（对应 `Lyl0` 模式，作为外框与水滴之间的隐形同级节点）：
- * 仅在按压或拖动阶段将「圆角微模糊玻璃底板 + 清晰高亮激活色 Tab 内容」一起录制进 [activeTabsBackdrop]，
- * 供上层 [LiquidGlassActiveDroplet] 通过 `CombinedBackdrop` 折射放大，彻底避免水滴内部“全透漏底”。
- * 静息时直接跳过录制，保持零 GPU 开销。
+ * 离屏激活层录制器（作为外框与水滴之间的隐形同级节点）：
+ * 仅在按压或拖动阶段将圆角微模糊底板与高亮选中态内容录制进 [activeTabsBackdrop]，
+ * 供上层 [LiquidGlassActiveDroplet] 通过 `CombinedBackdrop` 折射放大，避免水滴内部透底；
+ * 静息时跳过录制以节省 GPU 开销。
  */
 @Composable
 fun LiquidGlassActiveTabsRecorder(
@@ -633,13 +634,13 @@ fun LiquidGlassActiveTabsRecorder(
 }
 
 /**
- * 激活态 3D 放大镜水滴滑块：作为外框玻璃条的**同级兄弟节点**覆盖在其上方（不被外框裁剪）。
+ * 激活态 3D 放大镜水滴滑块：作为外框玻璃条的同级兄弟节点覆盖在其上方（不被外框裁剪）。
  *
  * 采样双层合成背景 [combinedBackdrop]（底层页面 + [LiquidGlassActiveTabsRecorder] 录制的高亮 Tab 与玻璃表面），在按下/拖动时：
- * 1. 弹起放大至 [maxPressScale] 并叠加速度耦合果冻形变
- * 2. 启用球面 `depthEffect` + 7 光谱色散透镜，真实扭曲放大下方高亮图标与文字
- * 3. 叠加晶莹玻璃光泽表面、`InnerShadow` 厚度感与 `+90°` 重力旋转 `BloomStroke` 高光
- * 4. 静息时（`pressProgress <= 0.005f`）跳过整棵子树绘制，实现零 GPU 开销。
+ * 1. 弹起放大至 [maxPressScale] 并叠加速度耦合形变；
+ * 2. 启用球面 `depthEffect` 与色散透镜折射下方高亮图标与文字；
+ * 3. 叠加玻璃表面光泽、`InnerShadow` 内阴影与 `+90°` 重力旋转 `BloomStroke` 高光；
+ * 4. 静息时（`pressProgress <= 0.005f`）跳过整棵子树绘制。
  */
 @Composable
 fun LiquidGlassActiveDroplet(
@@ -802,12 +803,12 @@ fun LiquidGlassActiveDroplet(
 }
 
 /**
- * 通用 LSPosed 风格液态玻璃分段条容器（适用于页面内水平/垂直分段切换条）。
+ * 通用液态玻璃分段条容器（适用于页面内水平/垂直分段切换条）。
  *
- * 自动组装无递归的双层采样架构与像素级双色切割：
- * - 外框玻璃条（`pageBackdrop` + `BloomStroke(-45°)` + `interactiveGlassHighlight` + 呼吸缩放）
- * - [LiquidGlassDualColorTabs]：静息态按胶囊精确裁剪分割未选中（`isInsideSlider = false`）与高亮选中（`isInsideSlider = true`）双色内容
- * - 同级隐形激活录制层（[LiquidGlassActiveTabsRecorder]，将通透微模糊底板 + 高亮色 Tab 写入 `tabsBackdrop`）
+ * 内部组装双层采样架构与双色裁剪：
+ * - 外框玻璃条（`pageBackdrop` + `BloomStroke(-45°)` + 呼吸缩放）
+ * - [LiquidGlassDualColorTabs]：按胶囊轮廓裁剪分割未选中（`isInsideSlider = false`）与高亮选中（`isInsideSlider = true`）双色内容
+ * - 同级隐形激活录制层（[LiquidGlassActiveTabsRecorder]）
  * - 同级覆盖水滴滑块（[LiquidGlassActiveDroplet]，采样 `CombinedBackdrop(pageBackdrop, tabsBackdrop)`，`+90°` 重力棱光）
  */
 @Composable
@@ -940,9 +941,7 @@ fun LiquidGlassSegmentedBar(
     }
 }
 
-// =============================================================================
-// 兼容层：保留既有 API 签名以防外部或测试过渡期依赖
-// =============================================================================
+// 传统几何计算与滑块组件（供外部独立调用）
 
 data class GlassThumbGeometry(
     val width: Dp,

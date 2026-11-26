@@ -33,7 +33,9 @@ half4 main(float2 xy) {
 """
 
 /**
- * LSPosed / HyperOS 同款像素级高频抖动噪点，消除玻璃模糊渐变产生的 8-bit 色带条纹。
+ * 像素级高频抖动噪点效果，用于消除高斯模糊渐变产生的 8-bit 色带条纹。
+ *
+ * @param coeff 噪点强度系数（默认 0.0045f，越大颗粒感越明显；<= 0 时跳过着色器）
  */
 fun BackdropEffectScope.noiseDither(coeff: Float = 0.0045f) {
     if (coeff <= 0f) return
@@ -47,7 +49,7 @@ fun BackdropEffectScope.noiseDither(coeff: Float = 0.0045f) {
 }
 
 /**
- * 兼容保留的高光状态对象（按压高光已按需求禁用）。
+ * 交互高光状态占位类（当前为空操作实现）。
  */
 @Suppress("UNUSED_PARAMETER")
 @Stable
@@ -66,7 +68,7 @@ fun rememberInteractiveHighlightState(): InteractiveHighlightState {
 }
 
 /**
- * 按压聚光灯修饰符（已按视觉反馈全局禁用，保留签名以确保调用端无损兼容且零运行开销）。
+ * 按压交互高光修饰符（当前为空操作，直接返回自身）。
  */
 @Suppress("UNUSED_PARAMETER")
 fun Modifier.interactiveGlassHighlight(

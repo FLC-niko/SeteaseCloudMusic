@@ -162,6 +162,7 @@ private val PlaylistAccentColor: Color
     @Composable
     get() = AppTheme.colors.accent
 
+// 歌单详情页本地样式与背景偏好存储键
 private const val PREFS_NAME = "app_settings_prefs"
 private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
 private const val KEY_PLAYLIST_COLOR_BACKGROUND = "playlist_color_background_enabled"
@@ -171,6 +172,7 @@ internal fun playlistStylePrefKey(playlistId: Long): String = "${KEY_PLAYLIST_ST
 internal fun playlistColorBackgroundPrefKey(playlistId: Long?): String =
     if (playlistId != null) "${KEY_PLAYLIST_COLOR_BACKGROUND}_$playlistId" else KEY_PLAYLIST_COLOR_BACKGROUND
 
+/** 从本地偏好读取指定歌单的详情页视觉风格，未配置时回退至 [defaultStyle]。 */
 internal fun loadPlaylistDetailStyle(
     prefs: android.content.SharedPreferences,
     playlistId: Long,
@@ -180,6 +182,12 @@ internal fun loadPlaylistDetailStyle(
     return PlaylistDetailStyle.values().firstOrNull { it.id == saved } ?: defaultStyle
 }
 
+/**
+ * 歌单 / 专辑详情页主入口。
+ *
+ * 根据窗口尺寸与 `embedded` 标记自适应切换紧凑单栏、双栏分屏及嵌入式右栏布局；
+ * 支持预测性返回手势、封面动态取色背景、多选批量操作及拖拽排序编辑模式。
+ */
 @Composable
 fun PlaylistDetailScreen(
     detail: PlaylistDetail,
@@ -206,6 +214,7 @@ fun PlaylistDetailScreen(
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
+    // 识别「我喜欢的音乐」歌单，按实时红心集合过滤曲目列表
     val isLikedPlaylist = remember(detail.name, detail.id, filterByCurrentUserLikes) {
         filterByCurrentUserLikes && (
             detail.name.contains("喜欢") || (detail.id != LOCAL_PLAYLIST_ID && detail.description?.contains("红心") == true)
@@ -222,6 +231,7 @@ fun PlaylistDetailScreen(
         }
     }
 
+    // 编辑模式下的本地曲目副本（退出或执行批量操作时按需提交排序变更）
     var localTracks by remember(detail.id) { mutableStateOf(effectiveTracks) }
 
     var isEditMode by remember { mutableStateOf(false) }
@@ -231,12 +241,14 @@ fun PlaylistDetailScreen(
     var showBatchAddToPlaylistSheet by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+    // 非编辑状态下同步外部曲目列表更新，避免覆盖拖拽中的临时顺序
     LaunchedEffect(effectiveTracks) {
         if (!isEditMode) {
             localTracks = effectiveTracks
         }
     }
 
+    // 进入编辑模式时隐藏全局底部播放条与导航栏，避免与批量操作底栏重叠
     DisposableEffect(isEditMode) {
         PlayerEntryPoints.setBottomChromeHidden(isEditMode)
         onDispose {
@@ -244,6 +256,7 @@ fun PlaylistDetailScreen(
         }
     }
 
+    // 将详情页列表滚动状态挂载到导航栏，支持滚动联动显隐
     val navigationScroll = LocalNavigationScrollState.current
     DisposableEffect(navigationScroll, listState) {
         val viewport = listState.toNavigationViewport()
@@ -253,6 +266,7 @@ fun PlaylistDetailScreen(
         }
     }
 
+    // 「我喜欢的音乐」优先取首曲封面，确保红心变更后封面与取色同步更新
     val firstTrackCoverUrl = remember(localTracks) {
         localTracks.firstOrNull { !it.coverUrl.isNullOrBlank() }?.coverUrl
             ?: localTracks.firstOrNull { !it.album.coverUrl.isNullOrBlank() }?.album?.coverUrl
@@ -371,6 +385,7 @@ fun PlaylistDetailScreen(
     val appIsDark = AppTheme.isDark
     val dominantColor by rememberCoverDominantDarkColor(currentDetail.coverUrl, isDark = appIsDark)
     val solidBackgroundColor = if (useColorBackground) dominantColor.copy(alpha = 1f) else AppTheme.colors.background
+    // 背景相对亮度阈值（低于 0.32 判定为深色背景，前景色切换为浅色）
     val isDark = solidBackgroundColor.luminance() < 0.32f
     val heroMaskColor = solidBackgroundColor
 
@@ -399,13 +414,16 @@ fun PlaylistDetailScreen(
     val deviceCorners = rememberDeviceCornerRadius()
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        // 双栏分屏布局断点（宽度 >= 720dp 且高度 >= 360dp，或折叠屏书本/桌面形态）
         val split = !embedded && ((maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop)
         val expandedDark = isDark
         val paneDark = isDark
         val isCardMode = !embedded && !split
         val fullWidthPx = with(density) { maxWidth.toPx() }
+        // 预测性返回位移判定阈值（px）
         val isPredictiveGestureActive = predictiveTranslationX.value > 0.5f
 
+        // 编辑模式下返回键优先退出多选排序；卡片模式接入预测性返回右滑手势
         if (isEditMode) {
             BackHandler(enabled = true) {
                 handleExitEditMode()
@@ -426,8 +444,8 @@ fun PlaylistDetailScreen(
                         predictiveTranslationX.animateTo(
                             targetValue = 0f,
                             animationSpec = spring(
-                                dampingRatio = 0.86f,
-                                stiffness = 400f
+                                dampingRatio = 0.86f, // 取消返回手势回弹阻尼比（越小回弹越明显）
+                                stiffness = 400f // 取消返回手势弹簧刚度
                             )
                         )
                     }
@@ -442,14 +460,14 @@ fun PlaylistDetailScreen(
                 if (deviceCorners.hasRoundedCorners) {
                     deviceCorners.toShape()
                 } else if (isPredictiveGestureActive) {
-                    RoundedCornerShape(24.dp)
+                    RoundedCornerShape(24.dp) // 无硬件圆角设备在拖动返回时的临时卡片圆角
                 } else {
                     RoundedCornerShape(0.dp)
                 }
             } else RoundedCornerShape(0.dp)
         }
 
-        // 100% 绝对不透明的纯色底座，结合真机硬件 r 角裁剪与向右滑入/返回柔和投影
+        // 不透明纯色页面底座，配合硬件圆角裁剪与预测性返回时的右滑投影
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -461,7 +479,7 @@ fun PlaylistDetailScreen(
                     if (isCardMode && (deviceCorners.hasRoundedCorners || isPredictiveGestureActive)) {
                         Modifier
                             .shadow(
-                                elevation = if (isPredictiveGestureActive) 24.dp else 20.dp,
+                                elevation = if (isPredictiveGestureActive) 24.dp else 20.dp, // 卡片投影高度（拖动返回时略微抬升）
                                 shape = cornerShape,
                                 clip = false
                             )
@@ -480,14 +498,14 @@ fun PlaylistDetailScreen(
                     drawContent()
                 }
                 val songsTopBlurAlpha by remember(listState, density) {
-                    val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
+                    val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) } // 分栏曲目列表顶部模糊渐显滚动距离
                     derivedStateOf {
                         if (listState.firstVisibleItemIndex > 0) 1f
                         else (listState.firstVisibleItemScrollOffset / fadeDistancePx).coerceIn(0f, 1f)
                     }
                 }
                 val songs: @Composable () -> Unit = {
-                    val splitBottomInsetPx = with(density) { (64.dp + bottom).toPx() }
+                    val splitBottomInsetPx = with(density) { (64.dp + bottom).toPx() } // 拖拽排序底部安全留白（避让底部悬浮编辑栏）
                     val dragReorderState = rememberPlaylistDragReorderState(
                         lazyListState = listState,
                         tracks = currentDetail.tracks,
@@ -606,8 +624,8 @@ fun PlaylistDetailScreen(
                                     val isActivelyDragging = dragReorderState.isDragging(track.id)
                                     val isElevated = dragReorderState.isElevated(track.id)
                                     val highlightAlpha by animateFloatAsState(
-                                        targetValue = if (isActivelyDragging) 0.10f else 0f,
-                                        animationSpec = tween(160),
+                                        targetValue = if (isActivelyDragging) 0.10f else 0f, // 拖拽激活条目背景高亮透明度
+                                        animationSpec = tween(160), // 拖拽高亮淡入淡出时长（ms）
                                         label = "splitDragBg"
                                     )
 
@@ -619,7 +637,7 @@ fun PlaylistDetailScreen(
                                             }
                                             .animateItem(
                                                 placementSpec = if (isActivelyDragging) null else spring(
-                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    dampingRatio = Spring.DampingRatioNoBouncy, // 重排位移动画无回弹阻尼
                                                     stiffness = Spring.StiffnessMediumLow
                                                 )
                                             )
@@ -666,6 +684,7 @@ fun PlaylistDetailScreen(
                                     statusBarHeight = songsTopInset,
                                     modifier = Modifier.align(Alignment.TopCenter),
                                     alphaProvider = { songsTopBlurAlpha },
+                                    // 分屏右栏顶部渐进模糊三层半径（dp）
                                     deepBlurRadius = 20.dp,
                                     mediumBlurRadius = 10.dp,
                                     shallowBlurRadius = 4.dp
@@ -701,13 +720,14 @@ fun PlaylistDetailScreen(
                     if (split) {
                         AdaptiveTwoPane(
                             Modifier.fillMaxSize().testTag("expanded_playlist_panes"),
-                            primaryFraction = 0.44f,
+                            primaryFraction = 0.44f, // 双栏分屏主栏（封面区）宽度占比
                             primary = {
                                 if (window.isTabletop) {
                                     Column(Modifier.fillMaxSize().padding(top = statusBarHeight)) {
                                         ExpandedPlaylistToolbar(expandedDark, onClose = onClose) { showMoreSheet = true }
                                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                             val mediaHeight = maxHeight
+                                            // 桌面折叠形态下按可用高度反推封面最大宽度，上限 560dp
                                             val cap = when (currentStyle) {
                                                 PlaylistDetailStyle.APPLE_MUSIC -> ((maxHeight - 22.dp) / 0.88f).coerceAtLeast(96.dp)
                                                 PlaylistDetailStyle.POSTER_WALL,
@@ -728,7 +748,7 @@ fun PlaylistDetailScreen(
                                         drawContent()
                                     }
                                     val primaryBlurAlpha by remember(primaryScrollState, density) {
-                                        val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
+                                        val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) } // 分屏左栏顶部模糊渐显滚动距离
                                         derivedStateOf {
                                             (primaryScrollState.value / fadeDistancePx).coerceIn(0f, 1f)
                                         }
@@ -747,7 +767,7 @@ fun PlaylistDetailScreen(
                                                 ),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
-                                            Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                                            Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) { // 分屏左栏封面区最大宽度上限
                                                 RenderPlaylistHero(
                                                     currentStyle, currentDetail, heroMaskColor,
                                                     onPlayAll, isDark = expandedDark, expanded = true
@@ -760,6 +780,7 @@ fun PlaylistDetailScreen(
                                             statusBarHeight = statusBarHeight,
                                             modifier = Modifier.align(Alignment.TopCenter),
                                             alphaProvider = { primaryBlurAlpha },
+                                            // 分屏左栏顶部渐进模糊三层半径（dp）
                                             deepBlurRadius = 22.dp,
                                             mediumBlurRadius = 11.dp,
                                             shallowBlurRadius = 4.dp
@@ -876,7 +897,7 @@ fun PlaylistDetailScreen(
                 )
             }
 
-            // 更多操作与歌单壁纸二级菜单底栏（从底部冒出贴底展示）
+            // 更多操作与歌单壁纸二级菜单底栏
             if (showMoreSheet) {
                 PlaylistMoreActionSheet(
                     currentStyle = currentStyle,
@@ -947,6 +968,7 @@ private fun ExpandedPlaylistToolbar(
     }
 }
 
+/** 管理编辑模式下曲目拖拽排序的位移、交换判定与松手回落动画状态。 */
 private class PlaylistDragReorderState(
     val lazyListState: LazyListState,
     val topViewportInsetPx: Float,
@@ -993,6 +1015,7 @@ private class PlaylistDragReorderState(
         return true
     }
 
+    /** 约束拖拽条目垂直坐标，避免超出列表安全视口或首尾曲目边界。 */
     fun clampDesiredTopY(trackId: Long, candidateTopY: Float): Float {
         val currentTracks = tracksProvider()
         val currentIdx = currentTracks.indexOfFirst { it.id == trackId }
@@ -1029,6 +1052,7 @@ private class PlaylistDragReorderState(
         if (abs(deltaY) > 0.5f) {
             dragDirection = if (deltaY > 0f) 1 else -1
         }
+        // 累计移动超过 touchSlopPx 后才激活拖拽位移，避免轻点误触发排序
         if (!hasMoved) {
             if (abs(totalDragDy) < touchSlopPx) return
             hasMoved = true
@@ -1039,6 +1063,7 @@ private class PlaylistDragReorderState(
         trySwap(trackId)
     }
 
+    /** 当拖拽项中心点越过相邻曲目中线时实时交换列表顺序。 */
     fun trySwap(trackId: Long) {
         if (draggedTrackId != trackId || !hasMoved) return
         val currentTracks = tracksProvider()
@@ -1074,6 +1099,7 @@ private class PlaylistDragReorderState(
         }
     }
 
+    /** 结束拖拽并播放松手回落弹簧动画。 */
     fun endDrag(trackId: Long) {
         if (draggedTrackId != trackId) return
         val currentTranslation = translationYFor(trackId)
@@ -1089,7 +1115,7 @@ private class PlaylistDragReorderState(
                     settleOffsetY.animateTo(
                         targetValue = 0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            dampingRatio = Spring.DampingRatioNoBouncy, // 松手回落阻尼比（无回弹）
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
@@ -1103,6 +1129,7 @@ private class PlaylistDragReorderState(
     }
 }
 
+/** 创建拖拽排序状态并驱动接近列表上下边界时的自动滚动循环。 */
 @Composable
 private fun rememberPlaylistDragReorderState(
     lazyListState: LazyListState,
@@ -1115,9 +1142,9 @@ private fun rememberPlaylistDragReorderState(
     val tracksState = rememberUpdatedState(tracks)
     val onReorderState = rememberUpdatedState(onTracksReordered)
     val density = LocalDensity.current
-    val edgeZonePx = with(density) { 56.dp.toPx() }
-    val touchSlopPx = with(density) { 4.dp.toPx() }
-    val maxScrollSpeedPxPerSec = with(density) { 800.dp.toPx() }
+    val edgeZonePx = with(density) { 56.dp.toPx() } // 列表上下边界自动滚动触发区高度（dp）
+    val touchSlopPx = with(density) { 4.dp.toPx() } // 拖拽排序起手位移阈值（dp，越小越灵敏）
+    val maxScrollSpeedPxPerSec = with(density) { 800.dp.toPx() } // 边界自动滚动基准最大速率（dp/s）
 
     val state = remember(lazyListState, coroutineScope, topViewportInsetPx, bottomViewportInsetPx, touchSlopPx) {
         PlaylistDragReorderState(
@@ -1140,6 +1167,7 @@ private fun rememberPlaylistDragReorderState(
                 val dtSec = if (lastFrameTimeNanos == 0L) {
                     0.016f
                 } else {
+                    // 帧时间步长钳位在 1ms..50ms，避免卡顿后单帧滚动过冲
                     ((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
                 }
                 lastFrameTimeNanos = frameTimeNanos
@@ -1153,6 +1181,7 @@ private fun rememberPlaylistDragReorderState(
                     val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).toFloat()
                     val topBound = topViewportInsetPx
                     val bottomBound = (viewportHeight - bottomViewportInsetPx).coerceAtLeast(topBound + 1f)
+                    // 自动滚动触发区高度上限为可用视口高度的 25%
                     val effectiveEdge = minOf(edgeZonePx, (bottomBound - topBound) * 0.25f).coerceAtLeast(1f)
 
                     val itemScreenTop = beforePadding + state.desiredItemTopY
@@ -1167,6 +1196,7 @@ private fun rememberPlaylistDragReorderState(
                             Float.POSITIVE_INFINITY
                         }
                         if (maxUpScroll > 0.5f && lazyListState.canScrollBackward) {
+                            // 越贴近或越过边界速率因子越高，上限 1.5 倍基准速率
                             val factor = (((topBound + effectiveEdge) - itemScreenTop) / effectiveEdge).coerceIn(0f, 1.5f)
                             scrollDelta = (-maxScrollSpeedPxPerSec * factor * dtSec).coerceAtLeast(-maxUpScroll)
                         }
@@ -1197,13 +1227,17 @@ private fun rememberPlaylistDragReorderState(
     return state
 }
 
+/**
+ * 编辑模式下右侧拖拽把手区域的纵向排序手势修饰符。
+ * 命中右侧热区按下后立即捕获指针，不经由长按延时，避免与列表纵向滚动冲突。
+ */
 @Composable
 private fun Modifier.playlistReorderGesture(
     state: PlaylistDragReorderState,
     enabled: Boolean
 ): Modifier {
     if (!enabled) return this
-    val handleZoneWidthPx = with(LocalDensity.current) { 64.dp.toPx() }
+    val handleZoneWidthPx = with(LocalDensity.current) { 64.dp.toPx() } // 右侧拖拽把手命中热区宽度（dp）
     return this.pointerInput(state, enabled) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -1247,6 +1281,7 @@ private fun Modifier.playlistReorderGesture(
     }
 }
 
+/** 紧凑单栏歌单详情页：支持顶栏标题缩放吸顶、顶部渐进模糊及编辑模式多选/排序。 */
 @Composable
 private fun CompactPlaylistDetailScreen(
     detail: PlaylistDetail,
@@ -1292,10 +1327,10 @@ private fun CompactPlaylistDetailScreen(
         with(density) { (if (isEdgeToEdgeHero) 0.dp else statusBarHeight + 12.dp).toPx() }
     }
     val dockCenterY = remember(density, statusBarHeight) {
-        with(density) { (statusBarHeight + 27.dp).toPx() }
+        with(density) { (statusBarHeight + 27.dp).toPx() } // 吸顶标题最终停靠中心纵坐标（对齐顶栏按钮行中线）
     }
     val morphBandPx = remember(density) {
-        with(density) { 54.dp.toPx() }
+        with(density) { 54.dp.toPx() } // 标题上滑缩放与吸顶过渡带高度（dp）
     }
     val heroTitleCenterY by remember(lazyListState, contentTopPaddingPx) {
         derivedStateOf {
@@ -1309,8 +1344,8 @@ private fun CompactPlaylistDetailScreen(
             }
         }
     }
-    val topViewportInsetPx = with(density) { (statusBarHeight + 54.dp + 44.dp).toPx() }
-    val bottomViewportInsetPx = with(density) { (60.dp + navBottom).toPx() }
+    val topViewportInsetPx = with(density) { (statusBarHeight + 54.dp + 44.dp).toPx() } // 拖拽排序顶部安全界（状态栏 + 顶栏 + 全选栏）
+    val bottomViewportInsetPx = with(density) { (60.dp + navBottom).toPx() } // 拖拽排序底部安全界（编辑底栏 + 导航栏）
 
     val dragReorderState = rememberPlaylistDragReorderState(
         lazyListState = lazyListState,
@@ -1327,7 +1362,7 @@ private fun CompactPlaylistDetailScreen(
         drawContent()
     }
     val topBlurAlphaState = remember(lazyListState, density) {
-        val fadeDistancePx = with(density) { 44.dp.toPx().coerceAtLeast(1f) }
+        val fadeDistancePx = with(density) { 44.dp.toPx().coerceAtLeast(1f) } // 顶部渐进模糊随列表上滑渐显的滚动距离（dp）
         derivedStateOf {
             if (lazyListState.firstVisibleItemIndex > 0) 1f
             else (lazyListState.firstVisibleItemScrollOffset / fadeDistancePx).coerceIn(0f, 1f)
@@ -1340,7 +1375,7 @@ private fun CompactPlaylistDetailScreen(
         }
     }
 
-    // 整页统一纯色沉浸背景，没有任何黑色断层和过渡色阶，彻底消除透光
+    // 页面纯色背景底座
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -1364,7 +1399,7 @@ private fun CompactPlaylistDetailScreen(
                     end = if (isEdgeToEdgeHero) 0.dp else 16.dp
                 )
             ) {
-            // 1. Hero 头部（原地保持，长按与退出不自动跳动列表）
+            // 1. 顶部封面与标题区（切换编辑模式时保持原列表滚动位置）
             item(key = "playlist_hero") {
                 RenderPlaylistHero(
                     style = currentStyle,
@@ -1382,6 +1417,7 @@ private fun CompactPlaylistDetailScreen(
                         } else if (heroTitleLineCount <= 1) {
                             0f
                         } else {
+                            // 多行标题在前 25% 过渡带内淡出，交由单行吸顶标题接管
                             val p = ((startY - currentY) / morphBandPx).coerceIn(0f, 1f)
                             (1f - p / 0.25f).coerceIn(0f, 1f)
                         }
@@ -1396,7 +1432,7 @@ private fun CompactPlaylistDetailScreen(
                 Spacer(modifier = Modifier.height(20.dp))
             }
 
-            // 2. 曲目列表（统一列表，不切换两套 LazyColumn，进入/退出原地过渡）
+            // 2. 曲目列表（与正常模式共用同一 LazyColumn，原地切换编辑态）
             if (detail.tracks.isEmpty() && isLoading) {
                 item(key = "loading_tracks") {
                     Box(
@@ -1421,8 +1457,8 @@ private fun CompactPlaylistDetailScreen(
                     val isActivelyDragging = dragReorderState.isDragging(track.id)
                     val isElevated = dragReorderState.isElevated(track.id)
                     val highlightAlpha by animateFloatAsState(
-                        targetValue = if (isActivelyDragging) 0.10f else 0f,
-                        animationSpec = tween(160),
+                        targetValue = if (isActivelyDragging) 0.10f else 0f, // 拖拽激活条目背景高亮透明度
+                        animationSpec = tween(160), // 高亮淡入淡出时长（ms）
                         label = "compactDragBg"
                     )
 
@@ -1481,7 +1517,7 @@ private fun CompactPlaylistDetailScreen(
         }
         }
 
-        // 正常模式下顶部渐进高斯模糊、连续一体式标题与左右圆钮（随编辑模式平滑淡出）
+        // 正常模式顶栏：渐进模糊背景、随滚动缩放吸顶的标题与左右液态玻璃按钮
         AnimatedVisibility(
             visible = !isEditMode,
             enter = fadeIn(tween(220)),
@@ -1489,7 +1525,7 @@ private fun CompactPlaylistDetailScreen(
             modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                // 1. 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无白色状态栏遮罩）
+                // 顶部渐进高斯模糊（随列表上滑渐显）
                 ProgressiveTopBlur(
                     backdrop = playlistTopBackdrop,
                     totalHeight = statusBarHeight + 82.dp,
@@ -1498,7 +1534,7 @@ private fun CompactPlaylistDetailScreen(
                     alphaProvider = { topBlurAlphaState.value }
                 )
 
-                // 2. 连续一体式歌单标题：封面下方歌单名进入顶部区域后随手指上滑缩小并固定到顶栏中央
+                // 吸顶过渡标题：Hero 标题进入过渡带后按 22sp -> 16sp 缩放并停靠于顶栏中央
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1516,8 +1552,8 @@ private fun CompactPlaylistDetailScreen(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    val scaleFactor = 16f / 22f
-                    val dockedMaxTextWidth = ((maxWidth - 124.dp) / scaleFactor).coerceAtLeast(120.dp)
+                    val scaleFactor = 16f / 22f // 标题从 Hero 22sp 缩放到顶栏 16sp 的目标比例
+                    val dockedMaxTextWidth = ((maxWidth - 124.dp) / scaleFactor).coerceAtLeast(120.dp) // 扣减左右按钮宽度后的最大吸顶文本宽度
                     val layoutMaxWidth = minOf(maxWidth - 48.dp, dockedMaxTextWidth)
                     Text(
                         text = detail.displayTitle,
@@ -1555,7 +1591,7 @@ private fun CompactPlaylistDetailScreen(
                     )
                 }
 
-                // 3. 左右两个常驻液态玻璃操作按钮
+                // 左右液态玻璃操作按钮
                 val buttonTint = if (isDark) Color.White else Color(0xFF111111)
                 Box(
                     modifier = Modifier
@@ -1566,7 +1602,7 @@ private fun CompactPlaylistDetailScreen(
                     LiquidGlassCircleButton(
                         onClick = onClose,
                         backdrop = playlistTopBackdrop,
-                        size = 38.dp,
+                        size = 38.dp, // 顶栏圆形按钮直径
                         isDarkSurface = isDark,
                         contentDescription = "返回",
                         modifier = Modifier.align(Alignment.CenterStart)
@@ -1596,7 +1632,7 @@ private fun CompactPlaylistDetailScreen(
             }
         }
 
-        // 编辑模式顶部固定栏（平滑滑入滑出）
+        // 编辑模式顶部栏（包含操作按钮与全选栏）
         AnimatedVisibility(
             visible = isEditMode,
             enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { -it / 2 } + fadeIn(tween(220)),
@@ -1609,6 +1645,7 @@ private fun CompactPlaylistDetailScreen(
                     totalHeight = statusBarHeight + 122.dp,
                     statusBarHeight = statusBarHeight,
                     modifier = Modifier.align(Alignment.TopCenter),
+                    // 编辑模式顶栏三层模糊半径（dp）
                     deepBlurRadius = 28.dp,
                     mediumBlurRadius = 15.dp,
                     shallowBlurRadius = 5.dp
@@ -1618,7 +1655,7 @@ private fun CompactPlaylistDetailScreen(
                         .fillMaxWidth()
                         .then(
                             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                                Modifier.background(pageBaseColor.copy(alpha = 0.92f))
+                                Modifier.background(pageBaseColor.copy(alpha = 0.92f)) // Android 12 以下纯色半透明兜底遮罩
                             } else {
                                 Modifier
                             }
@@ -1746,7 +1783,7 @@ private fun CompactPlaylistDetailScreen(
             }
         }
 
-        // 编辑模式底部多选操作栏（平滑从底部滑入）
+        // 编辑模式底部多选操作栏
         AnimatedVisibility(
             visible = isEditMode,
             enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(200)),
@@ -1826,7 +1863,7 @@ private fun RenderPlaylistHero(
                     detail = detail,
                     isDark = isDark,
                     onPlayAll = onPlayAll,
-                    coverWidthFraction = if (expanded) 0.88f else 0.68f,
+                    coverWidthFraction = if (expanded) 0.88f else 0.68f, // 分屏左栏与紧凑单栏的大封面宽度占比
                     showControls = !mediaOnly,
                     titleAlphaProvider = titleAlphaProvider,
                     onTitlePositioned = onTitlePositioned,
@@ -1899,7 +1936,7 @@ private fun PlaylistDetailTrackRow(
     dragHandleModifier: Modifier = Modifier
 ) {
     val leadingWidth by animateDpAsState(
-        targetValue = if (isEditMode) 32.dp else 28.dp,
+        targetValue = if (isEditMode) 32.dp else 28.dp, // 编辑态左侧勾选框/序号列宽度过渡
         animationSpec = tween(220, easing = FastOutSlowInEasing),
         label = "trackRowLeadingWidth"
     )
@@ -1921,7 +1958,7 @@ private fun PlaylistDetailTrackRow(
             .padding(start = 4.dp, end = 0.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. 左侧区域：正常模式下展示序号，编辑模式下平滑切换为勾选圆圈
+        // 1. 左侧序号 / 编辑勾选框
         Box(
             modifier = Modifier.width(leadingWidth),
             contentAlignment = Alignment.CenterStart
@@ -1963,7 +2000,7 @@ private fun PlaylistDetailTrackRow(
             ) {
                 if (coverUrl != null) {
                     AsyncImage(
-                        model = coverUrl.toCoverThumbnailUrl(180),
+                        model = coverUrl.toCoverThumbnailUrl(180), // 曲目行封面缩略图采样尺寸（px）
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -2043,7 +2080,7 @@ private fun PlaylistDetailTrackRow(
 }
 
 /**
- * 多选模式勾选框：切换为 Miuix 原生 [Checkbox]
+ * 多选模式勾选框（基于 Miuix [Checkbox]）。
  */
 @Composable
 private fun SelectionCheckbox(
@@ -2065,7 +2102,7 @@ private fun SelectionCheckbox(
 }
 
 /**
- * 拖拽排序把手：三道圆角横线，严格按截图还原
+ * 拖拽排序把手图标（三道横向圆角短线）。
  */
 @Composable
 private fun ReorderDragHandle(
@@ -2093,7 +2130,7 @@ private fun ReorderDragHandle(
 }
 
 /**
- * 多选底部悬浮操作栏（下一首播放、收藏到歌单、下载、删除）
+ * 多选底部悬浮操作栏（下一首播放、收藏到歌单、下载、删除）。
  */
 @Composable
 private fun PlaylistEditBottomBar(
@@ -2108,10 +2145,10 @@ private fun PlaylistEditBottomBar(
     modifier: Modifier = Modifier
 ) {
     val hasSelection = selectedCount > 0
-    val activeAlpha = if (hasSelection) 1f else 0.38f
+    val activeAlpha = if (hasSelection) 1f else 0.38f // 底部操作按钮有选中项/无选中项透明度
     val iconTint = (if (isDark) Color.White else Color(0xFF222222)).copy(alpha = activeAlpha)
     val textTint = (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF444444)).copy(alpha = activeAlpha)
-    val deleteAlpha = if (!canDelete) 0.28f else if (hasSelection) 1f else 0.38f
+    val deleteAlpha = if (!canDelete) 0.28f else if (hasSelection) 1f else 0.38f // 删除按钮禁用态透明度
     val deleteIconTint = (if (isDark) Color.White else Color(0xFF222222)).copy(alpha = deleteAlpha)
     val deleteTextTint = (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF444444)).copy(alpha = deleteAlpha)
 

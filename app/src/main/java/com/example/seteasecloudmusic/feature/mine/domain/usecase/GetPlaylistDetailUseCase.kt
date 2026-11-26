@@ -4,6 +4,7 @@ import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 import javax.inject.Inject
 
+/** 获取歌单详情及读取本地预览/完整缓存的用例。 */
 class GetPlaylistDetailUseCase @Inject constructor(
     private val mineRepository: MineRepository
 ) {

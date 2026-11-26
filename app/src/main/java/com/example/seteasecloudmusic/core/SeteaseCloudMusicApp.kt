@@ -9,13 +9,16 @@ import coil.request.CachePolicy
 import dagger.hilt.android.HiltAndroidApp
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 
+/**
+ * 应用入口，负责初始化收藏状态并配置全局 Coil 图片缓存策略。
+ */
 @HiltAndroidApp
 class SeteaseCloudMusicApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
         FavoriteTracksManager.init(this)
-        // 全局注册带磁盘持久化缓存的 ImageLoader，确保冷启动与离线秒显图片
+        // 注册全局 ImageLoader，开启本地内存与磁盘缓存
         coil.Coil.setImageLoader(newImageLoader())
     }
 
@@ -23,21 +26,23 @@ class SeteaseCloudMusicApp : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    // 这台小米堆上限仅 256m：30%≈77MB 图片缓存太激进，GC 抖动会吞手势帧，先降到 25%
+                    // 内存缓存占可用堆上限的比例（降低可减少低内存设备的 GC 抖动）
                     .maxSizePercent(0.25)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
+                    // 磁盘图片缓存目录名
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(200L * 1024 * 1024) // 200 MB 磁盘图片持久化
+                    // 磁盘图片缓存上限（字节，当前为 200 MB）
+                    .maxSizeBytes(200L * 1024 * 1024)
                     .build()
             }
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
-            .respectCacheHeaders(false) // 强制本地持久化缓存所有封面图与头像，即使冷启动也能瞬间出图
-            // 列表/海报墙默认不 crossfade：几十张图同时做 alpha 动画是启动掉帧大户，
-            // 需要渐显的地方各自 .crossfade(true) 显式开启
+            // 忽略服务端缓存头，统一按本地策略缓存封面与头像
+            .respectCacheHeaders(false)
+            // 默认关闭淡入动画以降低列表同时加载多图时的渲染开销，需渐显处由调用方显式开启
             .crossfade(false)
             .build()
     }

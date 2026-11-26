@@ -23,9 +23,9 @@ import javax.inject.Singleton
 /**
  * 全局网络状态监控器与断网重试事件调度中心。
  *
- * 1. 通过 Android 系统 [ConnectivityManager] 实时回调监听设备网络的连通与断开。
- * 2. 在网络彻底中断或数据请求遇到网络故障时，触发 iOS 26 液态玻璃风格弹窗。
- * 3. 管理重试状态并向业务层广播重试事件。
+ * 1. 通过 [ConnectivityManager] 实时监听设备网络连通与切换。
+ * 2. 网络中断或接口请求遭遇网络故障时，管理离线重试弹窗状态。
+ * 3. 管理重试流程并向业务层广播重试事件。
  */
 @Singleton
 class NetworkMonitor @Inject constructor(
@@ -39,7 +39,7 @@ class NetworkMonitor @Inject constructor(
     private val _isOnline = MutableStateFlow(checkOnlineStatus())
     val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
 
-    // 控制是否展示 iOS 26 离线重试弹窗
+    // 是否展示离线重试弹窗
     private val _showOfflineDialog = MutableStateFlow(false)
     val showOfflineDialog: StateFlow<Boolean> = _showOfflineDialog.asStateFlow()
 
@@ -70,7 +70,8 @@ class NetworkMonitor @Inject constructor(
     private var offlineCheckJob: Job? = null
 
     /**
-     * 延迟重查真实联网状态，只有确认仍然离线才拉起断网弹窗。
+     * 延迟重查真实联网状态，确认仍离线时再显示断网弹窗。
+     * @param delayMillis 断网判定防抖延迟（ms），避免 Wi-Fi 与蜂窝切换瞬间误报
      */
     private fun scheduleOfflineCheck(delayMillis: Long = 600L) {
         offlineCheckJob?.cancel()
@@ -86,7 +87,7 @@ class NetworkMonitor @Inject constructor(
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            // 新网络已可用：取消待定中的断网判定，避免网络切换时误报
+            // 新网络可用时取消待定的断网判定，避免切换瞬间误报
             offlineCheckJob?.cancel()
             val wasOffline = !_isOnline.value
             val online = checkOnlineStatus()
@@ -94,7 +95,7 @@ class NetworkMonitor @Inject constructor(
             _isOnline.value = online
             _networkChanged.tryEmit(Unit)
             if (online && wasOffline && _showOfflineDialog.value) {
-                // 网络恢复连接时自动通知刷新并关闭弹窗
+                // 网络恢复时等待路由稳定后再触发重试（ms）
                 scope.launch {
                     delay(500)
                     triggerRetry()
@@ -163,11 +164,9 @@ class NetworkMonitor @Inject constructor(
     }
 
     /**
-     * 关闭弹窗
+     * 关闭离线重试弹窗，并取消待定的断网防抖任务以防重复弹出。
      */
     fun dismissOfflineDialog() {
-        // 用户已明确选择“稍后”：取消待定中的断网判定，
-        // 否则防抖回调可能在几百毫秒后把弹窗又弹回来。
         offlineCheckJob?.cancel()
         _showOfflineDialog.value = false
         _isRetrying.value = false
@@ -175,26 +174,25 @@ class NetworkMonitor @Inject constructor(
     }
 
     /**
-     * 触发重试逻辑
+     * 触发网络重试：检测当前连通性，恢复时执行自定义回调并广播 [retryTrigger]。
      */
     fun triggerRetry() {
         scope.launch {
             _isRetrying.value = true
-            // 轻微延迟给予用户可见的转圈物理反馈
+            // 重试转圈最短展示时长（ms）
             delay(400)
             val online = checkOnlineStatus()
             _isOnline.value = online
 
             if (online) {
-                // 网络已恢复，执行重试动作并关闭弹窗
                 activeCustomRetryAction?.invoke()
                 _retryTrigger.emit(Unit)
+                // 成功态收尾后关闭弹窗的延迟（ms）
                 delay(300)
                 _showOfflineDialog.value = false
                 _isRetrying.value = false
                 activeCustomRetryAction = null
             } else {
-                // 仍无网络，停留在弹窗，恢复按钮状态
                 _isRetrying.value = false
             }
         }

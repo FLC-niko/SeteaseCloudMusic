@@ -61,6 +61,7 @@ data class SearchSuggestArtistResponse(
 ) {
     val coverUrl: String?
         get() {
+            // 5639395138885805 为网易云默认空白占位头像 ID，优先过滤
             val pic = picUrl?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
             val img = img1v1Url?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
             val chosen = pic ?: img ?: picUrl?.trim()?.takeIf { it.isNotBlank() } ?: img1v1Url?.trim()?.takeIf { it.isNotBlank() }

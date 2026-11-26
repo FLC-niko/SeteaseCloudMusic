@@ -39,31 +39,31 @@ import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.RoundedRectangle
 
 /**
- * 液态玻璃（Liquid Glass）统一光学参数中心，对齐 LSPosed v2.2.1 液态玻璃底栏效果。
+ * 液态玻璃（Liquid Glass）统一光学参数中心。
  *
- * 采用「vibrancy 提鲜 + 4.dp 高斯模糊 + 可选噪点抖动 + 边缘透镜折射 + 柔弥散外阴影 +
- * 重力联动 3D SDF 棱边高光（BloomStroke）」构成完整物理玻璃质感。
+ * 组合 vibrancy 提鲜、高斯模糊、可选高频噪点抖动、边缘透镜折射、外阴影与
+ * 重力联动 3D SDF 棱边高光（BloomStroke）。
  */
 object GlassDefaults {
-    /** 基础模糊半径：对齐 LSPosed 外框 RenderEffect sigma (4.dp * 0.45 ≈ 1.8.dp)，保持通透清澈 */
+    /** 基础模糊半径（dp，约对应 RenderEffect sigma 4.dp * 0.45） */
     val BlurRadius: Dp = 1.8.dp
 
-    /** 透镜折射高度（越大边缘的玻璃厚度感越强） */
+    /** 透镜折射高度（dp，越大边缘玻璃厚度感越强） */
     val LensRefractionHeight: Dp = 24.dp
 
-    /** 透镜折射量（越大边缘内容扭曲越明显） */
+    /** 透镜折射量（dp，越大边缘内容弯曲扭曲越明显） */
     val LensRefractionAmount: Dp = 24.dp
 
-    /** 表面半透明铺底透明度：主导航条/卡片的主用值 */
+    /** 表面半透明铺底透明度：主导航条与常规卡片主用值 */
     const val SurfaceAlpha: Float = 0.14f
 
     /** 搜索栏、播放栏等亮面玻璃面板铺底透明度 */
     const val SurfaceAlphaBright: Float = 0.20f
 
-    /** 兼容保留的描边透明度常量 */
+    /** 传统玻璃描边透明度常量 */
     const val BorderAlpha: Float = 0.62f
 
-    /** 外阴影弥散半径 */
+    /** 外阴影弥散半径（dp） */
     val OuterShadowRadius: Dp = 10.dp
 
     /** 浅色背景玻璃外阴影透明度 */
@@ -72,7 +72,7 @@ object GlassDefaults {
     /** 深色背景玻璃外阴影透明度 */
     const val OuterShadowAlphaDark: Float = 0.10f
 
-    /** 模糊后像素防色带高频抖动系数 */
+    /** 高频噪点抖动强度，用于抑制高斯模糊后的 8-bit 色带条纹 */
     const val NoiseDitherCoeff: Float = 0.0045f
 }
 
@@ -86,8 +86,8 @@ internal fun clampLensRefractionHeightPx(desiredPx: Float, minDimensionPx: Float
 }
 
 /**
- * 为任意 Modifier 叠加 LSPosed 风格液态玻璃背景：
- * 色彩提鲜 + 高斯模糊 + 可选防色带噪点 + 透镜折射 + 柔阴影 + 3D 重力棱边高光（BloomStroke）。
+ * 为任意 Modifier 叠加液态玻璃背景：
+ * 色彩提鲜 + 高斯模糊 + 可选防色带噪点 + 透镜折射 + 外阴影 + 3D 重力棱边高光（BloomStroke）。
  */
 fun Modifier.liquidGlass(
     backdrop: Backdrop,
@@ -150,6 +150,7 @@ fun Modifier.liquidGlass(
             layerBlock = layerBlock,
             exportedBackdrop = exportedBackdrop,
             onDrawSurface = {
+                // 不支持 RenderEffect 的设备提高底色不透明度以保证前景文字可读性
                 val effectiveAlpha = if (isRenderEffectSupported()) {
                     surfaceAlpha
                 } else {
@@ -174,7 +175,7 @@ fun Modifier.liquidGlass(
 }
 
 /**
- * 与 [liquidGlass] 配套的 3D 重力高光棱边描边（升级自原先平铺白边，接入全局重力扫光）。
+ * 与 [liquidGlass] 配套的 3D 重力高光棱边描边，接入全局重力扫光方向。
  */
 fun Modifier.glassBorder(
     cornerRadius: Dp,
@@ -228,9 +229,9 @@ fun GlassSurface(
 }
 
 /**
- * 圆形液态玻璃图标按钮（折射 + 模糊 + 鲜艳度 + 重力 3D 棱边高光 + 指尖聚光灯 + 按压微缩回弹）。
+ * 圆形液态玻璃图标按钮（折射 + 模糊 + 鲜艳度 + 重力 3D 棱边高光 + 按压缩放）。
  *
- * 适用于顶部返回、更多菜单等小尺寸圆形悬浮按钮；当 [backdrop] 为空时平滑退化为半透明磨砂圆钮。
+ * 适用于顶部返回、更多菜单等小尺寸圆形悬浮按钮；当 [backdrop] 为空时降级为半透明圆角背景。
  */
 @Composable
 fun LiquidGlassCircleButton(
@@ -246,6 +247,7 @@ fun LiquidGlassCircleButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    // 按压缩放至 0.92f，使用无回弹刚性弹簧（stiffness = 700）快速响应
     val pressScale by animateFloatAsState(
         targetValue = if (isPressed) 0.92f else 1f,
         animationSpec = spring(

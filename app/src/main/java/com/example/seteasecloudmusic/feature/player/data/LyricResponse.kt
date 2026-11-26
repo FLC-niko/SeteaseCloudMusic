@@ -13,16 +13,19 @@ data class LyricResponseDto(
     val code: Int = 0
 )
 
+/** 单段歌词文本与版本 DTO */
 data class LyricDataDto(
     val version: Int = 0,
     val lyric: String = ""
 )
 
+/** YRC 歌词头部元数据条目（如词曲作者、编曲信息） */
 data class YrcMetadata(
     val t: Int,
     val c: List<YrcMetadataItem>
 )
 
+/** YRC 头部元数据文本片段 */
 data class YrcMetadataItem(
     val tx: String,
     val li: String? = null,

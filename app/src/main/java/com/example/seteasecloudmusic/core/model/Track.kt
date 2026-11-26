@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.core.model
 
+/** 通用曲目模型，统一承载在线歌曲与本地扫描曲目的基础信息与音频元数据。 */
 data class Track(
     val id: Long,
     val title: String,
@@ -24,18 +25,21 @@ data class Track(
     val audioQualityLevel: String? = null
 )
 
+/** 专辑基础模型。 */
 data class Album(
     val id: Long,
     val title: String,
     val coverUrl: String? = null
 )
 
+/** 歌手基础模型。 */
 data class Artist(
     val id: Long,
     val name: String,
     val coverUrl: String? = null
 )
 
+/** 曲目支持的音质等级枚举。 */
 enum class AudioQuality{
     STANDARD,
     HIGH,

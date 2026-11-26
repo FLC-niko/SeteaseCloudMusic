@@ -7,16 +7,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * 冷启动 Baseline Profile 生成器（P0 核心）。
+ * 冷启动 Baseline Profile 生成器。
  *
- * simpleperf 实测：冷启动约一半 CPU 烧在 ART 验 dex / 链接类 / 解释执行
- * （78MB dex、21 个文件、R8 关闭、无 profile）。
- * 这条 journey 把启动路径的类/方法写入 baseline-prof，经 profileinstaller
- * 在安装后转码为 AOT，verify + interpret 开销从每次冷启动移到安装时。
+ * 通过录制冷启动路径上的类加载与热点方法生成 baseline-prof，
+ * 安装时由 profileinstaller 预编译为 AOT，以分摊冷启动阶段的 dex 校验与解释执行开销。
  *
- * 生成：在模拟器/真机上执行
- *   ./gradlew :baselineprofile:generateBaselineProfile
- * 产物自动落到 app/src/main/baselineProfiles/baseline-prof.txt。
+ * 生成命令（需连接真机或模拟器）：
+ * `./gradlew :baselineprofile:generateBaselineProfile`
+ * 产物输出至 `app/src/main/baselineProfiles/baseline-prof.txt`。
  */
 @RunWith(AndroidJUnit4::class)
 class BaselineProfileGenerator {
@@ -31,8 +29,9 @@ class BaselineProfileGenerator {
     ) {
         pressHome()
         startActivityAndWait()
-        // 等首页首帧 + 异步 feed 回填（模拟器上后端可能不可达，空态路径同样要收录）
+        // 等待首页首帧及异步数据回填（后端不可达时同样覆盖空态路径）
         device.waitForIdle()
+        // 异步加载采样等待时长（ms）
         Thread.sleep(3000L)
         device.waitForIdle()
     }

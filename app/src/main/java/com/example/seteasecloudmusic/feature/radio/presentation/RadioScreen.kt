@@ -130,21 +130,28 @@ private val RadioAccent: Color
 private val RadioCoverBorder: Color
     @Composable
     get() = AppTheme.colors.coverBorder
+// 横向滚动方形卡片统一宽度与封面边长（dp）
 private val RadioHorizontalCardWidth = 160.dp
+// 横向列表卡片间距（dp）
 private val RadioHorizontalCardSpacing = 12.dp
+// 卡片封面连续曲率圆角半径（dp）
 private val RadioCoverCornerRadius = 12.dp
 
+// 排行榜装饰柱状图各柱相对高度比例（0~1）
 private val ToplistBarHeights = floatArrayOf(0.42f, 0.78f, 0.56f, 0.96f, 0.64f)
+// 雷达卡片顶部渐变遮罩停靠点：0%~24% 由黑 0.22 过渡到透明，衬托左上角播放量
 private val RadarTopScrimBrush = Brush.verticalGradient(
     0.0f to Color.Black.copy(alpha = 0.22f),
     0.24f to Color.Transparent,
     1.0f to Color.Transparent
 )
+// 艺人热门卡片底部渐变遮罩停靠点：68%~100% 由透明过渡到黑 0.45，衬托左下角艺人名称
 private val ArtistHotBottomScrimBrush = Brush.verticalGradient(
     0.0f to Color.Transparent,
     0.68f to Color.Transparent,
     1.0f to Color.Black.copy(alpha = 0.45f)
 )
+// 趋势/心情卡片双端渐变遮罩停靠点：顶部 0%~22% 压暗 0.28，底部 78%~100% 压暗 0.48
 private val OverlayCardScrimBrush = Brush.verticalGradient(
     0.0f to Color.Black.copy(alpha = 0.28f),
     0.22f to Color.Transparent,
@@ -152,10 +159,13 @@ private val OverlayCardScrimBrush = Brush.verticalGradient(
     1.0f to Color.Black.copy(alpha = 0.48f)
 )
 
+/**
+ * 电台页路由入口，负责前台回调触发、打开详情前的封面同步取色预热以及 ViewModel 状态绑定。
+ */
 @Composable
 fun RadioRoute(
     topContentPadding: Dp,
-    bottomContentPadding: Dp = 180.dp,
+    bottomContentPadding: Dp = 180.dp, // 底部留白（避让导航底栏与悬浮播放条）
     avatarUrl: String? = null,
     displayName: String? = null,
     onAvatarClick: (() -> Unit)? = null,
@@ -183,6 +193,7 @@ fun RadioRoute(
         onAvatarClick = onAvatarClick,
         onArtistClick = onArtistClick,
         onOpenPlaylistDetail = { id, name, coverUrl ->
+            // 点击前尝试同步提取封面主题色，减少详情页展开瞬间色块跳变
             trySyncExtractColor(context, coverUrl, isDark = appIsDark)
             viewModel.openPlaylistDetail(id, name, coverUrl)
         },
@@ -204,6 +215,9 @@ fun RadioRoute(
     )
 }
 
+/**
+ * 电台页主内容布局，承载折叠顶栏、9 个横向电台分区及平板分栏/手机全屏歌单详情浮层。
+ */
 @Composable
 internal fun RadioScreenContent(
     uiState: RadioUiState,
@@ -258,12 +272,13 @@ internal fun RadioScreenContent(
                 .layerBackdrop(radioBackdrop)
         ) {
             AmbientTopPinkBackground(baseColor = RadioBackground)
+        // 分区顶部间距：大屏（>= 800.dp）16.dp，手机 26.dp
         val sectionTopPadding = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp
         AppPullToRefresh(
             isRefreshing = uiState.isRefreshing,
             onRefresh = onRefreshClick,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = statusBarHeight + 56.dp)
+            contentPadding = PaddingValues(top = statusBarHeight + 56.dp) // 下拉指示器避让折叠顶栏高度
         ) {
         AdaptiveSectionColumn(
             state = lazyListState,
@@ -434,7 +449,7 @@ internal fun RadioScreenContent(
                 }
             }
 
-            // 9. 你关注的艺人新动向 (仅展示真正关注的歌手)
+            // 9. 你关注的艺人新动向（仅展示已关注歌手）
             if (uiState.followedArtistSection.items.isNotEmpty()) {
                 item(key = "section_followed_artists") {
                     FollowedArtistSection(
@@ -464,7 +479,7 @@ internal fun RadioScreenContent(
                 UserAvatarButton(
                     avatarUrl = avatarUrl,
                     displayName = displayName,
-                    size = 46.dp,
+                    size = 46.dp, // 顶栏右侧头像直径（dp）
                     onClick = { onAvatarClick?.invoke() }
                 )
             }
@@ -484,18 +499,18 @@ internal fun RadioScreenContent(
             }
         }
 
-        // 歌单详情层（类似我的喜欢歌单页面）
+        // 内嵌歌单详情浮层（仅非分栏模式使用全屏侧滑）
         if (!split) {
         AnimatedVisibility(
             visible = uiState.activePlaylistDetail != null,
             enter = slideInHorizontally(
                 initialOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f) // 阻尼比 0.92 抑制回弹，刚度 260 控制展开速度
             ),
             exit = if (isForeground) {
                 slideOutHorizontally(
                     targetOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f) // 阻尼比 0.92，刚度 300 略快于展开
                 )
             } else {
                 ExitTransition.None
@@ -538,9 +553,7 @@ internal fun RadioScreenContent(
 
 }
 
-// =========================================================================
-// 标题通用组件与卡片复用组件 (对齐艺人页专辑区排版与尺寸)
-// =========================================================================
+// 标题通用组件与卡片复用组件
 @Composable
 private fun SectionHeader(
     title: String,
@@ -631,9 +644,7 @@ private fun RadioCardTitle(
     )
 }
 
-// =========================================================================
-// 1. 排行榜 (热歌榜、飙升榜、新歌榜排序，双行固定高度对齐，点卡片开详情)
-// =========================================================================
+// 1. 排行榜（热歌榜、飙升榜、新歌榜排序，双行固定高度对齐，点击卡片开详情）
 @Composable
 private fun ToplistSection(
     items: List<RadioToplistItem>,
@@ -779,6 +790,9 @@ private fun ToplistSection(
     }
 }
 
+/**
+ * 绘制排行榜程序化多层次渐变底图，通过 drawWithCache 预构建画笔以避免绘制期对象分配。
+ */
 @Composable
 private fun ToplistCoverArtwork(
     item: RadioToplistItem,
@@ -787,7 +801,8 @@ private fun ToplistCoverArtwork(
 ) {
     val baseStart = item.gradientColors.getOrNull(0) ?: Color(0xFFFF9A44)
     val baseEnd = item.gradientColors.getOrNull(1) ?: Color(0xFFFC6076)
-    val mode = ((variant % 4) + 4) % 4
+    val mode = ((variant % 4) + 4) % 4 // 按卡片序号轮换 4 种渐变方向与光斑分布
+    // 基于主色通过 HSV 偏移派生暖色高光、冷色过渡与深色阴影三种调色板变体
     val accentWarm = remember(item.id) {
         shiftColorHsv(baseStart, hueDelta = 26f, satScale = 1.08f, valScale = 1.12f)
     }
@@ -799,7 +814,7 @@ private fun ToplistCoverArtwork(
     }
 
     Box(modifier = modifier) {
-        // 不规则多层次色彩流动底图 + 排行榜动态柱状/光弧几何元素（drawWithCache 预构建所有渐变与几何，绘制期零对象分配）
+        // 多层次色彩流动底图 + 几何装饰元素
         Spacer(
             modifier = Modifier
                 .fillMaxSize()
@@ -819,6 +834,7 @@ private fun ToplistCoverArtwork(
                         end = gradEnd
                     )
 
+                    // 3 个径向光斑的中心坐标、相对半径（0.74/0.68/0.52）及透明度
                     val blob1Center = when (mode) {
                         0 -> Offset(w * 0.86f, h * 0.16f)
                         1 -> Offset(w * 0.18f, h * 0.22f)
@@ -858,6 +874,7 @@ private fun ToplistCoverArtwork(
                         radius = blob3Radius
                     )
 
+                    // 倾斜半透明光带旋转角（度）、中心及圆角
                     val ribbonAngle = when (mode) {
                         0 -> -22f
                         1 -> 18f
@@ -876,6 +893,7 @@ private fun ToplistCoverArtwork(
                     val ribbonSize = Size(w * 1.4f, h * 0.28f)
                     val ribbonCorner = CornerRadius(h * 0.14f, h * 0.14f)
 
+                    // 同心圆弧线宽、半径比例（0.40/0.54）与透明度
                     val arcCenter = when (mode % 2) {
                         0 -> Offset(w * 0.92f, h * 0.88f)
                         else -> Offset(w * 0.10f, h * 0.18f)
@@ -885,6 +903,7 @@ private fun ToplistCoverArtwork(
                     val arcColorInner = Color.White.copy(alpha = 0.12f)
                     val arcColorOuter = Color.White.copy(alpha = 0.08f)
 
+                    // 左下角装饰柱状图柱宽、柱间距与最大高度比例
                     val barWidth = w * 0.044f
                     val barGap = w * 0.026f
                     val maxBarHeight = h * 0.19f
@@ -937,7 +956,7 @@ private fun ToplistCoverArtwork(
                 }
         )
 
-        // 排行榜视觉元素 3：不规则倾斜水印数字（#1 / TOP）
+        // 倾斜水印角标（TOP / NO.1 / HOT / #1）
         Text(
             text = when (mode) {
                 0 -> "TOP"
@@ -971,14 +990,13 @@ private fun shiftColorHsv(
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(color.toArgb(), hsv)
     hsv[0] = ((hsv[0] + hueDelta) % 360f + 360f) % 360f
+    // 限制饱和度 [0.28, 0.95] 与明度 [0.22, 0.96]，避免色块过灰或过亮影响白字对比度
     hsv[1] = (hsv[1] * satScale).coerceIn(0.28f, 0.95f)
     hsv[2] = (hsv[2] * valScale).coerceIn(0.22f, 0.96f)
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
-// =========================================================================
 // 2. 雷达歌单
-// =========================================================================
 @Composable
 private fun RadarSection(
     title: String,
@@ -1053,9 +1071,7 @@ private fun RadarSection(
     }
 }
 
-// =========================================================================
-// 3. 从你喜欢的歌曲开始漫游 (背景封面取色，上下全为歌名)
-// =========================================================================
+// 3. 从你喜欢的歌曲开始漫游（背景抽取封面暗色，上下均展示歌名）
 @Composable
 private fun RoamSection(
     items: List<RadioRoamItem>,
@@ -1081,6 +1097,7 @@ private fun RoamCardItem(
     item: RadioRoamItem,
     onClick: () -> Unit
 ) {
+    // 颜色抽取参数：先查暗色主题色缓存，未命中时用 ID 派生暗色占位并在后台异步提取
     val context = LocalContext.current
     val coverUrl = item.coverUrl
     val cachedColor = remember(coverUrl) { getCachedDominantDarkColor(coverUrl) }
@@ -1097,10 +1114,11 @@ private fun RoamCardItem(
 
     val animatedBgState = animateColorAsState(
         targetValue = dominantColor,
-        animationSpec = tween(durationMillis = 350),
+        animationSpec = tween(durationMillis = 350), // 背景主题色过渡时长（ms）
         label = "roamCardBg"
     )
 
+    // 漫游卡片尺寸：宽 160.dp、高 204.dp，圆角 12.dp
     Box(
         modifier = Modifier
             .size(width = RadioHorizontalCardWidth, height = 204.dp)
@@ -1113,7 +1131,7 @@ private fun RoamCardItem(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 上半部分：歌名与专辑封面
+            // 上半部分：起点歌名与叠放专辑封面
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1132,7 +1150,7 @@ private fun RoamCardItem(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 中间三张错落叠放专辑封面（两边为第2/第3首带小倾角，中间为主曲目）
+                // 漫游叠图：中间展示主曲目封面，两侧错落叠放第 2/第 3 首伴随曲目封面
                 val firstCover = item.coverUrl ?: item.tracks.firstOrNull()?.coverUrl
                 val secondCover = item.tracks.getOrNull(1)?.coverUrl ?: firstCover
                 val thirdCover = item.tracks.getOrNull(2)?.coverUrl ?: secondCover ?: firstCover
@@ -1145,7 +1163,7 @@ private fun RoamCardItem(
                 )
             }
 
-            // 下半部分：半透明较深色底栏（上下全为真实歌名，连接显示）
+            // 下半部分：半透明底栏（仅底部保留 12.dp 圆角，alpha 0.28 压暗背景衬托伴随曲目名）
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1166,9 +1184,7 @@ private fun RoamCardItem(
     }
 }
 
-// =========================================================================
-// 4. 歌手推荐（排在推荐歌单上面一行）
-// =========================================================================
+// 4. 歌手推荐（排在推荐歌单上方）
 @Composable
 private fun RecommendedSingersSection(
     singers: List<RadioArtistItem>,
@@ -1197,20 +1213,20 @@ private fun RecommendedSingersSection(
         Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp) // 歌手头像卡片横向间距（dp）
         ) {
             items(singers, key = { it.id }, contentType = { "singer_card" }) { artist ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .width(80.dp)
+                        .width(80.dp) // 歌手卡片容器宽（dp）
                         .clickable { onSingerClick(artist) }
                 ) {
                     AsyncImage(
                         model = artist.avatarUrl?.toCoverThumbnailUrl(200),
                         contentDescription = artist.name,
                         modifier = Modifier
-                            .size(76.dp)
+                            .size(76.dp) // 圆形歌手头像直径（dp）
                             .clip(CircleShape)
                             .background(AppTheme.colors.placeholder)
                             .border(0.5.dp, RadioCoverBorder, CircleShape),
@@ -1232,9 +1248,7 @@ private fun RecommendedSingersSection(
     }
 }
 
-// =========================================================================
-// 5. 推荐歌单 (点击卡片打开歌单详情，点击右下角按钮直接播放)
-// =========================================================================
+// 5. 推荐歌单（点击卡片打开详情，点击右下角按钮快捷播放）
 @Composable
 private fun RecommendedPlaylistsSection(
     items: List<RadioPlaylistItem>,
@@ -1307,9 +1321,7 @@ private fun RecommendedPlaylistsSection(
     }
 }
 
-// =========================================================================
 // 6. 艺人热门金曲
-// =========================================================================
 @Composable
 private fun ArtistHotSection(
     sectionData: ArtistHotSectionData,
@@ -1402,9 +1414,8 @@ private fun ArtistHotSection(
     }
 }
 
-// =========================================================================
-// 7 & 8 共用封面卡（每周新热趋势 / 心情氛围）
-// =========================================================================
+// 7 & 8 共用方形封面卡（每周新热趋势 / 心情氛围）
+/** 趋势与心情共用的方形封面卡，叠加左上角播放量、左下角标签与右下角快捷播放按钮。 */
 @Composable
 private fun OverlayLabeledCoverCard(
     title: String,
@@ -1474,9 +1485,7 @@ private fun OverlayLabeledCoverCard(
     }
 }
 
-// =========================================================================
-// 7. 每周新热趋势 (点击卡片打开歌单详情，点击右下角按钮直接播放)
-// =========================================================================
+// 7. 每周新热趋势（点击卡片打开详情，点击右下角按钮快捷播放）
 @Composable
 private fun WeeklyTrendsSection(
     items: List<RadioTrendItem>,
@@ -1506,9 +1515,7 @@ private fun WeeklyTrendsSection(
     }
 }
 
-// =========================================================================
-// 8. 心情氛围 (点击卡片打开歌单详情，点击右下角按钮直接播放)
-// =========================================================================
+// 8. 心情氛围（点击卡片打开详情，点击右下角按钮快捷播放）
 @Composable
 private fun MoodSection(
     items: List<RadioMoodItem>,
@@ -1538,9 +1545,7 @@ private fun MoodSection(
     }
 }
 
-// =========================================================================
-// 9. 你关注的艺人新动向 (严格只展示关注歌手)
-// =========================================================================
+// 9. 你关注的艺人新动向（仅展示已关注歌手）
 @Composable
 private fun FollowedArtistSection(
     sectionData: FollowedArtistSectionData,
@@ -1552,6 +1557,7 @@ private fun FollowedArtistSection(
             title = "你关注的艺人新动向",
             leadingContent = {
                 if (sectionData.artistAvatars.isNotEmpty()) {
+                    // 头部叠放头像组：单头像 24.dp、水平步进偏移 14.dp、1.5.dp 背景描边分隔
                     Box(
                         modifier = Modifier
                             .width((24 + 14 * (sectionData.artistAvatars.size - 1)).dp)
@@ -1591,6 +1597,7 @@ private fun FollowedArtistCardItem(
     item: RadioFollowedArtistNewSongItem,
     onClick: () -> Unit
 ) {
+    // 颜色抽取参数：优先读取缓存暗色主题色，未命中时使用暖棕兜底并异步抽取
     val context = LocalContext.current
     val coverUrl = item.coverUrl
     val cachedColor = remember(coverUrl) { getCachedDominantDarkColor(coverUrl) }
@@ -1607,10 +1614,11 @@ private fun FollowedArtistCardItem(
 
     val animatedBgState = animateColorAsState(
         targetValue = dominantColor,
-        animationSpec = tween(durationMillis = 350),
+        animationSpec = tween(durationMillis = 350), // 背景主题色过渡时长（ms）
         label = "followedCardBg"
     )
 
+    // 关注艺人横卡尺寸：宽 296.dp、高 112.dp，圆角 12.dp，内边距 12.dp
     Box(
         modifier = Modifier
             .size(width = 296.dp, height = 112.dp)
@@ -1624,7 +1632,7 @@ private fun FollowedArtistCardItem(
             modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 左侧专辑封面 + 新单曲标签
+            // 左侧专辑封面（88.dp，圆角 10.dp）+ 新单曲角标
             Box(
                 modifier = Modifier
                     .size(88.dp)
@@ -1636,7 +1644,7 @@ private fun FollowedArtistCardItem(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                // 新单曲标签
+                // 新单曲角标（左上 8.dp、右下 6.dp 不对称圆角）
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1699,9 +1707,7 @@ private fun FollowedArtistCardItem(
     }
 }
 
-// =========================================================================
-// 格式化与颜色抽取辅助函数
-// =========================================================================
+// 播放量格式化辅助函数
 private fun formatPlayCount(playCount: Long?): String {
     if (playCount == null || playCount <= 0L) return "0"
     return when {

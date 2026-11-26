@@ -15,6 +15,7 @@ import dagger.hilt.components.SingletonComponent
 import retrofit2.Retrofit
 import javax.inject.Singleton
 
+/** Hilt 网络模块，统一通过 Retrofit 提供各业务模块的 API Service 单例。 */
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkServiceModule {

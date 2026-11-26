@@ -10,6 +10,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/** 绑定播放器歌词仓库接口与实现。 */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class PlayerRepositoryModule {

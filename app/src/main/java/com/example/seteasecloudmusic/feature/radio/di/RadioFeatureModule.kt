@@ -8,6 +8,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * 电台功能模块 Hilt 依赖绑定，将 [RadioRepository] 绑定到 [RadioRepositoryImpl]。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RadioFeatureModule {

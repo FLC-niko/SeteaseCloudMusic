@@ -31,6 +31,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * 歌手详情页 UI 状态快照。
+ */
 data class ArtistDetailUiState(
     val artistId: Long = 0L,
     val artistName: String = "",
@@ -59,6 +62,11 @@ data class ArtistDetailUiState(
     val errorMessage: String? = null
 )
 
+/**
+ * 歌手详情页 ViewModel。
+ * 负责并发加载歌手基础资料、百科、热门歌曲、专辑、爱听歌单与相似歌手，
+ * 管理分页加载、歌单/专辑内嵌详情页状态及播放队列替换。
+ */
 @HiltViewModel
 class ArtistDetailViewModel @Inject constructor(
     private val getArtistDetailUseCase: GetArtistDetailUseCase,
@@ -73,13 +81,21 @@ class ArtistDetailViewModel @Inject constructor(
     private val musicPlayerController: MusicPlayerController
 ) : ViewModel() {
     companion object {
+        /** 通用预览列表展示条数上限 */
         const val PREVIEW_LIMIT = 8
+        /** 歌手页“热门热曲”区块首屏展示条数 */
         const val HOT_SONGS_PREVIEW_LIMIT = 5
+        /** 热门播放与热门歌单截取曲目上限（首） */
         const val HOT_PLAY_LIMIT = 50
+        /** 加载更多歌曲时的单页拉取条数 */
         private const val SONGS_PAGE_LIMIT = 50
+        /** 首屏预加载的专辑条数 */
         private const val ALBUMS_INITIAL_LIMIT = 15
+        /** 全部专辑弹窗加载更多时的单页拉取条数 */
         private const val ALBUMS_PAGE_LIMIT = 30
+        /** 虚拟热门歌单 ID 负向偏移基数（避免与真实歌单/专辑 ID 冲突） */
         private const val SYNTHETIC_HOT_PLAYLIST_OFFSET = 1_000_000L
+        /** 虚拟专辑歌单 ID 负向偏移基数（避免与真实歌单/热门 ID 冲突） */
         private const val SYNTHETIC_ALBUM_PLAYLIST_OFFSET = 2_000_000L
     }
 
@@ -87,6 +103,7 @@ class ArtistDetailViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
 
     private var currentArtistId: Long? = null
+    // 请求代次递增 ID，用于丢弃切换歌手前未完成的异步结果
     private var artistRequestId = 0L
     private var initialLoadJob: Job? = null
     private var songsLoadMoreJob: Job? = null
@@ -108,6 +125,7 @@ class ArtistDetailViewModel @Inject constructor(
             currentArtistId == artistId &&
             (state.detail != null || state.songs.isNotEmpty() || state.albums.isNotEmpty())
         ) {
+            // 同一歌手已有数据时跳过全量刷新，仅重置未关闭的内嵌歌单/专辑详情覆盖层
             albumDetailJob?.cancel()
             playlistDetailJob?.cancel()
             if (state.activePlaylistDetail != null || state.isPlaylistDetailLoading) {
@@ -202,6 +220,7 @@ class ArtistDetailViewModel @Inject constructor(
                         albumsHasMore = albumsPage?.hasMore ?: false,
                         albumsAllLoaded = !(albumsPage?.hasMore ?: false),
                         favoritePlaylists = favoritePlaylists,
+                        // 首屏横向相似歌手卡片最多展示 12 位
                         similarArtists = similarArtists.take(12),
                         similarAllLoaded = true,
                         isLoading = false,
@@ -470,6 +489,7 @@ class ArtistDetailViewModel @Inject constructor(
             )
         }
         playlistDetailJob = viewModelScope.launch {
+            // 按预览缓存 -> 全量磁盘缓存 -> 网络最新结果依次升级，并同步刷新匹配的播放队列
             val queueSource = MusicPlayerController.playlistQueueSource(playlist.id)
             val fullDiskCached = getPlaylistDetailUseCase.getCachedFull(playlist.id)
             if (!isActive || requestId != artistRequestId) return@launch

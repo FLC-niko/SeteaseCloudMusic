@@ -100,7 +100,7 @@ fun AddToPlaylistSheet(
 }
 
 /**
- * 收藏到歌单内部核心视图：支持内嵌于 TrackActionSheet（无缝平滑切页）或单独弹窗展示
+ * 收藏到歌单内部核心视图：支持内嵌于 [TrackActionSheet] 切页展示，或作为独立弹窗展示。
  */
 @Composable
 fun AddToPlaylistContent(
@@ -132,7 +132,7 @@ fun AddToPlaylistContent(
         modifier = modifier
             .fillMaxWidth()
     ) {
-        // 1. 顶部栏：返回按钮（若有）、标题与关闭按钮（已移除单曲简明预览区域）
+        // 顶部栏：返回按钮（内嵌模式显示）、标题与关闭按钮
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -184,7 +184,7 @@ fun AddToPlaylistContent(
             modifier = Modifier.padding(horizontal = 20.dp)
         )
 
-        // 2. 歌单列表区域（包括首位的“新建歌单”、“我喜欢的音乐”和随后的自建歌单，完全合并流动，按数量自适应高度）
+        // 歌单列表区域：依次展示“新建歌单”、“我喜欢的音乐”与自建歌单
         if (!uiState.isLoggedIn) {
             Box(
                 modifier = Modifier
@@ -232,10 +232,10 @@ fun AddToPlaylistContent(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp),
+                    .heightIn(max = 520.dp), // 单选弹窗列表最大高度（dp），超出后内部滚动
                 contentPadding = PaddingValues(bottom = 6.dp)
             ) {
-                // 1. “新建歌单”入口：画一条分割线但依然在同一滚动流中
+                // “新建歌单”入口，置于列表首项
                 item(key = "create_new_playlist") {
                     NewPlaylistPickerItem(
                         onClick = { showCreateDialog = true }
@@ -247,7 +247,7 @@ fun AddToPlaylistContent(
                     )
                 }
 
-                // 2. 歌单项（首项为“我喜欢的音乐”，随后为自建歌单；我喜欢的音乐后面也加一条分割线）
+                // 歌单列表项（首项为“我喜欢的音乐”，其后为自建歌单）
                 itemsIndexed(
                     items = allPlaylists,
                     key = { _, playlist -> playlist.id }
@@ -269,13 +269,13 @@ fun AddToPlaylistContent(
                         onClick = {
                             if (uiState.isOperating) return@PlaylistPickerItem
 
-                            // 若歌单已存在该歌曲：给出明确提示，不重复执行网络请求，不提示“已收藏”
+                            // 歌曲已存在时仅提示，不重复发起请求
                             if (isAlreadyAdded) {
                                 Toast.makeText(context, "歌单「${playlist.name}」中已存在该歌曲", Toast.LENGTH_SHORT).show()
                                 return@PlaylistPickerItem
                             }
 
-                            // 1. 收藏到“我喜欢的音乐”
+                            // 收藏到“我喜欢的音乐”
                             if (isLikedHero) {
                                 scope.launch {
                                     val result = viewModel.likeTrack(track)
@@ -292,7 +292,7 @@ fun AddToPlaylistContent(
                                     )
                                 }
                             } else {
-                                // 2. 收藏到普通自建歌单
+                                // 收藏到普通自建歌单
                                 scope.launch {
                                     val result = viewModel.addTrackToPlaylist(playlist.id, track.id)
                                     result.fold(
@@ -314,7 +314,7 @@ fun AddToPlaylistContent(
                         }
                     )
 
-                    // 我喜欢的音乐下方紧跟一条细分割线，保持整洁一体
+                    // “我喜欢的音乐”下方分割线
                     if (isLikedHero) {
                         HorizontalDivider(
                             color = colors.dividerSubtle,
@@ -327,7 +327,7 @@ fun AddToPlaylistContent(
         }
     }
 
-    // 4. 新建歌单对话框
+    // 新建歌单对话框
     if (showCreateDialog) {
         val dismissCreateDialog = {
             if (!isCreating) {
@@ -401,7 +401,7 @@ private fun PlaylistPickerItem(
     onClick: () -> Unit
 ) {
     val isLikedHero = playlist.isLikedHero || playlist.name.contains("喜欢")
-    val contentAlpha = if (isAlreadyAdded) 0.52f else 1f
+    val contentAlpha = if (isAlreadyAdded) 0.52f else 1f // 已添加歌单封面透明度，用于弱化不可重复选择项
     val colors = AppTheme.colors
 
     BasicComponent(
@@ -587,7 +587,7 @@ fun AddToPlaylistBatchSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp),
+                    .heightIn(max = 420.dp), // 批量弹窗列表最大高度（dp）
                 contentPadding = PaddingValues(
                     top = 4.dp,
                     bottom = navBottom + 16.dp,

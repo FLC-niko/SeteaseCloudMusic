@@ -188,15 +188,7 @@ import kotlin.math.roundToInt
 
 
 /**
- * `presentation.navigation` 模块说明：
- *
- * 这一层属于表现层，主要负责：
- * 1. 组织页面入口与页面切换结构。
- * 2. 承载纯 UI 的状态，例如当前选中的导航项、按压动画进度。
- * 3. 把视觉效果和交互组合成最终可展示的界面。
- *
- * 当前文件是应用的导航外壳，暂时还没有接入真正的 NavHost，
- * 因此它更像“首页容器 + 底部导航栏”的组合入口。
+ * 应用主导航外壳模块：组织一级页面容器、悬浮底栏/侧栏、迷你播放条及全屏播放页与账号抽屉覆盖层。
  */
 
 /**
@@ -214,9 +206,7 @@ data class BottomNavItem(
 
 /**
  * 左侧主导航条承载的三个一级入口。
- *
- * 提到文件级常量：避免每次重组重新分配列表，也让它的身份保持稳定，
- * 便于 Compose 跳过依赖它的子组件。
+ * 保持在文件级常量以稳定对象引用，便于 Compose 跳过依赖它的子组件。
  */
 private val MainNavItems = listOf(
     BottomNavItem("首页", R.drawable.ic_nav_home, R.drawable.ic_nav_home_filled),
@@ -254,7 +244,7 @@ private fun LeftBarLiquidGlassContainer(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
                 isDarkSurface = isDark,
-                bloomExtraDegrees = -45f,
+                bloomExtraDegrees = -45f, // 边缘高光偏转角度（度）
                 // 按下放大时同步缩放被采样的内容层，避免折射采样与组件本体错位
                 layerBlock = layerBlock
             )
@@ -294,7 +284,7 @@ private fun BottomBarTabsLayer(
             val isActiveTab = index == lastActiveTab
             val normalCenterX = slotWidth * (index + 0.5f)
             val targetCenterX = ballSize / 2
-            val normalCenterY = 18.dp
+            val normalCenterY = 18.dp // 展开态图标中心距底栏顶部的基准偏移
             val targetCenterY = ballSize / 2
 
             val iconColor: Color
@@ -306,11 +296,13 @@ private fun BottomBarTabsLayer(
                 val collapseProgress = maxOf(searchProgressState.value, compactProgress.value)
                 val collapsedSelected = isActiveTab && selectedIndex == index && !isSearchExpanded
                 val blendFraction = if (collapsedSelected) {
+                    // 紧凑态切换区间 [0.15, 0.60] 内将选中图标由深色渐变为强调色
                     ((collapseProgress - 0.15f) / 0.45f).coerceIn(0f, 1f)
                 } else {
                     0f
                 }
                 iconColor = if (blendFraction > 0f) lerpColor(darkTint, accentRed, blendFraction) else darkTint
+                // 收缩进度超过 0.35f 时切换为实心选中图标
                 iconRes = if (collapsedSelected && collapseProgress > 0.35f) item.selectedIconRes else item.iconRes
             }
 
@@ -345,6 +337,7 @@ private fun BottomBarTabsLayer(
                                 searchProgressState.value,
                                 compactProgress.value
                             )
+                            // 非激活 Tab 图标随收缩进度快速淡出（倍数 3.5f，约 0.29 时完全透明）
                             (1f - collapseProgress * 3.5f).coerceIn(0f, 1f)
                         }
                         if (iconAlpha > 0.001f) {
@@ -377,7 +370,7 @@ private fun BottomBarTabsLayer(
                     .offset {
                         IntOffset(
                             (normalCenterX - 28.dp).roundToPx(),
-                            33.dp.roundToPx()
+                            33.dp.roundToPx() // Tab 文字标签顶部偏移
                         )
                     }
                     .width(56.dp)
@@ -431,13 +424,13 @@ private fun SearchButtonLiquidGlassContainer(
             .liquidGlass(
                 backdrop = backdrop,
                 cornerRadius = cornerRadius,
-                surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
+                surfaceAlpha = GlassDefaults.SurfaceAlphaBright, // 高亮玻璃表面透明度
                 isDarkSurface = isDark,
-                bloomExtraDegrees = -45f,
+                bloomExtraDegrees = -45f, // 边缘高光偏转角度（度）
                 layerBlock = {
                     val progress = pressProgressAnimation.value.coerceIn(0f, 1f)
                     if (size.width > 0f) {
-                        val maxScale = (size.width + 6f.dp.toPx()) / size.width
+                        val maxScale = (size.width + 6f.dp.toPx()) / size.width // 按压时最多额外放大 6.dp
                         val scale = lerp(1f, maxScale, progress)
                         scaleX = scale
                         scaleY = scale
@@ -454,14 +447,7 @@ private fun SearchButtonLiquidGlassContainer(
 }
 
 /**
- * 应用的主导航入口组件
- *
- * 此组件构建了整个应用的基础布局结构，包含：
- * 1. 底层的 [AppPageBackground] 背景
- * 2. 中间的内容区域（目前与背景层合并）
- * 3. 顶层悬浮的毛玻璃效果底部导航栏
- *
- * 核心使用了 [com.kyant.backdrop] 库来实现高性能的实时模糊与透镜效果。
+ * 应用的主导航根组件：串联自适应侧栏/悬浮底栏、页面内容舞台、迷你播放条、全屏播放页过渡层、账号抽屉及断网弹窗。
  */
 @Composable
 fun AppNavigation(
@@ -512,7 +498,7 @@ fun AppNavigation(
     val rootDensity = LocalDensity.current
     val rootContext = LocalContext.current
 
-    // 仅在曲目封面 URL 变化时发射，绝不因 500ms 播放进度更新触发导航外壳重组
+    // 仅在曲目封面 URL 变化时发射，避免每 500ms 播放进度更新触发导航外壳重组
     val activeArtworkUrlFlow = remember(playerViewModel) {
         playerViewModel.playbackState
             .map { state -> state.currentTrack?.coverUrl ?: state.currentTrack?.album?.coverUrl }
@@ -540,8 +526,7 @@ fun AppNavigation(
     }
     val hasSearchPlaylistDetail by hasSearchPlaylistDetailFlow.collectAsStateWithLifecycle(initialValue = false)
     val effectiveArtworkUrl = activeArtworkUrl ?: nowPlayingArtworkUrl
-    // 1200px 大图只在播放页打开时才开始加载：冷启动时它和海报墙抢带宽抢解码，
-    // 是图片加载期卡顿、miniPlayer 手势掉帧的帮凶之一。关闭时 mini 条走 128px 缩略图。
+    // 仅在全屏播放页打开时加载高分辨率封面，避免与冷启动列表大图争抢解码与带宽；未打开时迷你播放条使用 128px 缩略图
     val highResArtworkRequest = rememberHighResArtworkRequest(
         effectiveArtworkUrl.takeIf { showNowPlaying }
     )
@@ -579,6 +564,7 @@ fun AppNavigation(
             }
             nowPlayingProgress.animateTo(
                 targetValue = 1f,
+                // 播放页展开弹簧：无回弹阻尼、刚度 310f（越大展开越快）
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = 310f,
@@ -598,6 +584,7 @@ fun AppNavigation(
             nowPlayingProgress.animateTo(
                 targetValue = 0f,
                 initialVelocity = initialVelocity,
+                // 播放页收起弹簧：无回弹阻尼、刚度 320f
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = 320f,
@@ -642,7 +629,7 @@ fun AppNavigation(
     val closeAnimationScope = rememberCoroutineScope()
     val closeProgressAnimation = remember { Animatable(0f) }
 
-    // 缩小底栏接收点击时的弹跳程度，增加 stiffness 使其更紧致，缩小弹跳幅度
+    // 按钮按压反馈弹簧参数（阻尼比 0.8f，刚度 500f）
     val animationSpec = remember { spring<Float>(0.8f, 500f, 0.001f) }
 
     val backdrop = rememberLayerBackdrop {
@@ -674,6 +661,7 @@ fun AppNavigation(
 
     val searchProgressState = animateFloatAsState(
         targetValue = if (isSearchExpanded) 1f else 0f,
+        // 搜索按钮展开/收起形态过渡弹簧
         animationSpec = spring(stiffness = 500f, dampingRatio = 0.8f),
         label = "searchProgress"
     )
@@ -681,6 +669,7 @@ fun AppNavigation(
     val showGlassSlider = !isSearchExpanded
     val sliderAlphaState = animateFloatAsState(
         targetValue = if (showGlassSlider) 1f else 0f,
+        // 展开搜索时立即隐藏滑块，收起时弹簧渐显
         animationSpec = if (isSearchExpanded) snap() else spring(stiffness = 500f, dampingRatio = 0.8f),
         label = "sliderAlpha"
     )
@@ -690,33 +679,32 @@ fun AppNavigation(
         selectedIndexState.intValue = lastActiveTab
     }
 
-    // 抽成共享布局参数，保证底栏和滑块按同一套比例计算。
-    val horizontalPadding = 20.dp
-    val navBarHeight = 54.dp
-    val mainSearchGap = 12.dp
-    val miniPlayerNavGap = 12.dp
+    // 共享底栏与迷你条几何参数（统一按此比例计算圆角与槽位）
+    val horizontalPadding = 20.dp // 底栏及迷你播放条左右外边距
+    val navBarHeight = 54.dp // 底部导航胶囊与搜索圆形按钮统一高度
+    val mainSearchGap = 12.dp // 正常态主导航条与右侧搜索按钮的间距
+    val miniPlayerNavGap = 12.dp // 展开态迷你播放条与底部导航栏之间的垂直间距
     val searchButtonWidth = navBarHeight
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val searchContentTopPadding = statusBarTopPadding + 86.dp
-    // 统一形状：使用 RoundedRectangle 实现 G² 连续圆角（squircle），
-    // 让玻璃滑块、主导航条、搜索按钮共享一致的圆角半径。
+    val searchContentTopPadding = statusBarTopPadding + 86.dp // 顶部安全区与大标题预留偏移
+    // 使用 RoundedRectangle 实现 G² 连续圆角，与底栏半高对齐
     val cornerRadius = navBarHeight / 2
 
-    // ── 键盘（IME）感知：实现 Apple Music 风格的平滑上抬效果 ──
+    // 键盘（IME）弹出时底栏与迷你播放条的平滑上抬偏移
     val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
     val navBarsBottomPx = WindowInsets.navigationBars.getBottom(LocalDensity.current)
     // 键盘高度减去已经由 navigationBars inset 处理的底部距离
     val targetImeOffsetDp = with(LocalDensity.current) {
         (imeBottomPx - navBarsBottomPx).coerceAtLeast(0).toDp()
     }
-    // 使用弹簧动画平滑过渡，避免键盘弹出时的生硬跳动
     val animatedImeOffset by animateDpAsState(
         targetValue = targetImeOffsetDp,
+        // IME 上抬弹簧参数（阻尼比 0.8f，刚度 500f）
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
         label = "imeOffset"
     )
 
-    // ── 各一级页面 LazyListState 提至顶层，供 NavigationScrollState 监听滚动视口 ──
+    // 一级页面列表状态：供 NavigationScrollState 监听滚动以驱动底栏紧凑态
     val homeListState = rememberLazyListState()
     val radioListState = rememberLazyListState()
     val mineListState = rememberLazyListState()
@@ -746,24 +734,23 @@ fun AppNavigation(
         derivedStateOf { showNowPlaying && nowPlayingProgress.value >= 0.999f }
     }
 
-    // 2. 【舞台】：整个屏幕的根容器，使用 Box 以支持 Z 轴方向的层叠排列
+    // 根层叠容器：自下而上依次为页面内容、迷你播放条、导航栏、播放页与各类浮层
     CompositionLocalProvider(
         LocalGlassBackdrop provides backdrop,
-        LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp),
+        LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp), // 页面底部安全留白（需覆盖底栏与迷你播放条）
         LocalPlayerArtwork provides sharedArtworkPair,
         LocalNavigationScrollState provides navigationScroll
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // --- 底层内容区域 ---
+        // 底层页面内容与毛玻璃采样层
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 全屏播放页完全覆盖时跳过整棵底层页面树与全局毛玻璃取景层绘制，避免后台白烧 RenderThread
+                // 全屏播放页完全不透明覆盖时跳过底层页面树与毛玻璃取景层绘制，节省 GPU/RenderThread 开销
                 .drawWithContent { if (!isPlayerOpaque) drawContent() }
                 // 监听列表滚动驱动底栏与迷你播放器变动
                 .nestedScroll(navigationScroll.nestedScrollConnection)
-                // 这里是毛玻璃的“取景层”。
-                // 被包进来的内容会先渲染到底层纹理，再提供给上面的导航栏做模糊采样。
+                // 毛玻璃取景层：内容先渲染到此底层纹理，再供上层悬浮玻璃组件模糊采样
                 .layerBackdrop(backdrop)
         ) {
             if (useRail) {
@@ -810,6 +797,7 @@ fun AppNavigation(
         if (useRail && isSearchExpanded && selectedArtist?.pageIndex != SEARCH_PAGE_INDEX && !hasSearchPlaylistDetail) {
             Box(Modifier.fillMaxWidth().padding(start = railStartPadding + 20.dp, end = railEndPadding + 20.dp)
                 .statusBarsPadding().padding(top = 68.dp), contentAlignment = Alignment.TopCenter) {
+                // 宽屏模式搜索页悬浮输入栏（最大宽度 680.dp、高度 54.dp、胶囊圆角 27.dp）
                 LiquidGlassPanel(Modifier.widthIn(max = 680.dp).fillMaxWidth().height(54.dp), cornerRadius = 27.dp) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_nav_search), null, Modifier.size(20.dp), tint = colors.accent)
@@ -819,10 +807,11 @@ fun AppNavigation(
                 }
             }
         }
-        // --- 顶层悬浮导航栏及独立搜索按钮 ---
+        // 悬浮底部导航栏与搜索按钮
         val isBottomChromeHidden by PlayerEntryPoints.isBottomChromeHidden.collectAsStateWithLifecycle()
         val bottomChromeHideProgressState = animateFloatAsState(
             targetValue = if (isBottomChromeHidden) 1f else 0f,
+            // 底部导航与迷你条整体显隐弹簧（无回弹、刚度 340f）
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 340f),
             label = "bottomChromeHideProgress"
         )
@@ -836,17 +825,15 @@ fun AppNavigation(
                 .align(Alignment.BottomCenter)
                 .zIndex(2f)
                 .drawWithContent { if (!isPlayerOpaque) drawContent() }
-                // 先避开系统导航栏（小白条）
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                // 手动添加上下左右的间距，左右缩进，底部悬浮
+                // 底栏上下边距（底部预留 6.dp 悬浮感并叠加键盘偏移）
                 .padding(top = 16.dp, bottom = 6.dp + animatedImeOffset)
                 .horizontalChromeFrame(horizontalPadding)
-                // 保持自然舒适的视觉高度
                 .height(navBarHeight).testTag("horizontal_glass_dock")
                 .graphicsLayer {
-                    val playerOpenSink = (nowPlayingProgress.value * 1.25f).coerceIn(0f, 1f)
+                    val playerOpenSink = (nowPlayingProgress.value * 1.25f).coerceIn(0f, 1f) // 播放页展开时底栏提前加速淡出
                     val hideProgress = bottomChromeHideProgressState.value
-                    val hintScale = 1f - 0.05f * navigationScroll.scrollHintProgress.value
+                    val hintScale = 1f - 0.05f * navigationScroll.scrollHintProgress.value // 滚动提示触发时轻微缩小（最大 5%）
                     alpha = (1f - playerOpenSink) * (1f - hideProgress)
                     translationY = playerOpenSink * 48.dp.toPx() + hideProgress * 150.dp.toPx()
                     scaleX = hintScale
@@ -858,10 +845,10 @@ fun AppNavigation(
             val ballSize = navBarHeight
             val normalLeftWidth = totalWidth - ballSize - mainSearchGap
 
-            val searchGap = 10.dp
-            val searchBarStartX = totalWidth - ballSize
-            val searchBarTargetX = ballSize + searchGap
-            val searchBarTargetWidth = totalWidth - (ballSize * 2) - (searchGap * 2)
+            val searchGap = 10.dp // 搜索展开态下两侧圆形按钮与中间搜索框的间距
+            val searchBarStartX = totalWidth - ballSize // 搜索按钮收起态起始 X（右侧圆钮位置）
+            val searchBarTargetX = ballSize + searchGap // 搜索栏展开态目标 X（紧邻左侧主导航圆钮）
+            val searchBarTargetWidth = totalWidth - (ballSize * 2) - (searchGap * 2) // 搜索栏展开态宽度
 
             val isLeftBarCompactClickable by remember {
                 derivedStateOf { isSearchExpanded || navigationScroll.compactProgress.value > 0.5f }
@@ -886,6 +873,7 @@ fun AppNavigation(
                             searchProgressState.value,
                             navigationScroll.compactProgress.value
                         )
+                        // 滑块水滴在底栏收起进度达到 35% 前完成淡出
                         val thumbExpansionAlpha = ((1f - collapseProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
                         sliderAlphaState.value * thumbExpansionAlpha
                     }
@@ -894,7 +882,7 @@ fun AppNavigation(
                 val outerBarLayerBlock: GraphicsLayerScope.() -> Unit = {
                     val progress = leftSegmentState.pressProgress.value.coerceIn(0f, 1f)
                     if (size.width > 0f) {
-                        val maxScale = (size.width + 10f.dp.toPx()) / size.width
+                        val maxScale = (size.width + 10f.dp.toPx()) / size.width // 主导航条按压时横向最多额外放大 10.dp
                         val scale = lerp(1f, maxScale, progress)
                         scaleX = scale
                         scaleY = scale
@@ -915,7 +903,7 @@ fun AppNavigation(
                     )
                 }
 
-                // ============ 左侧主导航条 (包含主页、电台、我的，展开搜索或页面下滚时两边同步缩减为球状，只保留当前页图标并居中) ============
+                // 左侧主导航条：包含首页/电台/我的，搜索展开或列表下滚时两边缩减为圆形按钮
                 Box(
                     modifier = Modifier
                         .layout { measurable, constraints ->
@@ -976,7 +964,7 @@ fun AppNavigation(
                         highlightEnabled = isLeftBarDragEnabled,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        // 静息双色精确切割：滑块外黑色线框，滑块内高亮红填充
+                        // 静息双色切割：滑块外主图标色、滑块内强调色填充
                         LiquidGlassDualColorTabs(
                             state = leftSegmentState,
                             containerWidth = normalLeftWidth,
@@ -1027,7 +1015,7 @@ fun AppNavigation(
                     )
                 }
 
-                // ============ 搜索按钮 / 展开成长条的搜索栏 (从右圆球缓缓向左移动并展开成长条) ============
+                // 搜索按钮与展开态搜索栏：从右侧圆形按钮向左侧展开为输入长条
                 val searchInteractionSource = remember { MutableInteractionSource() }
 
                 LaunchedEffect(searchInteractionSource) {
@@ -1137,7 +1125,7 @@ fun AppNavigation(
                     }
                 }
 
-                // ============ 右侧关闭按钮 (在原先搜索位置从小放大) ============
+                // 右侧关闭按钮：搜索展开时在右下角搜索位缩放出现
                 if (showCloseButton) {
                     val closeInteractionSource = remember { MutableInteractionSource() }
 
@@ -1168,13 +1156,13 @@ fun AppNavigation(
                                 cornerRadius = cornerRadius,
                                 surfaceAlpha = GlassDefaults.SurfaceAlphaBright,
                                 isDarkSurface = isDark,
-                                bloomExtraDegrees = -45f,
+                                bloomExtraDegrees = -45f, // 边缘高光偏转角度（度）
                                 layerBlock = {
                                     val progress = closeProgressAnimation.value.coerceIn(0f, 1f)
                                     val appearScale = searchProgressState.value.coerceIn(0f, 1f)
                                     alpha = appearScale
                                     if (appearScale > 0.01f && size.width > 0f) {
-                                        val maxScale = (size.width + 4f.dp.toPx()) / size.width
+                                        val maxScale = (size.width + 4f.dp.toPx()) / size.width // 关闭按钮按压时最多额外放大 4.dp
                                         val pressScale = lerp(1f, maxScale, progress)
                                         scaleX = appearScale * pressScale
                                         scaleY = appearScale * pressScale
@@ -1210,7 +1198,9 @@ fun AppNavigation(
         }
         }
 
+        // 迷你播放条常规态距底部偏移（底栏高度 + 间距 + 键盘偏移）
         val normalMiniPlayerBottom = (if (useRail) 18.dp else 6.dp + navBarHeight + miniPlayerNavGap) + animatedImeOffset
+        // 迷你播放条高度（侧栏模式 60.dp，底栏模式与底栏等高）
         val currentMiniPlayerHeight = if (useRail) 60.dp else navBarHeight
 
         if (isBottomChromeVisible && !useRail) {
@@ -1275,12 +1265,13 @@ fun AppNavigation(
                     .height(currentMiniPlayerHeight)
                     .graphicsLayer {
                         val shellFade = if (showNowPlaying) {
+                            // 播放页展开期间提前淡出迷你播放条外壳
                             (1f - playerBackgroundAlpha(nowPlayingProgress.value) * 1.15f).coerceIn(0f, 1f)
                         } else 1f
                         val hideProgress = bottomChromeHideProgressState.value
-                        val hintScale = 1f - 0.05f * navigationScroll.scrollHintProgress.value
+                        val hintScale = 1f - 0.05f * navigationScroll.scrollHintProgress.value // 滚动提示触发时轻微缩小（最大 5%）
                         alpha = shellFade * (1f - hideProgress)
-                        translationY = hideProgress * 180.dp.toPx()
+                        translationY = hideProgress * 180.dp.toPx() // 隐藏底部组件时向下移出视口距离
                         scaleX = hintScale
                         scaleY = hintScale
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -1388,6 +1379,7 @@ fun AppNavigation(
                     val miniH = miniPlayerBoundsRef.container?.height ?: with(rootDensity) { navBarHeight.toPx() }
                     val travelPx = (hostH - miniH).coerceAtLeast(1f)
                     val progressVelocity = -velocityY / travelPx
+                    // 下拉关闭速度阈值（580.dp/s）、上推回弹速度阈值（-260.dp/s）与进度阈值（0.78f）
                     val flingClosePx = with(rootDensity) { 580.dp.toPx() }
                     val flingOpenPx = -with(rootDensity) { 260.dp.toPx() }
                     val shouldClose = velocityY > flingClosePx ||
@@ -1400,6 +1392,7 @@ fun AppNavigation(
                             nowPlayingProgress.animateTo(
                                 targetValue = 1f,
                                 initialVelocity = progressVelocity,
+                                // 松手回弹展开播放页的弹簧参数（无回弹阻尼、刚度 360f）
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = 360f,
@@ -1448,7 +1441,7 @@ fun AppNavigation(
 
         BackHandler(enabled = showNowPlaying) { closePlayer() }
 
-        // 依据 iOS 26 解析图复刻的液态玻璃断网重试小弹窗（物理采样底层真实的动态 Backdrop）
+        // 液态玻璃断网重试弹窗（采样底层页面 Backdrop）
         Ios26NetworkOfflineDialog(
             isVisible = showOfflineDialog,
             backdrop = backdrop,
@@ -1465,19 +1458,11 @@ fun AppNavigation(
 /**
  * 一级页面内容区域（首页 / 电台 / 我的 / 搜索）。
  *
- * 单独抽成组件是为了**收窄重组范围**：[selectedIndex] 以 [State] 形式传入、在本组件内部读取，
- * 因此切换页面时只有这一块需要重新执行，导航栏、迷你播放条、各类覆盖层（正在播放、
- * 账号抽屉、歌手详情、断网弹窗）都不会被牵连重组。
+ * 单独抽成组件是为了收窄重组范围：[selectedIndex] 以 [State] 形式传入并在组件内部读取，
+ * 切换页面时仅此区域重组，外部导航栏、迷你播放条及各类浮层不受影响。
  *
- * 页面采用「首次访问即常驻」策略，而不是每次切换都销毁重建：
- * 逐帧 trace 显示，切换页面那一帧的 `Compose:onForgotten`（销毁旧页）单帧可达 40ms 以上，
- * 与「首次组合新页」叠加后整帧达 85ms —— 这正是切换时页面与按钮动效一起卡顿一下的根因。
- * 页面内的液态玻璃节点会各自持有采样图层，销毁/重建意味着反复释放与重建这些 GPU 资源。
- *
- * 因此：访问过的页面全部保留在组合树中，状态与玻璃图层都不再抖振；
- * 靠下面的两个修饰符让非当前页**零开销**地待着：
- * - [drawWithContent] 跳过整页绘制（不产生 RenderThread / GPU 开销）
- * - [offset] 把整页挪到屏幕外（不参与命中测试，隐藏页不会吞掉当前页的手势）
+ * 已访问页面保留在组合树中而不销毁重建，避免反复触发组件释放/重建及内部玻璃图层资源的开销；
+ * 非当前页通过 [drawWithContent] 跳过绘制，并通过 [offset] 移出父容器范围以跳过触摸命中测试。
  */
 /**
  * 一级页面横向切页过渡描述
@@ -1522,12 +1507,12 @@ private fun AppPageContent(
     }
     val animatedPageBackgroundColor by animateColorAsState(
         targetValue = pageBackgroundColor,
+        // 页面背景色切换弹簧（阻尼比 0.9f，刚度 450f）
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 450f),
         label = "pageBgColor"
     )
 
-    // 页面常驻意味着离开搜索页后它的输入框仍然可聚焦，
-    // 因此显式清一次焦点，保证键盘随页面一起收起（与原先「切走即销毁」的行为一致）。
+    // 页面常驻会保留搜索输入框节点，切离搜索页时显式清除焦点以同步收起软键盘
     val focusManager = LocalFocusManager.current
     LaunchedEffect(index) {
         if (index != SEARCH_PAGE_INDEX) {
@@ -1535,7 +1520,7 @@ private fun AppPageContent(
         }
     }
 
-    // ── 左右滑动切换动画状态 ──
+    // 一级页面横向切换动画状态
     var displayedIndex by rememberSaveable { mutableIntStateOf(index) }
     var transitionState by remember { mutableStateOf<PageSlideTransition?>(null) }
     val slideProgress = remember { Animatable(0f) }
@@ -1550,6 +1535,7 @@ private fun AppPageContent(
             try {
                 slideProgress.animateTo(
                     targetValue = 1f,
+                    // 一级页面横向切页弹簧参数（阻尼比 0.92f，刚度 340f）
                     animationSpec = spring(
                         dampingRatio = 0.92f,
                         stiffness = 340f
@@ -1558,7 +1544,7 @@ private fun AppPageContent(
             } finally {
                 displayedIndex = to
                 transitionState = null
-                // 切完成之后立即退出切出页的歌单页和艺人页（切页滑动期间保持二级页面随宿主页面一起滑出）
+                // 切页动画完成后退出切出页的歌单页和艺人页（滑动期间保持二级页随宿主一起滑出）
                 when (from) {
                     0 -> homeViewModel.closePlaylistDetail()
                     1 -> radioViewModel.closePlaylistDetail()
@@ -1570,8 +1556,7 @@ private fun AppPageContent(
         }
     }
 
-    // 已访问过的页面集合。用普通 Set 而非 snapshot 状态：它只在组合期读写，
-    // 不需要（也不应该）驱动重组。首页在启动时就已挂载。
+    // 已访问过的页面集合。用普通 Set 而非 snapshot 状态：只在组合期读写，不驱动额外重组
     val mountedPages = remember { mutableSetOf(index) }
     mountedPages.add(index)
     mountedPages.add(displayedIndex)
@@ -1702,11 +1687,13 @@ private fun AppPageContent(
                         visible = pageArtist != null,
                         enter = slideInHorizontally(
                             initialOffsetX = { fullWidth -> fullWidth },
+                            // 艺人详情页滑入弹簧参数（阻尼比 0.92f，刚度 260f）
                             animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
                         ),
                         exit = if (isPageForeground) {
                             slideOutHorizontally(
                                 targetOffsetX = { fullWidth -> fullWidth },
+                                // 艺人详情页滑出弹簧参数（阻尼比 0.92f，刚度 300f）
                                 animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
                             )
                         } else {
@@ -1772,6 +1759,7 @@ private fun SearchPageTopHeader(
     }
 }
 
+/** 账号与登录全屏抽屉浮层（支持背景模糊遮罩与下拉手势关闭）。 */
 @Composable
 private fun AccountFullScreenOverlay(
     visible: Boolean,
@@ -1788,8 +1776,8 @@ private fun AccountFullScreenOverlay(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val hostHeightPx = with(density) { maxHeight.toPx() }
         var measuredPanelHeightPx by remember { mutableFloatStateOf(0f) }
-        val panelHeightPx = measuredPanelHeightPx.takeIf { it > 0f } ?: (hostHeightPx * 0.95f)
-        val hiddenOffsetPx = panelHeightPx + with(density) { 24.dp.toPx() }
+        val panelHeightPx = measuredPanelHeightPx.takeIf { it > 0f } ?: (hostHeightPx * 0.95f) // 抽屉默认占屏幕高度比例 95%
+        val hiddenOffsetPx = panelHeightPx + with(density) { 24.dp.toPx() } // 隐藏时额外下移 24.dp 以露出阴影完全移出屏幕
 
         val panelOffsetFraction = remember { Animatable(1f) }
         var dragOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -1797,6 +1785,7 @@ private fun AccountFullScreenOverlay(
 
         val settledDragOffsetPx by animateFloatAsState(
             targetValue = if (isDragging || !visible) dragOffsetPx else 0f,
+            // 抽屉松手回弹弹簧参数
             animationSpec = spring(stiffness = 550f, dampingRatio = 0.84f),
             label = "accountPanelDragOffset"
         )
@@ -1811,11 +1800,13 @@ private fun AccountFullScreenOverlay(
                 dragOffsetPx = 0f
                 panelOffsetFraction.animateTo(
                     targetValue = 0f,
+                    // 抽屉打开弹簧（阻尼比 0.84f，刚度 550f）
                     animationSpec = spring(dampingRatio = 0.84f, stiffness = 550f)
                 )
             } else {
                 panelOffsetFraction.animateTo(
                     targetValue = 1f,
+                    // 抽屉关闭弹簧（阻尼比 0.88f，刚度 500f）
                     animationSpec = spring(dampingRatio = 0.88f, stiffness = 500f)
                 )
                 onDismissed()
@@ -1835,10 +1826,11 @@ private fun AccountFullScreenOverlay(
                     backdrop = backdrop,
                     shape = { RoundedRectangle(0.dp) },
                     effects = {
-                        blur(8f.dp.toPx())
+                        blur(8f.dp.toPx()) // 遮罩背景模糊半径（dp）
                         vibrancy()
                     },
                     onDrawSurface = {
+                        // 深浅色模式遮罩压暗透明度
                         drawRect(Color.Black.copy(alpha = if (isDark) 0.56f else 0.32f))
                     }
                 )
@@ -1862,7 +1854,7 @@ private fun AccountFullScreenOverlay(
         Box(
             modifier = Modifier
                 .align(if (centeredPanel) Alignment.Center else Alignment.BottomCenter)
-                .widthIn(max = if (centeredPanel) 560.dp else Dp.Unspecified)
+                .widthIn(max = if (centeredPanel) 560.dp else Dp.Unspecified) // 宽屏居中卡片最大宽度 560.dp
                 .fillMaxWidth()
                 .fillMaxHeight(if (centeredPanel) 0.88f else 0.95f).testTag("account_glass_surface")
                 .onGloballyPositioned { measuredPanelHeightPx = it.size.height.toFloat() }
@@ -1906,6 +1898,7 @@ private fun AccountFullScreenOverlay(
                         onDragStarted = { isDragging = true },
                         onDragStopped = { velocity ->
                             isDragging = false
+                            // 下拉关闭阈值：位移超过抽屉高度 16% 或向下甩动速度超过 1100.dp/s
                             val dismissByDistance = dragOffsetPx > panelHeightPx * 0.16f
                             val dismissByVelocity = velocity > with(density) { 1100.dp.toPx() }
                             if (dismissByDistance || dismissByVelocity) {
@@ -1945,9 +1938,6 @@ private fun LargePageTitle(
     )
 }
 
-/**
- * 搜索模式底部迷你播放条。
- */
 /**
  * 顶部/底部搜索输入框内容。
  *
@@ -2183,7 +2173,7 @@ private fun MovingPlayerArtwork(
     val sharedArtwork = LocalPlayerArtwork.current
     val baseWidthDp = with(density) { targetBounds.width.coerceAtLeast(1f).toDp() }
     val baseHeightDp = with(density) { targetBounds.height.coerceAtLeast(1f).toDp() }
-    val sourceCornerPx = with(density) { 7.dp.toPx() }
+    val sourceCornerPx = with(density) { 7.dp.toPx() } // 迷你条封面初始圆角（与 MiniPlayerArtwork 对齐）
     val targetCornerPx = with(density) { targetCorner.toPx() }
     val targetShadowPx = with(density) { targetShadow.toPx() }
 
@@ -2229,6 +2219,7 @@ private fun MovingPlayerArtwork(
                 clip = true
 
                 shadowElevation = (targetShadowPx * p) / currentScaleX
+                // 展开过渡期间封面的环境光与主投影透明度
                 ambientShadowColor = Color.Black.copy(alpha = 0.65f)
                 spotShadowColor = Color.Black.copy(alpha = 0.80f)
             }
@@ -2271,6 +2262,7 @@ private data class MiniPlayerDisplayState(
     val canSwitch: Boolean
 )
 
+/** 底部悬浮液态玻璃迷你播放条：支持左右滑动切歌、点击展开全屏播放页及紧凑态收缩动画。 */
 @Composable
 internal fun SearchMiniPlayerBar(
     backdrop: Backdrop,
@@ -2289,7 +2281,7 @@ internal fun SearchMiniPlayerBar(
     hideArtwork: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // 仅订阅曲目、播放状态与切歌能力，彻底屏蔽每 500ms 一次的 currentPositionMs 推送，
+    // 仅订阅曲目、播放状态与切歌能力，屏蔽每 500ms 一次的 currentPositionMs 推送，
     // 避免整个液态玻璃迷你播放条在播放期间持续重组。
     val displayState by remember(playbackStateFlow) {
         playbackStateFlow
@@ -2323,7 +2315,7 @@ internal fun SearchMiniPlayerBar(
     var isTransitioning by remember { mutableStateOf(false) }
     var transitionJob by remember { mutableStateOf<Job?>(null) }
 
-    // 左右滑动手势状态：实时位移与平启动画控制器
+    // 左右滑动手势状态：实时位移与动画控制器
     var isDragging by remember { mutableStateOf(false) }
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
     val animOffsetX = remember { Animatable(0f) }
@@ -2352,8 +2344,8 @@ internal fun SearchMiniPlayerBar(
         ?: displayedTrack?.album?.coverUrl
     val title = displayedTrack?.title ?: "未在播放"
 
-    val swipeThreshold = with(density) { 36.dp.toPx() }
-    val exitDistance = with(density) { 220.dp.toPx() }
+    val swipeThreshold = with(density) { 36.dp.toPx() } // 左右滑动触发切歌的距离阈值
+    val exitDistance = with(density) { 220.dp.toPx() } // 旧歌曲滑出与新歌曲滑入的水平位移距离
 
     val handleDragRelease: (Float) -> Unit = { finalDrag ->
         transitionJob?.cancel()
@@ -2371,8 +2363,7 @@ internal fun SearchMiniPlayerBar(
                 val releaseAlpha = (1f - (abs(finalDrag) / exitDistance) * 0.35f).coerceIn(0.65f, 1f)
                 animAlpha.snapTo(releaseAlpha)
 
-                // 2. 只有在 animOffsetX 与 animAlpha 已经对齐 finalDrag 时，才解除 isDragging 并重置 dragOffsetX。
-                // 此时 translationX 从 dragOffsetX (finalDrag) 切换至 animOffsetX.value (finalDrag)，差值为 0，彻底杜绝闪烁！
+                // 2. 仅在 animOffsetX 与 animAlpha 对齐 finalDrag 后再解除 isDragging 并清零 dragOffsetX，保证衔接帧连续无闪烁
                 isDragging = false
                 dragOffsetX = 0f
 
@@ -2393,7 +2384,7 @@ internal fun SearchMiniPlayerBar(
 
                 val oldTrackId = displayedTrack?.id
 
-                // 4. 将位移瞬移到对侧入口，注意此时 alpha 保持为 0f，对用户绝对隐形！
+                // 4. 瞬移至对侧入口等待切歌，此时 alpha 保持为 0f 保持不可见
                 animOffsetX.snapTo(targetEnter)
                 animAlpha.snapTo(0f)
 
@@ -2404,7 +2395,7 @@ internal fun SearchMiniPlayerBar(
                     onPreviousClick()
                 }
 
-                // 6. 等待新歌曲就绪（超时放宽至 600ms，确保异步分发时不因超时退化）
+                // 6. 等待新曲目状态推送的超时上限（600ms），超时后走原地渐入兜底
                 val newTrack = withTimeoutOrNull(600) {
                     playbackStateFlow
                         .map { it.currentTrack }
@@ -2413,10 +2404,10 @@ internal fun SearchMiniPlayerBar(
                 }
 
                 if (newTrack != null) {
-                    // 在透明隐形状态下切换曲目，无任何视觉撕裂
+                    // 在透明状态下切换曲目后再滑入
                     displayedTrack = newTrack
 
-                    // 7. 新歌曲（封面+歌名）从对侧优雅滑入复位，带有自然弹簧感
+                    // 7. 新曲目从对侧弹簧滑入并淡入复位（阻尼比 0.82f，刚度 450f）
                     val enterMove = launch {
                         animOffsetX.animateTo(
                             targetValue = 0f,
@@ -2434,7 +2425,7 @@ internal fun SearchMiniPlayerBar(
                     }
                     joinAll(enterMove, enterFade)
                 } else {
-                    // 超时未就绪兜底：在原位渐入当前曲目，绝不把旧歌曲在对侧滑入
+                    // 超时兜底：在原位渐入当前曲目，避免旧曲目再次在对侧滑入
                     displayedTrack = playbackStateFlow.value.currentTrack
                     animOffsetX.snapTo(0f)
                     animAlpha.animateTo(1f, tween(durationMillis = 150))
@@ -2452,6 +2443,7 @@ internal fun SearchMiniPlayerBar(
                 val reboundMove = launch {
                     animOffsetX.animateTo(
                         targetValue = 0f,
+                        // 未达切歌阈值时的回弹弹簧参数
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioMediumBouncy,
                             stiffness = Spring.StiffnessMedium
@@ -2489,7 +2481,7 @@ internal fun SearchMiniPlayerBar(
                 enabled = hasTrack && !isTransitioning && enabled,
                 isDarkSurface = isDark
             )
-            // 移除默认水波纹（灰色），使用无 indication 的点击，避免按压变灰
+            // 使用无 indication 的点击，避免按压叠加默认灰色水波纹
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -2518,7 +2510,7 @@ internal fun SearchMiniPlayerBar(
                         if (!hasTrack || !enabled) return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            // 立即消费 Down 事件，彻底切断底层列表接收按压，杜绝底层水波纹与灰色渗透！
+                            // 立即消费 Down 事件，拦截底层列表按压与水波纹透传
                             down.consume()
                             var totalDragX = 0f
                             var isDrag = false
@@ -2526,7 +2518,7 @@ internal fun SearchMiniPlayerBar(
                             val touchSlop = viewConfiguration.touchSlop
                             val pointerId = down.id
 
-                            // 关键：手势重新开始时，立即将 dragOffsetX 重置为 0，防止历史手势残存数值！
+                            // 手势启动时清零 dragOffsetX，避免残留上次拖拽位移
                             dragOffsetX = 0f
 
                             while (true) {
@@ -2557,9 +2549,8 @@ internal fun SearchMiniPlayerBar(
                                         transitionJob?.cancel()
                                         transitionJob = null
                                         isTransitioning = false
-                                        // 关键：在触发拖拽的第一帧，必须在开启 isDragging 前立即同步更新 dragOffsetX！
-                                        // 绝不能进入下个分支才更新，彻底解决“首帧读取历史残存位移导致在中间闪现”的问题！
-                                        val effectiveDeltaX = if (canSwitch) deltaX else deltaX * 0.25f
+                                        // 首次进入拖拽态时同步写入 dragOffsetX 后再置位 isDragging，避免首帧位移跳变
+                                        val effectiveDeltaX = if (canSwitch) deltaX else deltaX * 0.25f // 无法切歌时阻尼系数 0.25f
                                         totalDragX = effectiveDeltaX
                                         dragOffsetX = totalDragX
                                         isDragging = true
@@ -2598,6 +2589,7 @@ internal fun SearchMiniPlayerBar(
                         imageUrl = currentArtworkUrl,
                         modifier = Modifier
                             .layout { measurable, _ ->
+                                // 紧凑态收缩期间封面尺寸从 34.dp 缩至 30.dp
                                 val sizePx = lerpDp(34.dp, 30.dp, contentProgress.value)
                                     .roundToPx()
                                     .coerceAtLeast(1)
@@ -2645,12 +2637,12 @@ internal fun SearchMiniPlayerBar(
                 }
             }
 
-            // 播放列表图标（在展开状态展示，紧凑状态随 contentProgress 在布局/绘制阶段平滑缩小并淡出，避免外层 SearchMiniPlayerBar 重组）
+            // 播放列表图标（在展开状态展示，紧凑状态随 contentProgress 在布局/绘制阶段缩小并淡出，避免外层 SearchMiniPlayerBar 重组）
             Box(
                 modifier = Modifier
                     .layout { measurable, _ ->
                         val visibility = (1f - contentProgress.value).coerceIn(0f, 1f)
-                        val iconBoxSizePx = 28.dp.roundToPx()
+                        val iconBoxSizePx = 28.dp.roundToPx() // 右侧操作按钮槽位尺寸
                         val boxWidthPx = if (visibility > 0.001f) (28.dp * visibility).roundToPx() else 0
                         val placeable = measurable.measure(Constraints.fixed(boxWidthPx, iconBoxSizePx))
                         layout(boxWidthPx, iconBoxSizePx) {
@@ -2709,7 +2701,7 @@ internal fun SearchMiniPlayerBar(
                 }
             )
 
-            // 播放暂停在最靠右，外面加上一个圈，显示播放进度，与组件的圆角和大小对齐
+            // 播放暂停按钮：外圈包裹播放进度圆环
             MiniPlayerProgressPlayButton(
                 playbackStateFlow = playbackStateFlow,
                 isPlaying = isPlaying,
@@ -2724,9 +2716,8 @@ internal fun SearchMiniPlayerBar(
 
 /**
  * 迷你播放条右侧的播放/暂停按钮：
- * 外层包裹播放进度指示圆环，与组件的大小与圆角对齐。
- * 进度订阅与动画下沉到此组件，并在独立的 graphicsLayer Canvas 绘制阶段读取进度值，
- * 避免连带外层 SearchMiniPlayerBar 及整块 liquidGlass(backdrop) 逐帧重组与重录。
+ * 外层包裹播放进度指示圆环，在独立的 graphicsLayer Canvas 绘制阶段读取进度，
+ * 避免连带外层 SearchMiniPlayerBar 及 liquidGlass(backdrop) 逐帧重组与重录。
  */
 @Composable
 private fun MiniPlayerProgressPlayButton(
@@ -2746,7 +2737,7 @@ private fun MiniPlayerProgressPlayButton(
     } else {
         if (hasTrack) Color(0x1F000000) else Color(0x0F000000)
     }
-    val strokeWidth = 1.6.dp
+    val strokeWidth = 1.6.dp // 外圈进度条线宽
 
     val targetProgress by remember(playbackStateFlow, isProgressActive) {
         if (!isProgressActive) {
@@ -2769,9 +2760,8 @@ private fun MiniPlayerProgressPlayButton(
             }
         } else 0f
     )
-    // 28dp 迷你圆环周长约 83dp，正常播放每 500ms 仅推进约 0.5px，无需跑 60/144fps 连续插值：
-    // 常规推进直接 snapTo（2Hz 重绘、视觉完全连贯），仅在切歌或拖动大幅跳变时做弹簧过渡，
-    // 可彻底消除非首页播放态静止时的 RenderThread 持续空耗。
+    // 28dp 圆环正常播放每 500ms 仅推进约 0.5px：常规推进直接 snapTo，
+    // 仅在切歌或拖动跳变（差值 > 2.5%）时启用弹簧过渡，减少静止播放期间 RenderThread 空耗
     val progressAnim = remember { Animatable(targetProgress) }
     LaunchedEffect(targetProgress, isPlaying) {
         val delta = abs(targetProgress - progressAnim.value)
@@ -2882,9 +2872,7 @@ private fun MiniPlayerArtwork(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                // mini 条只有 30dp：用 128px 缩略图 + 256px 解码上限，绝不用 1200px 原图。
-                // 之前 fallback 直接发 rememberHighResArtworkRequest（去 param、size 1200），
-                // 冷启动时和海报墙抢带宽抢解码，主线程掉帧、手势看着像“点不动”。
+                // 迷你条显示尺寸为 30~34dp：未打开全屏播放页时拉取 128px 缩略图并限制 256px 解码上限，降低内存与解码开销
                 val context = LocalContext.current
                 val thumbRequest = remember(imageUrl) {
                     ImageRequest.Builder(context)
@@ -2912,15 +2900,8 @@ private fun MiniPlayerArtwork(
     }
 }
 
-
-
-
-
 /**
- * 应用页面底色
- *
- * 主页 / 电台 / 我的 这几个入口目前还没有独立内容页时，
- * 先用纯白底保持和 Apple Music 接近的简洁观感。
+ * 一级页面默认主题背景占位容器。
  *
  * @param modifier 修饰符
  */

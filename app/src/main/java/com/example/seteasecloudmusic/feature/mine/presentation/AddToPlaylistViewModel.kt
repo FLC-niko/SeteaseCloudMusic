@@ -28,6 +28,7 @@ data class AddToPlaylistUiState(
     val errorMessage: String? = null
 )
 
+/** 收藏到歌单弹窗 ViewModel：负责加载自建歌单、检测单曲所在歌单以及执行单首/批量收藏与新建歌单。 */
 @HiltViewModel
 class AddToPlaylistViewModel @Inject constructor(
     private val authStateProvider: AuthStateProvider,
@@ -117,7 +118,7 @@ class AddToPlaylistViewModel @Inject constructor(
                 existing.add(pl.id)
             }
         }
-        // 彻底重置为当前歌曲的已添加集合，绝不能在上一首歌的基础上累加！
+        // 重置为当前歌曲的已添加歌单集合，避免残留上一首歌曲的选中状态
         _uiState.update { it.copy(existingPlaylistIds = existing) }
 
         // 后台检查其余歌单中的完整曲目

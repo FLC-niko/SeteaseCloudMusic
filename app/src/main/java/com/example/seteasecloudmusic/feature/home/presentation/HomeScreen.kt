@@ -146,11 +146,16 @@ private val HomeDivider: Color
 private val HomeAccent: Color
     @Composable
     get() = AppTheme.colors.accent
+// 海报墙加载前或空白间隙的深色底色
 private val PosterWallSurface = Color(0xFF1C1C22)
 
+/**
+ * 首页路由入口：绑定 [HomeViewModel] 状态，处理推荐卡片点击播放与歌单详情打开。
+ */
 @Composable
 fun HomeRoute(
     topContentPadding: Dp,
+    // 底部留白高度（为悬浮底栏与迷你播放器预留空间）
     bottomContentPadding: Dp = 180.dp,
     avatarUrl: String? = null,
     displayName: String? = null,
@@ -205,6 +210,9 @@ fun HomeRoute(
     )
 }
 
+/**
+ * 首页主界面布局：包含渐进模糊顶栏、每日推荐海报墙、喜好歌曲分页列表及推荐歌单大卡片。
+ */
 @Composable
 internal fun HomeScreenContent(
     uiState: HomeUiState,
@@ -280,12 +288,14 @@ internal fun HomeScreenContent(
                     isRefreshing = uiState.isLoading && uiState.tracks.isNotEmpty(),
                     onRefresh = onRefreshClick,
                     modifier = Modifier.fillMaxSize(),
+                    // 下拉指示器顶部偏移（状态栏高度 + 顶栏高度 56dp）
                     contentPadding = PaddingValues(top = statusBarHeight + 56.dp)
                 ) {
                 AdaptiveSectionColumn(
                     state = lazyListState,
                     modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
+                // 列表顶部内边距（状态栏高度 + 8dp 间距）
                 top = statusBarHeight + 8.dp,
                 bottom = bottomContentPadding
             )
@@ -420,7 +430,7 @@ internal fun HomeScreenContent(
 
         }
         }
-        // 覆盖在顶部的 Apple Music 风格渐进式高斯模糊导航栏
+        // 顶部渐进式高斯模糊导航栏
         HomeCollapsedTopBar(
             collapseFractionProvider = { collapseFractionState.value },
             statusBarHeight = statusBarHeight,
@@ -450,11 +460,13 @@ internal fun HomeScreenContent(
             visible = uiState.activePlaylistDetail != null,
             enter = slideInHorizontally(
                 initialOffsetX = { fullWidth -> fullWidth },
+                // 详情页滑入弹簧参数：dampingRatio 控制回弹，stiffness 控制响应速度
                 animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
             ),
             exit = if (isForeground) {
                 slideOutHorizontally(
                     targetOffsetX = { fullWidth -> fullWidth },
+                    // 详情页滑出弹簧参数（略高刚度以加快退出）
                     animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
                 )
             } else {
@@ -514,6 +526,7 @@ private fun HomeCollapsedTopBar(
             UserAvatarButton(
                 avatarUrl = avatarUrl,
                 displayName = displayName,
+                // 顶栏右侧头像尺寸
                 size = 46.dp,
                 onClick = { onAvatarClick?.invoke() }
             )
@@ -534,8 +547,11 @@ private fun DailyRecommendPosterWall(
 
     Box(
         modifier = modifier
+            // 宽屏限高 380dp，避免海报墙纵向占比过大
             .heightIn(max = if (LocalAdaptiveWindow.current.width >= 600.dp) 380.dp else Dp.Unspecified)
+            // 海报墙卡片宽高比
             .aspectRatio(1.08f)
+            // 海报墙卡片超椭圆圆角
             .squircleClip(24.dp)
             .background(PosterWallSurface)
             .clickable(onClick = onClick)
@@ -552,6 +568,7 @@ private fun DailyRecommendPosterWall(
                 .background(
                     Brush.verticalGradient(
                         0f to Color.Transparent,
+                        // 底部标题可读性暗角渐变：从 50% 高度开始过渡至 72% 不透明黑
                         0.50f to Color.Transparent,
                         1f to Color.Black.copy(alpha = 0.72f)
                     )
@@ -589,8 +606,7 @@ internal fun ScrollingPosterWall(
 ) {
     if (covers.isEmpty()) return
 
-    // 可挂起、断点续播的进度状态：当页面切走、滑出视口、被全屏播放器/详情页遮挡或退到后台时
-    // 彻底停止 Choreographer 帧回调，恢复可见时从原位置无缝继续，既保零跳变又彻底消除空载重绘。
+    // 可暂停的滚动进度状态：页面切走、滑出视口或退后台时停止帧回调，恢复可见时从当前进度继续以避免跳变与后台空转
     val scrollProgressState = remember { mutableFloatStateOf(0f) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val isLifecycleResumed by remember(lifecycleOwner) {
@@ -601,10 +617,12 @@ internal fun ScrollingPosterWall(
     LaunchedEffect(shouldAnimate) {
         if (!shouldAnimate) return@LaunchedEffect
         var lastFrameNanos = 0L
+        // 单周期滚动时长（ns，64 秒；数值越小滚动越快）
         val cycleDurationNanos = 64_000_000_000.0
         while (isActive) {
             withFrameNanos { frameNanos ->
                 if (lastFrameNanos != 0L) {
+                    // 单帧时间步长上限 100ms，防止切后台恢复时大幅跳帧
                     val dtNanos = (frameNanos - lastFrameNanos).coerceIn(0L, 100_000_000L)
                     scrollProgressState.floatValue =
                         (scrollProgressState.floatValue + (dtNanos / cycleDurationNanos).toFloat()) % 1f
@@ -620,21 +638,19 @@ internal fun ScrollingPosterWall(
         val density = LocalDensity.current
         val distinctCovers = remember(covers) { covers.distinct() }
 
-        // 5 列，列宽为卡片宽度的 38%
+        // 单列宽度占卡片宽度的 38%，共 5 列以覆盖旋转后的视口
         val colWidth = maxWidth * 0.38f
         val colCount = 5
 
-        // 中间 3 列均分所有封面池
-        // 启动性能上限：单列最多 5 张。之前是 8×3=120 个并发图片请求 + 120 个 crossfade 动画。
-        // 必须保留 3 组循环（totalRepetitions = 3）：因为奇数列初始向上偏移 1 周期（-1f * cycleHeightPx），
-        // 若只有 2 组循环，奇数列底部半区会完全镂空，在 30° 旋转后暴露 2 个空白格子。
+        // 单列周期限制 4~5 张封面以控制并发图片解码数量；
+        // 保留 3 组重复循环：奇数列初始向上偏移 1 周期，2 组循环会在 30° 旋转后于底部暴露空白区域
         val cycleCount = remember(distinctCovers) {
             maxOf(distinctCovers.size / 3, 4).coerceAtMost(5)
         }
         val cycleHeight = colWidth * cycleCount
         val cycleHeightPx = with(density) { cycleHeight.toPx() }
 
-        // 重复 3 组循环，总高度充足覆盖倾斜视口与滑动偏移
+        // 重复 3 组循环，确保旋转与偏移后仍能覆盖完整视口
         val totalRepetitions = 3
         val totalRows = cycleCount * totalRepetitions
         val canvasWidth = colWidth * colCount
@@ -649,6 +665,7 @@ internal fun ScrollingPosterWall(
                     .wrapContentSize(unbounded = true, align = Alignment.Center)
                     .requiredSize(width = canvasWidth, height = canvasHeight)
                     .graphicsLayer {
+                        // 海报墙整体顺时针旋转角度（度）
                         rotationZ = 30f
                     }
             ) {
@@ -671,6 +688,7 @@ internal fun ScrollingPosterWall(
                                         val outerIndex = if (colIndex == 0) 0 else 1
                                         (outerIndex * (count / 2) + i) % count
                                     }
+                                    // 海报墙单元格缩略图目标边长（px）
                                     distinctCovers[index].toCoverThumbnailUrl(280)
                                 }
                             }
@@ -723,8 +741,7 @@ internal fun PosterCoverCell(
         else {
             ImageRequest.Builder(context)
                 .data(imageUrl)
-                // 海报墙是 100dp 级小格：关 crossfade，省掉几十个并发的 alpha 动画，
-                // 否则加载期每一帧都在做几十层混合，miniPlayer 手势会被掉帧吞掉。
+                // 关闭 crossfade 渐变，避免大量小格并发加载时产生额外 alpha 混合开销
                 .crossfade(false)
                 .build()
         }
@@ -889,7 +906,7 @@ data class BigCardItem(
 )
 
 /**
- * 单行自适应字号标题：当标题过长一行放不下时，动态计算并缩小字号，确保刚好放满一行或略短，绝不换行
+ * 单行自适应字号标题：超出可用宽度时按步长缩小字号，保持单行显示
  */
 @Composable
 private fun AutoFitSingleLineTitle(
@@ -924,12 +941,12 @@ private fun AutoFitSingleLineTitle(
                 if (fullWidth <= availableWidthPx) {
                     maxFontSize
                 } else {
-                    // 按比例缩放，并乘 0.98 预留 2% 安全微小余量，确保刚好放满一行或略短
+                    // 按宽度比例初算字号，乘 0.98 预留微小边距
                     val ratio = availableWidthPx.toFloat() / fullWidth.toFloat()
                     var currentSp = (maxFontSize.value * ratio * 0.98f)
                         .coerceIn(minFontSize.value, maxFontSize.value)
 
-                    // 步进微调：若仍超出可用宽度则逐步递减 0.5sp，直至严丝合缝放下一行
+                    // 若仍超宽则以 0.5sp 为步长递减至单行可容纳
                     while (currentSp > minFontSize.value) {
                         val testWidth = textMeasurer.measure(
                             text = text,
@@ -996,6 +1013,7 @@ private fun FavoriteRecommendedSongsSection(
     }
 
     val songColumns = remember(displayTracks) {
+        // 最多展示 18 首，每列 4 首横向分页
         displayTracks.take(18).chunked(4)
     }
 
@@ -1019,10 +1037,12 @@ private fun FavoriteRecommendedSongsSection(
             state = pagerState,
             pageSize = object : PageSize {
                 override fun androidx.compose.ui.unit.Density.calculateMainAxisPageSize(availableSpace: Int, pageSpacing: Int): Int {
+                    // 按每栏最小宽度 300dp 计算同屏可显示列数
                     val columns = (availableSpace / 300.dp.roundToPx()).coerceAtLeast(1)
                     return (availableSpace - pageSpacing * (columns - 1)) / columns
                 }
             },
+            // 右侧预留 44dp 露出下一页边缘，列间距 16dp
             contentPadding = PaddingValues(start = 20.dp, end = 44.dp),
             pageSpacing = 16.dp,
             modifier = Modifier.fillMaxWidth()
@@ -1067,6 +1087,7 @@ private fun SongRecommendRowItem(
     ) {
         Box(
             modifier = Modifier
+                // 喜好推荐单曲缩略图尺寸与圆角
                 .size(54.dp)
                 .squircleClip(8.dp)
                 .background(AppTheme.colors.placeholder),
@@ -1331,12 +1352,14 @@ private fun BigCardPlaylistItem(
 
     val animatedExtendColor by animateColorAsState(
         targetValue = extendColor,
+        // 卡片底部取色背景过渡时长（ms）
         animationSpec = tween(durationMillis = 350),
         label = "bigCardExtendBg"
     )
 
     Box(
         modifier = modifier
+            // 推荐歌单大卡片宽高与超椭圆圆角
             .width(160.dp)
             .height(215.dp)
             .squircleClip(18.dp)
@@ -1358,7 +1381,7 @@ private fun BigCardPlaylistItem(
                     modifier = Modifier.fillMaxSize()
                 )
             } else if (card.type == BigCardType.PRIVATE_DJ) {
-                // 官方同款手绘素描质感插画兜底
+                // 私人 DJ 无封面时的手绘线条默认插画
                 PrivateDjCardArtwork()
             } else {
                 Box(
@@ -1369,7 +1392,7 @@ private fun BigCardPlaylistItem(
             }
         }
 
-        // 从正方形封面下沿柔和过渡到底部取色延伸区域
+        // 封面下沿到底部取色区域的纵向渐变遮罩（54% 处开始过渡，74% 处完全转为背景色）
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1462,6 +1485,7 @@ private fun SimiSongsRoamStyleCard(
 
     val animatedBgState = animateColorAsState(
         targetValue = dominantColor,
+        // 相似歌曲卡片主色背景过渡时长（ms）
         animationSpec = tween(durationMillis = 350),
         label = "simiSongsRoamBg"
     )
@@ -1470,6 +1494,7 @@ private fun SimiSongsRoamStyleCard(
 
     Box(
         modifier = modifier
+            // 卡片尺寸、超椭圆圆角与描边宽度
             .width(160.dp)
             .height(215.dp)
             .squircleClip(18.dp)
@@ -1511,6 +1536,7 @@ private fun SimiSongsRoamStyleCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 底部信息栏半透明暗色底不透明度
                     .background(Color.Black.copy(alpha = 0.28f))
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {

@@ -55,6 +55,11 @@ data class PlaybackState(
     val queueSource: String? = null
 )
 
+/**
+ * 全局音乐播放控制器（单例）。
+ * 负责维护播放队列、与 [MusicService] 的 MediaController 连接、播放直链预加载与异常重试、
+ * 播放进度同步、本地状态持久化及听歌打卡上报。
+ */
 @Singleton
 class MusicPlayerController @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -89,7 +94,7 @@ class MusicPlayerController @Inject constructor(
     private var isConnecting: Boolean = false
     private var reconnectRequested = false
 
-    // 直链过期（HTTP 403）自愈重试计数：每次播放请求最多自动重解析一次，防止失败循环
+    // 可恢复播放源错误重试计数（配合重试上限避免死循环）
     private var streamUrlRetryCount = 0
 
     // 听歌打卡与时长统计（/scrobble 对应底层 /api/feedback/weblog，计入年度报告与听歌排行）
@@ -101,11 +106,10 @@ class MusicPlayerController @Inject constructor(
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     init {
-        // 1. 冷启动自动恢复上次持久化的播放状态、播放列表与进度
+        // 冷启动时恢复上次持久化的播放队列与进度
         val saved = playbackCacheManager.getSavedPlaybackState()
         if (saved != null && saved.queueTracks.isNotEmpty() && saved.currentQueueIndex in saved.queueTracks.indices) {
-            // 网易云在线直链是短时效签名 URL（过期后 CDN 直接返回 403），
-            // 磁盘恢复的旧直链一律剥离，首次起播强制重新解析最新地址；本地文件路径保留。
+            // 在线签名直链具有短时效，冷启动恢复时清除旧直链（首次起播重新解析），本地文件路径保留
             val restoredQueue = saved.queueTracks.map { it.withoutExpiredRemoteUrl() }
             val track = restoredQueue.getOrNull(saved.currentQueueIndex)
             _playbackState.update {
@@ -121,11 +125,11 @@ class MusicPlayerController @Inject constructor(
             }
         }
 
-        // 2. 连接由 PlayerViewModel 或实际播放命令触发，避免 MusicService 注入控制器时递归启动自身。
+        // 连接由 PlayerViewModel 或实际播放命令触发，避免 MusicService 注入控制器时递归启动自身
     }
 
     /**
-     * 异步上报歌曲起播行为（PLV，建立官方播放会话）：
+     * 异步上报歌曲起播行为（PLV，建立播放会话）
      */
     private fun triggerScrobbleStart(trackToStart: Track) {
         scope.launch(ioDispatcher) {
@@ -185,7 +189,7 @@ class MusicPlayerController @Inject constructor(
     }
 
     /**
-     * 智能判定并在切歌/播完时触发最终打卡与收听时长上报
+     * 切歌或播完时计算累计有效收听时长，满足阈值后触发打卡上报
      */
     private fun checkAndTriggerScrobble(trackToScrobble: Track?, positionMs: Int) {
         if (trackToScrobble == null) return
@@ -198,9 +202,11 @@ class MusicPlayerController @Inject constructor(
         val actualListenSec = (accumulatedListenMs / 1000L).toInt()
         val durationSec = (trackToScrobble.durationMs ?: 0L) / 1000L
 
+        // 有效收听判定阈值：累计收听 >= 30s，或当前位置过半且累计收听 >= 15s
         val isValidListen = actualListenSec >= 30 || (durationSec > 0 && positionMs / 1000 >= durationSec / 2 && actualListenSec >= 15)
 
         if (isValidListen) {
+            // 上报时长保底 30s
             val timeToReport = actualListenSec.coerceAtLeast(positionMs / 1000).coerceAtLeast(30)
             currentTrackHasScrobbled = true
             triggerScrobbleForTrack(trackToScrobble, timeToReport)
@@ -214,7 +220,7 @@ class MusicPlayerController @Inject constructor(
 
     private fun activePlayer(): Player? = controller?.takeIf { it.isConnected } ?: servicePlayer
 
-    // 监听 Media3 播放器状态变化，统一映射到你的 PlaybackState
+    // 监听 Media3 播放器状态变化并映射到 PlaybackState
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             val c = activePlayer() ?: return
@@ -333,6 +339,7 @@ class MusicPlayerController @Inject constructor(
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
 
+            // 可恢复流媒体错误重试上限（单次播放请求最多重解析直链重试 2 次）
             if (isRecoverableSourceError && currentTrack != null && streamUrlRetryCount < 2) {
                 streamUrlRetryCount++
                 trackPlaybackPreparer.invalidateTrackUrl(currentTrack.id)
@@ -416,6 +423,7 @@ class MusicPlayerController @Inject constructor(
     private fun handleTrackEnded() {
         val state = _playbackState.value
         val current = state.currentTrack
+        // 以队列位置 + 曲目 ID + 请求 ID 去重，防止 MediaController 与 ServicePlayer 双通道重复触发切歌
         val endedKey = "${state.currentQueueIndex}_${current?.id ?: -1L}_$latestPlayRequestId"
         if (lastEndedTrackKey == endedKey) return
         lastEndedTrackKey = endedKey
@@ -467,7 +475,7 @@ class MusicPlayerController @Inject constructor(
         controller = connectedController
         connectedController.addListener(playerListener)
 
-        // 若有在连接建立前触发的待播放项目，连接就绪瞬间立即起播。
+        // 若存在连接建立前挂起的待播项，连接就绪后立即起播
         val pendingItem = pendingPlayItem
         if (pendingItem != null) {
             val (item, seekMs) = pendingItem
@@ -656,7 +664,7 @@ class MusicPlayerController @Inject constructor(
     }
 
     /**
-     * 当从歌单首屏预览起播后，完整歌单曲目到达时无感补全播放队列（不打断当前播放曲目）。
+     * 歌单首屏预览起播后，完整歌单到达时在后台补全播放队列（不打断当前播放曲目）。
      */
     fun upgradeQueueIfMatchingSource(expectedQueueSource: String, fullTracks: List<Track>) {
         if (fullTracks.isEmpty()) return
@@ -702,13 +710,13 @@ class MusicPlayerController @Inject constructor(
         val queue = state.queueTracks
         if (queue.isEmpty()) return
 
-        // 1. 如果当前歌曲已播放超过 3 秒，点击上一首优先从头播放当前歌曲（符合主流音乐 App 习惯；手势强切上一首除外）
+        // 上一首回到开头阈值（ms，超过 3000ms 时优先从头重播当前曲目；手势强切上一首除外）
         if (!forcePreviousSong && state.currentPositionMs > 3000) {
             seekTo(0)
             return
         }
 
-        // 2. 优先从历史足迹栈中弹出最近听过的曲目返回（实现随机模式下上一首按听歌顺序逐首回退）
+        // 优先从历史足迹栈中弹出最近听过的曲目返回（随机模式下按实际播放顺序回退）
         if (playbackHistory.isNotEmpty()) {
             val prevIndex = playbackHistory.removeLast()
             if (prevIndex in queue.indices && prevIndex != state.currentQueueIndex) {
@@ -717,7 +725,7 @@ class MusicPlayerController @Inject constructor(
             }
         }
 
-        // 3. 若无历史记录，顺序模式下取前一首，随机模式下回到当前歌曲开头
+        // 无历史记录时，顺序模式取前一首，随机模式回到当前曲目开头
         val prevIndex = when (state.playbackMode) {
             PlaybackMode.SHUFFLE -> {
                 seekTo(0)
@@ -854,7 +862,7 @@ class MusicPlayerController @Inject constructor(
         if (c != null && shouldReusePlayerMediaItem(c.currentMediaItem?.mediaId, state.currentTrack?.id)) {
             c.play()
         } else if (state.currentQueueIndex in state.queueTracks.indices) {
-            // 冷启动恢复播放或队列切歌尚未加载新源时：使用 setMediaItem(item, startPositionMs) 精确从上次记忆的进度开始无缝续播
+            // 冷启动恢复播放或队列切歌尚未加载媒体源时，按记录的进度起播
             playQueueIndex(state.currentQueueIndex, initialSeekMs = state.currentPositionMs)
         } else {
             c?.play()
@@ -873,7 +881,7 @@ class MusicPlayerController @Inject constructor(
     }
 
     /**
-     * 动态热切换当前播放曲目的音质（保持当前播放位置平滑过渡）
+     * 保持当前播放进度重新解析当前在线曲目直链，用于音质切换后热重载
      */
     fun reloadCurrentTrackWithQuality() {
         val state = _playbackState.value
@@ -1015,7 +1023,7 @@ class MusicPlayerController @Inject constructor(
         // 起播时立即上报 PLV 会话建立
         triggerScrobbleStart(track)
 
-        // 同步切到 BUFFERING 状态，确保切歌间隙 MediaSession / 通知栏立即感知到连续播放意图，防止降级退出前台服务
+        // 同步切到 BUFFERING，使切歌间隙 MediaSession 与通知栏维持连续播放状态
         _playbackState.update {
             it.copy(
                 status = PlayerStatus.BUFFERING,
@@ -1034,7 +1042,7 @@ class MusicPlayerController @Inject constructor(
             track.audioSourceLabel == null
         val hasImmediatePlayableUrl = directUrl != null && !needsEnrichment
 
-        // 切歌准备期仅在原曲目仍在播放且需要异步解析新直链时暂停原曲目，绝不调用 stop()/clearMediaItems() 清空时间线与释放前台状态
+        // 需要异步解析新直链时仅暂停当前曲目，不调用 stop()/clearMediaItems()，以免清空时间线或退出前台服务
         val isDifferentTrack = prevTrack != null &&
             (prevTrack.id != track.id || prevTrack.playableUrl != track.playableUrl)
         if (isDifferentTrack) {
@@ -1054,7 +1062,7 @@ class MusicPlayerController @Inject constructor(
         }
 
         playJob = scope.launch {
-            // 0. 若曲目已带有可用且未过期的直链（预加载命中），立即 0ms 起播，无需等待任何网络！
+            // 命中未过期直链时直接起播；若缺少码率/音源信息则在后台补全后再播
             if (directUrl != null) {
                 val enrichedTrack = if (needsEnrichment) {
                     val preparedTrack = withContext(ioDispatcher) {
@@ -1089,7 +1097,7 @@ class MusicPlayerController @Inject constructor(
                 return@launch
             }
 
-            // 1. 获取当前曲目直链（命中内存缓存 0ms 即刻返回）
+            // 未命中可用直链时，通过 TrackPlaybackPreparer 解析播放地址
             val prepared = withContext(ioDispatcher) { trackPlaybackPreparer(track) }
             if (isStaleRequest(requestId)) {
                 return@launch
@@ -1127,7 +1135,7 @@ class MusicPlayerController @Inject constructor(
 
                     persistCurrentState()
 
-                    // 2. 核心秒切优化：在后台静默预加载上一首和下一首的播放直链
+                    // 在后台预加载相邻曲目的播放直链
                     prefetchNeighbors(index)
                 }
                 .onFailure { e ->
@@ -1159,7 +1167,7 @@ class MusicPlayerController @Inject constructor(
     }
 
     /**
-     * 智能预加载相邻曲目播放直链到内存缓存（实现秒切 0ms 核心）
+     * 预加载相邻曲目播放直链并写回队列状态（顺序模式预加载下一首/上一首；随机模式预加载下一首随机候选及上一首历史）
      */
     private fun prefetchNeighbors(currentIndex: Int) {
         invalidatePrefetch()
@@ -1237,8 +1245,8 @@ class MusicPlayerController @Inject constructor(
     }
 
     /**
-     * 直链过期（HTTP 403）自愈：清除当前曲目的失效直链并重新解析播放地址，
-     * 从当前进度续播；每个播放请求最多触发一次（streamUrlRetryCount 门控），避免失败循环。
+     * 播放源出现可恢复网络/HTTP 错误时，清除失效直链并重新解析播放地址，从当前进度续播
+     * （受 streamUrlRetryCount 重试上限约束，防止死循环）
      */
     private fun retryPlaybackWithFreshUrl() {
         val state = _playbackState.value
@@ -1256,7 +1264,7 @@ class MusicPlayerController @Inject constructor(
         val state = _playbackState.value
         if (state.queueTracks.isNotEmpty() && state.currentQueueIndex in state.queueTracks.indices) {
             val snapshot = SavedPlaybackState(
-                // 短时效直链不落盘：既避免下次冷启动恢复出 403，也避免把带签名的 URL 长期透传
+                // 剥离短时效在线签名直链后再落盘，避免冷启动恢复出过期 URL
                 queueTracks = state.queueTracks.map { it.withoutExpiredRemoteUrl() },
                 currentQueueIndex = state.currentQueueIndex,
                 currentPositionMs = state.currentPositionMs,
@@ -1302,6 +1310,7 @@ class MusicPlayerController @Inject constructor(
         // 记录当前曲目到历史足迹栈，供上一首逐一回溯
         if (state.currentQueueIndex in queue.indices) {
             playbackHistory.addLast(state.currentQueueIndex)
+            // 历史播放足迹栈最大保留条数
             if (playbackHistory.size > 50) {
                 playbackHistory.removeFirst()
             }
@@ -1311,7 +1320,7 @@ class MusicPlayerController @Inject constructor(
             PlaybackMode.SHUFFLE -> {
                 if (queue.size > 1) {
                     val candidates = queue.indices.filter { it != state.currentQueueIndex }
-                    // 优先选择不在最近历史中的候选曲目，避免短时间内重复
+                    // 随机播放去重窗口：优先避开最近播放的最多 8 首曲目
                     val recentHistory = playbackHistory.takeLast(queue.size.coerceAtMost(8)).toSet()
                     val unplayedCandidates = candidates.filter { it !in recentHistory }
                     if (unplayedCandidates.isNotEmpty()) {
@@ -1353,7 +1362,7 @@ class MusicPlayerController @Inject constructor(
                     )
                 }
 
-                // 播放中实时检测：一旦累积有效收听达到 30 秒里程碑，立即上报网易云打卡！
+                // 有效收听里程碑阈值（ms）：累计播放满 30s 立即触发一次 PLD 打卡上报
                 if (!currentTrackHasScrobbled) {
                     val currentListenMs = accumulatedListenMs + if (listenStartTimeMs > 0) (System.currentTimeMillis() - listenStartTimeMs) else 0L
                     if (currentListenMs >= 30_000L) {
@@ -1366,13 +1375,14 @@ class MusicPlayerController @Inject constructor(
                     }
                 }
 
-                // 每隔 3 秒周期性同步进度到本地持久化存储
+                // 本地进度持久化节流间隔（ms，越小落盘越频繁）
                 val now = System.currentTimeMillis()
                 if (now - lastPersistTimeMs > 3000L) {
                     lastPersistTimeMs = now
                     persistCurrentState()
                 }
 
+                // 播放进度轮询间隔（ms，越小进度条刷新越细但主线程调度更频繁）
                 delay(500L)
             }
         }
@@ -1396,7 +1406,7 @@ class MusicPlayerController @Inject constructor(
 
     companion object {
         const val QUEUE_SOURCE_PRIVATE_DJ = "PRIVATE_DJ"
-        private const val SERVICE_RECONNECT_DELAY_MS = 500L
+        private const val SERVICE_RECONNECT_DELAY_MS = 500L // 服务断连后延迟重连间隔（ms，防止高频重复拉起服务）
 
         fun playlistQueueSource(playlistId: Long): String = "PLAYLIST:$playlistId"
 
@@ -1431,6 +1441,7 @@ class MusicPlayerController @Inject constructor(
             }
         }
 
+        /** 判定切歌准备阶段是否需要先暂停上一首（仅在需要异步拉取新直链且当前仍在播放时暂停） */
         internal fun resolveTrackSwitchPreparationAction(
             isDifferentTrack: Boolean,
             hasImmediatePlayableUrl: Boolean,
@@ -1451,6 +1462,7 @@ class MusicPlayerController @Inject constructor(
             }
         }
 
+        /** 过滤切歌或缓冲期间来自旧媒体项或瞬态 IDLE 的陈旧状态回调 */
         internal fun shouldIgnoreStalePlayerStateEvent(
             playbackState: Int,
             currentStatus: PlayerStatus,
@@ -1476,6 +1488,7 @@ class MusicPlayerController @Inject constructor(
             return activeMediaId == currentTrackId.toString()
         }
 
+        /** 将完整歌单合入当前队列：保持顺序子序列时替换为完整列表，否则保留当前序并在末尾追加缺失曲目 */
         internal fun mergeUpgradedQueue(
             currentQueue: List<Track>,
             currentIndex: Int,

@@ -30,10 +30,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 1:1 复刻 AMLL (Apple Music Like Lyrics) 动态封面取色流体网格背景：
- * 1. 使用 32x32 封面采样与色彩滤镜矩阵 (contrast 0.4 -> saturate 3.0 -> contrast 1.7 -> brightness 0.75 + 4x 模糊)
- * 2. 双三次 Hermite 曲面网格扭曲 + AGSL RuntimeShader 流体旋转与防色带抖动噪点 (dither) + 边缘暗角
- * 3. 切歌时使用余弦曲线平滑跨纹理叠化，对彩色专辑（如《落雪》《Midnights》）和低饱和黑白专辑（如《爱错》）均还原出原汁原味的通透色彩层次
+ * 封面动态取色流体网格背景：
+ * 1. 对封面进行 32x32 采样并经过色彩滤镜矩阵（对比度、饱和度、亮度及 4x 模糊）处理
+ * 2. 使用双三次 Hermite 曲面网格扭曲，结合 AGSL RuntimeShader 流体旋转、防色带抖动噪点与边缘暗角绘制
+ * 3. 切歌时通过余弦曲线在前后纹理间跨帧叠化过渡
  */
 @Composable
 fun AppleMusicBackground(
@@ -53,6 +53,7 @@ fun AppleMusicBackground(
                 eraseColor(0xFF343844.toInt())
             }
             try {
+                // 无封面占位背景的网格细分密度
                 MeshGradientRenderer.prepareAlbum(bmp, subdivision = 24)
             } finally {
                 bmp.recycle()
@@ -69,6 +70,7 @@ fun AppleMusicBackground(
             runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(coverUrl)
+                    // 封面取色降采样尺寸（px，影响取色精度与解码开销）
                     .size(256)
                     .memoryCacheKey("$coverUrl#mesh_256")
                     .allowHardware(false)
@@ -92,6 +94,7 @@ fun AppleMusicBackground(
         }
         if (bitmap != null) {
             value = withContext(Dispatchers.Default) {
+                // 网格细分密度（越大曲面越精细，顶点计算开销越高）
                 MeshGradientRenderer.prepareAlbum(bitmap, subdivision = 28)
             }
         } else if (coverUrl.isBlank()) {
@@ -117,6 +120,7 @@ fun AppleMusicBackground(
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             renderer.resetFrameClock()
             runMeshFrames(
+                // 流体动画帧间隔（ns，约 30fps，越小越流畅但 GPU 负载越高）
                 intervalNanos = 33_333_333L,
                 needsAnimation = { renderer.needsAnimation }
             ) { frameNanos ->
@@ -133,6 +137,7 @@ fun AppleMusicBackground(
                 .drawBehind {
                     frameVersion.intValue
                     if (renderer.hasAlbum) {
+                        // 离屏渲染缩放比例（降低像素填充率并柔化网格边缘）
                         renderer.draw(this, meshLayer, renderScale = 0.72f)
                     } else {
                         drawRect(Color(0xFF1C2029))
@@ -140,7 +145,7 @@ fun AppleMusicBackground(
                 }
         )
 
-        // 轻薄自然的通透压暗渐变层，既不破坏 AMLL 流体色彩饱和度，又确保白色歌词与底部控制栏像截图 1~4 一样清澈易读
+        // 纵向压暗渐变遮罩，保障白色歌词与底部控制栏的可读性
         Box(
             modifier = Modifier
                 .fillMaxSize()

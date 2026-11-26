@@ -22,7 +22,7 @@ import com.example.seteasecloudmusic.feature.search.presentation.SearchViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
-/** 与详情同一取色底座延伸到侧边操作区，玻璃仍由原导航组件统一采样。 */
+/** 将歌单详情的主色背景延伸至宽屏侧边操作区，供悬浮玻璃组件统一采样。 */
 @Composable
 internal fun ExpandedPlaylistBackdrop(
     coverUrl: String?,
@@ -35,6 +35,7 @@ internal fun ExpandedPlaylistBackdrop(
     Canvas(modifier.fillMaxSize()) { drawRect(if (enabled) color else bgColor) }
 }
 
+/** 监听当前激活 Tab 的歌单详情封面，并在分栏模式下绘制延伸背景色。 */
 @Composable
 internal fun ExpandedPlaylistChromeBackground(
     selectedIndex: State<Int>, home: HomeViewModel, radio: RadioViewModel, mine: MineViewModel, search: SearchViewModel

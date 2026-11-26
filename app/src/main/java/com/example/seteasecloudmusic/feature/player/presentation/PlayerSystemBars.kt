@@ -11,6 +11,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 
+/**
+ * 进入全屏播放器时将系统状态栏与导航栏图标设为浅色以适配深色背景，退出时恢复应用主题设定。
+ */
 @Composable
 internal fun PlayerSystemBars() {
     val view = LocalView.current

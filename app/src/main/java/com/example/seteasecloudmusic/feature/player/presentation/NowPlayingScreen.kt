@@ -16,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.Dp
 
+/**
+ * 全屏播放器入口容器，负责配置系统栏浅深色状态、共享流体背景采样层与内容渲染。
+ */
 @Composable
 fun NowPlayingScreen(
     playerViewModel: PlayerViewModel,

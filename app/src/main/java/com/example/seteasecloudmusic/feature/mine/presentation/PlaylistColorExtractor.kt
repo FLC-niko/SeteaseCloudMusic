@@ -24,18 +24,20 @@ import com.example.seteasecloudmusic.core.ui.theme.tuneAmbientHslForTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+// 浅色/深色主题默认歌单底色
 val DefaultPlaylistLightBg = Color.White
 val DefaultPlaylistDarkBg = Color(0xFF14181E)
 
 /**
- * 默认底色：白底（若尚未获取到取色结果，避免使用暗沉灰底导致第一帧视觉突兀）
+ * 尚未提取出封面主色时的默认底色（白底，避免首帧出现暗沉色块）。
  */
 val DefaultDarkNavyBg = DefaultPlaylistLightBg
 
 /**
- * 歌单封面提取主色内存缓存，按浅色/深色外观分开缓存，保证再次进入或已采样封面直接在首帧出图，避免过渡前闪现底色
+ * 歌单封面主色内存缓存，按浅色/深色主题分开存储，避免重复解码采样。
  */
 object PlaylistCoverColorCache {
+    // 内存缓存上限（条），按深浅外观隔离缓存键
     private val cache = LruCache<String, Color>(256)
 
     private fun key(url: String, isDark: Boolean): String = "${if (isDark) "d" else "l"}|$url"
@@ -53,14 +55,15 @@ object PlaylistCoverColorCache {
 }
 
 /**
- * 从已有的 Bitmap 中快速提取歌单/专辑主色调（计算量极小，通常 < 1ms）。
- * 浅色模式下输出高明度莫兰迪浅色底，深色模式下输出低明度沉静深色底。
+ * 从已有 Bitmap 中提取适合做歌单背景的主色调。
+ * 浅色模式输出高明度浅色底，深色模式输出低明度深色底。
  */
 fun extractDominantDarkColor(
     bitmap: Bitmap,
     defaultColor: Color = Color.White,
     isDark: Boolean = false
 ): Color {
+    // 调色板量化采样上限（16 色）
     val palette = Palette.from(bitmap).maximumColorCount(16).generate()
     val swatch = if (isDark) {
         palette.mutedSwatch
@@ -70,6 +73,7 @@ fun extractDominantDarkColor(
             ?: palette.vibrantSwatch
     } else {
         val dominant = palette.dominantSwatch
+        // 浅色模式下要求主色饱和度不低于 0.18，避免提取出偏灰底色
         if (dominant != null && dominant.hsl[1] >= 0.18f) {
             dominant
         } else {
@@ -86,14 +90,15 @@ fun extractDominantDarkColor(
 
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(rawColorInt, hsl)
+    // 按深浅主题规范化 HSL 明度与饱和度区间
     tuneAmbientHslForTheme(hsl, isDark)
 
     return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = 1f)
 }
 
 /**
- * 尝试同步从内存主色缓存中立即获取颜色，保证已访问过的封面在首帧即可渲染正确取色直接滑入。
- * 未缓存时立即返回 null，绝不阻塞主线程磁盘 IO 或色彩提取，保证进入动效 100% 满帧丝滑。
+ * 仅从内存缓存同步读取封面主色。
+ * 未命中时立即返回 null，避免阻塞主线程磁盘 IO 或色彩提取。
  */
 fun trySyncExtractColor(
     context: Context,
@@ -105,9 +110,8 @@ fun trySyncExtractColor(
 }
 
 /**
- * 根据歌单/专辑封面 URL 与当前主题模式提取适合背景的主色调。
- * 浅色模式提取浅色柔和底色，深色模式提取深色沉静底色。
- * 优先同步命中内存/已解码缓存以保证首帧正确取色直接滑入；若无缓存则以默认底色滑入并在就绪后平滑渐变。
+ * 根据封面 URL 与当前主题模式异步提取歌单背景主色调。
+ * 优先命中内存缓存实现首帧同步渲染；未命中时先使用默认底色，提取完成后平滑渐变过渡。
  */
 @Composable
 fun rememberCoverDominantDarkColor(
@@ -131,7 +135,7 @@ fun rememberCoverDominantDarkColor(
             return@produceState
         }
 
-        // 若已命中缓存且当前值已经是正确取色，跳过重复解码
+        // 命中内存缓存时直接复用，跳过重复解码
         val cached = PlaylistCoverColorCache.get(imageUrl, isDark)
         if (cached != null) {
             value = cached
@@ -142,7 +146,7 @@ fun rememberCoverDominantDarkColor(
             runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(imageUrl)
-                    .size(128)
+                    .size(128) // 取色采样缩略图边长（px，越小解码越快）
                     .allowHardware(false)
                     .build()
                 val result = context.imageLoader.execute(request)
@@ -174,7 +178,7 @@ fun rememberCoverDominantDarkColor(
 
     return animateColorAsState(
         targetValue = extractedColorState.value,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400), // 背景主色渐变动画时长（ms）
         label = "CoverDominantDarkColorAnimation"
     )
 }

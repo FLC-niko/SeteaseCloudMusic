@@ -14,8 +14,7 @@ import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
 
 /**
- * Pure Kotlin/JDK implementation of Netease Cloud Music request/response cryptography
- * (`weapi`, `eapi`, `linuxapi`, and anonymous login ID encoding).
+ * 纯 Kotlin/JDK 实现的网易云接口加解密工具，支持 `weapi`、`eapi`、`linuxapi` 与匿名登录 ID 编码。
  */
 internal object NeteaseCrypto {
 
@@ -24,13 +23,14 @@ internal object NeteaseCrypto {
         val encSecKey: String
     )
 
-    private const val IV = "0102030405060708"
-    private const val PRESET_KEY = "0CoJUm6Qyw8W8jud"
-    private const val LINUXAPI_KEY = "rFgB&h#%2?^eDg:Q"
-    private const val EAPI_KEY = "e82ckenh8dichen8"
-    private const val ID_XOR_KEY = "3go8&$8*3*3h0k(2)2"
+    private const val IV = "0102030405060708"            // AES-CBC 固定初始化向量（16 字节）
+    private const val PRESET_KEY = "0CoJUm6Qyw8W8jud"    // WEAPI 第一轮 AES-CBC 预置密钥
+    private const val LINUXAPI_KEY = "rFgB&h#%2?^eDg:Q"  // LINUXAPI AES-ECB 密钥
+    private const val EAPI_KEY = "e82ckenh8dichen8"      // EAPI 请求加密与响应解密 AES-ECB 密钥
+    private const val ID_XOR_KEY = "3go8&$8*3*3h0k(2)2"  // 匿名游客用户名计算用 XOR 掩码
     private const val BASE62 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+    // WEAPI 随机密钥 RSA 无填充加密公钥（X.509 DER Base64）
     private const val WEAPI_PUBLIC_KEY_B64 =
         "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDgtQn2JZ34ZC28NWYpAUd98iZ3" +
             "7BUrX/aKzmFbt7clFSs6sXqHauqKWqdtLkF2KexO40H1YTX8z2lSgBBOAxLs" +
@@ -50,6 +50,9 @@ internal object NeteaseCrypto {
         (rsaPublicKey.modulus.bitLength() + 7) / 8
     }
 
+    /**
+     * 生成指定长度的随机 Base62 会话密钥（默认 16 位，用于 WEAPI 第二轮 AES 加密）。
+     */
     fun generateSecretKey(length: Int = 16): String {
         val chars = CharArray(length)
         for (i in 0 until length) {
@@ -58,6 +61,9 @@ internal object NeteaseCrypto {
         return String(chars)
     }
 
+    /**
+     * WEAPI 加密：先用 [PRESET_KEY] 再用随机 [secretKey] 做两次 AES-CBC，并将反转后的 [secretKey] 做 RSA 加密。
+     */
     fun weapi(plainJson: String, secretKey: String = generateSecretKey()): WeapiPayload {
         val firstPass = aesCbcEncryptBase64(plainJson.toByteArray(Charsets.UTF_8), PRESET_KEY, IV)
         val params = aesCbcEncryptBase64(firstPass.toByteArray(Charsets.UTF_8), secretKey, IV)
@@ -66,6 +72,9 @@ internal object NeteaseCrypto {
         return WeapiPayload(params = params, encSecKey = encSecKey)
     }
 
+    /**
+     * EAPI 请求加密：拼接路径、JSON 与 MD5 摘要后执行 AES-ECB 加密并输出大写 Hex。
+     */
     fun eapi(urlPath: String, dataJson: String): String {
         val message = "nobody${urlPath}use${dataJson}md5forencrypt"
         val digest = md5Hex(message)
@@ -73,6 +82,9 @@ internal object NeteaseCrypto {
         return aesEcbEncryptHex(payload.toByteArray(Charsets.UTF_8), EAPI_KEY)
     }
 
+    /**
+     * 解密启用 `e_r=true` 的 EAPI Hex 密文响应体。
+     */
     fun eapiResDecrypt(hexCipher: String): String {
         val encrypted = hexToBytes(hexCipher.trim())
         val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
@@ -80,6 +92,9 @@ internal object NeteaseCrypto {
         return String(cipher.doFinal(encrypted), Charsets.UTF_8)
     }
 
+    /**
+     * LINUXAPI 请求加密：使用 [LINUXAPI_KEY] 执行 AES-ECB 加密并输出大写 Hex。
+     */
     fun linuxapi(objectJson: String): String {
         return aesEcbEncryptHex(objectJson.toByteArray(Charsets.UTF_8), LINUXAPI_KEY)
     }
@@ -89,6 +104,9 @@ internal object NeteaseCrypto {
         return bytesToHex(digest, uppercase = false)
     }
 
+    /**
+     * 基于 [deviceId] 生成匿名游客注册接口所需的编码用户名。
+     */
     fun generateAnonymousUsername(deviceId: String): String {
         val xored = ByteArray(deviceId.length)
         for (i in deviceId.indices) {

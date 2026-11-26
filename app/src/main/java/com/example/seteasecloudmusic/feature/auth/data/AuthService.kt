@@ -40,7 +40,7 @@ interface AuthService {
     suspend fun getQrCode(
         @Query("key") key: String,
         @Query("timestamp") timestamp: Long,
-        @Query("qrimg") qrimg: Int
+        @Query("qrimg") qrimg: Int // 传 1 时服务端同时返回 Base64 二维码图片
     ): Response<QrCodeResponse>
 
     @POST("/login/qr/check")
@@ -61,6 +61,9 @@ interface AuthService {
     ): Response<BaseResponse>
 }
 
+/**
+ * 通用认证接口状态响应。
+ */
 data class BaseResponse(
     val code: Int = 0,
     val message: String = ""

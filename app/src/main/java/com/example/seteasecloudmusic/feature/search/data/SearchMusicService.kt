@@ -4,29 +4,23 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 /**
- * `data.api` 模块说明：
- *
- * 这一层直接描述“怎么和后端接口通信”，只关心请求路径、参数和响应模型。
- * 它不处理业务判断，也不决定界面怎么展示。
- *
- * `NeteaseMusicService` 是 Retrofit 接口声明，
- * 负责把网易云相关 HTTP API 映射成可直接调用的 Kotlin suspend 函数。
+ * 网易云音乐搜索、播放直链解析及听歌打卡相关 Retrofit 接口定义。
  */
 interface NeteaseMusicService {
     /**
-     * 根据歌曲 id 获取可播放 URL。
+     * 根据歌曲 ID 获取可播放 URL。
      *
-     * 默认使用 weapi 加密方式请求 /song/url/v1，规避部分节点默认 eapi 指纹触发 -460 风控的问题。
+     * 默认使用 weapi 加密请求 `/song/url/v1`，规避部分节点默认 eapi 指纹触发 -460 风控的问题。
      */
     @GET("song/url/v1")
     suspend fun getSongUrl(
         @Query("id") id: Long,
-        @Query("level") level: String = "hires",
+        @Query("level") level: String = "hires", // 请求音质等级（如 standard / lossless / hires）
         @Query("crypto") crypto: String? = DEFAULT_SONG_URL_CRYPTO
     ): SongResponse
 
     /**
-     * 兜底获取标准/高品可播放 URL（当 v1 接口遭遇上游风控或不可用时降级使用）。
+     * 降级获取可播放 URL（当 `/song/url/v1` 触发风控或不可用时使用）。
      */
     @GET("song/url")
     suspend fun getLegacySongUrl(
@@ -35,35 +29,35 @@ interface NeteaseMusicService {
     ): SongResponse
 
     /**
-     * 使用 cloudsearch 获取更完整的搜索结果。
+     * 按关键词分页搜索歌曲（cloudsearch 接口）。
      */
     @GET("cloudsearch")
     suspend fun searchSongs(
         @Query("keywords") keywords: String,
-        @Query("limit") limit: Int = 30,
-        @Query("offset") offset: Int = 0,
+        @Query("limit") limit: Int = 30, // 单页返回条数
+        @Query("offset") offset: Int = 0, // 分页偏移量
         @Query("type") type: Int = SearchType.SONG.value
     ): SearchResultResponse
 
     /**
-     * 搜索歌手（包含真实头像）。
+     * 按关键词分页搜索歌手（包含头像信息）。
      */
     @GET("cloudsearch")
     suspend fun searchArtists(
         @Query("keywords") keywords: String,
-        @Query("limit") limit: Int = 30,
-        @Query("offset") offset: Int = 0,
+        @Query("limit") limit: Int = 30, // 单页返回条数
+        @Query("offset") offset: Int = 0, // 分页偏移量
         @Query("type") type: Int = SearchType.ARTIST.value
     ): SearchResultResponse
 
     /**
-     * 搜索歌单。
+     * 按关键词分页搜索歌单。
      */
     @GET("cloudsearch")
     suspend fun searchPlaylists(
         @Query("keywords") keywords: String,
-        @Query("limit") limit: Int = 30,
-        @Query("offset") offset: Int = 0,
+        @Query("limit") limit: Int = 30, // 单页返回条数
+        @Query("offset") offset: Int = 0, // 分页偏移量
         @Query("type") type: Int = SearchType.PLAYLIST.value
     ): SearchResultResponse
 
@@ -101,11 +95,14 @@ interface NeteaseMusicService {
     ): ScrobbleResponse
 
     companion object {
-        const val DEFAULT_SONG_URL_CRYPTO = "weapi"
-        const val DEFAULT_LEGACY_BITRATE = 999000
+        const val DEFAULT_SONG_URL_CRYPTO = "weapi" // /song/url/v1 默认加密模式
+        const val DEFAULT_LEGACY_BITRATE = 999000 // /song/url 降级接口默认请求码率（bps，999000 表示最高可用码率）
     }
 }
 
+/**
+ * 听歌打卡接口（/scrobble）响应。
+ */
 data class ScrobbleResponse(
     val code: Int? = null,
     val message: String? = null,

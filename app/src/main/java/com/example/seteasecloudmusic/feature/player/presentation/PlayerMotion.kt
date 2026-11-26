@@ -56,6 +56,7 @@ internal fun playerTopAnchoredArtworkRect(
 
 internal fun playerContainerCornerRadius(source: Float, target: Float, progress: Float): Float =
     if (progress >= 0.999f) 0f else mix(source, target, progress.coerceAtLeast(0f))
+// 展开过程中各层级透明度调度窗口：背景在前 65% 淡入，全屏内容在 20%~85% 淡入，迷你内容在前 25% 淡出
 internal fun playerBackgroundAlpha(progress: Float): Float = (progress / 0.65f).coerceIn(0f, 1f)
 internal fun playerContentAlpha(progress: Float): Float = ((progress - 0.20f) / 0.65f).coerceIn(0f, 1f)
 internal fun playerMiniContentAlpha(progress: Float): Float = (1f - progress / 0.25f).coerceIn(0f, 1f)
@@ -95,18 +96,21 @@ internal fun Modifier.playerArtworkMotion(frame: () -> PlayerArtworkFrame): Modi
     scaleY = bounds.height / size.height.coerceAtLeast(1f)
 }
 
+/** 专辑页与歌词页互切的无回弹弹簧参数（刚度 280f，越小越柔和）。 */
 internal fun appleMusicLyricSpring() = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 280f,
     visibilityThreshold = 0.0005f
 )
 
+/** 专辑页大封面随播放/暂停状态的缩放动效（暂停时缩至 0.78x，阻尼比 0.85f、刚度 210f）。 */
 @Composable
 internal fun rememberAppleMusicPlaybackScale(isPlaying: Boolean): State<Float> = animateFloatAsState(
     if (isPlaying) 1f else 0.78f,
     spring(dampingRatio = 0.85f, stiffness = 210f), label = "albumPlaybackScale"
 )
 
+// 专辑页 <-> 歌词页切换时各图层透明度分段区间：专辑信息前 55% 淡出，顶栏信息 35%~100% 淡入，歌词层 20%~100% 淡入
 internal fun appleMusicAlbumInfoAlpha(progress: Float): Float = (1f - progress / 0.55f).coerceIn(0f, 1f)
 internal fun appleMusicHeaderInfoAlpha(progress: Float): Float = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
 internal fun appleMusicLyricsAlpha(progress: Float): Float = ((progress - 0.20f) / 0.80f).coerceIn(0f, 1f)

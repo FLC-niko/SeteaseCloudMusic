@@ -39,7 +39,7 @@ import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 
 /**
- * 播放列表二级菜单底栏 (当前待播清单与播放顺序)
+ * 当前播放队列底部弹窗，展示待播曲目、播放模式切换与清空队列操作。
  */
 @Composable
 fun PlaylistQueueSheet(
@@ -53,7 +53,7 @@ fun PlaylistQueueSheet(
 ) {
     val listState = rememberLazyListState()
 
-    // 打开时自动平滑滚动到当前正在播放的曲目
+    // 打开时自动滚动到当前播放曲目前 2 项位置，保留上方列表上下文
     LaunchedEffect(playbackState.currentQueueIndex) {
         if (playbackState.currentQueueIndex in playbackState.queueTracks.indices) {
             val target = (playbackState.currentQueueIndex - 2).coerceAtLeast(0)
@@ -70,6 +70,7 @@ fun PlaylistQueueSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // 窄屏竖屏占屏幕高度 72%，宽屏或折叠屏展开态铺满容器高度
                 .fillMaxHeight(if (LocalAdaptiveWindow.current.width >= 600.dp || LocalAdaptiveWindow.current.separatingFold != null) 1f else 0.72f)
                 .navigationBarsPadding()
         ) {

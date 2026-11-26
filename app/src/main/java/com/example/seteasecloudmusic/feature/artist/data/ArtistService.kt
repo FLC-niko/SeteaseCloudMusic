@@ -4,7 +4,7 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 /**
- * Artist related HTTP API declarations.
+ * 歌手模块 Retrofit HTTP 接口定义。
  */
 interface ArtistService {
     @GET("artist/top/song")
@@ -16,14 +16,14 @@ interface ArtistService {
     suspend fun getArtistSongs(
         @Query("id") artistId: Long,
         @Query("order") order: String = "hot",
-        @Query("limit") limit: Int = 50,
+        @Query("limit") limit: Int = 50, // 默认单页拉取歌曲数
         @Query("offset") offset: Int = 0
     ): ArtistSongsResponse
 
     @GET("artist/album")
     suspend fun getArtistAlbums(
         @Query("id") artistId: Long,
-        @Query("limit") limit: Int = 30,
+        @Query("limit") limit: Int = 30, // 默认单页拉取专辑数
         @Query("offset") offset: Int = 0
     ): ArtistAlbumsResponse
 
@@ -45,7 +45,7 @@ interface ArtistService {
     @GET("user/playlist")
     suspend fun getArtistUserPlaylists(
         @Query("uid") uid: Long,
-        @Query("limit") limit: Int = 20,
+        @Query("limit") limit: Int = 20, // 默认单页拉取关联用户歌单数
         @Query("offset") offset: Int = 0
     ): ArtistUserPlaylistsResponse
 
@@ -56,7 +56,7 @@ interface ArtistService {
 
     @GET("top/artists")
     suspend fun getTopArtistsFallback(
-        @Query("limit") limit: Int = 16,
+        @Query("limit") limit: Int = 16, // 相似歌手兜底列表单次拉取人数
         @Query("offset") offset: Int = 0
     ): SimilarArtistsResponse
 }

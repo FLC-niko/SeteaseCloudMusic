@@ -1,5 +1,6 @@
 package com.example.seteasecloudmusic.feature.player.domain.model
 
+/** 单个歌词词元（含时间戳与可选注音/音译元数据）。 */
 data class LyricWord(
     val word: String,
     val startTime: Int,
@@ -10,12 +11,14 @@ data class LyricWord(
     val ruby: List<RubyWord>? = null
 )
 
+/** 日文/汉字振假名注音词元。 */
 data class RubyWord(
     val word: String,
     val startTime: Int,
     val endTime: Int
 )
 
+/** 单行歌词（含词元列表、翻译/音译文本及和声/对唱标记）。 */
 data class LyricLine(
     val words: List<LyricWord>,
     val translatedLyric: String = "",
@@ -26,12 +29,14 @@ data class LyricLine(
     val endTime: Int
 )
 
+/** 解析后的完整歌词结构。 */
 data class ParsedLyrics(
     val lines: List<LyricLine>,
     val hasWordTiming: Boolean = false,
     val source: LyricSource = LyricSource.NONE
 )
 
+/** 歌词数据来源类型。 */
 enum class LyricSource {
     TTML_DB,
     YRC,
@@ -49,6 +54,7 @@ data class Lyrics(
     val code: Int = 0
 )
 
+/** 单段原始歌词内容与版本号。 */
 data class LyricContent(
     val version: Int = 0,
     val lyric: String = ""

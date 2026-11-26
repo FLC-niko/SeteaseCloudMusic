@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import javax.inject.Inject
 
+/** 首页界面状态，聚合各类推荐歌曲列表、封面及内嵌详情页状态。 */
 data class HomeUiState(
     val isLoading: Boolean = false,
     val tracks: List<Track> = emptyList(),
@@ -40,6 +41,9 @@ data class HomeUiState(
     val activePlaylistDetail: PlaylistDetail? = null
 )
 
+/**
+ * 首页 ViewModel：负责本地缓存预加载、多路推荐数据并发刷新、断网重试以及大卡片快捷播放。
+ */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val getDailyRecommendSongsUseCase: GetDailyRecommendSongsUseCase,
@@ -445,6 +449,7 @@ class HomeViewModel @Inject constructor(
 
     fun openPlaylistDetail(tracks: List<Track>, title: String, coverUrl: String?) {
         val playlistDetail = PlaylistDetail(
+            // 使用负值虚拟 ID 区分首页聚合歌单与真实歌单
             id = when (title) {
                 "每日推荐" -> -1001L
                 "雷达歌单" -> -1002L

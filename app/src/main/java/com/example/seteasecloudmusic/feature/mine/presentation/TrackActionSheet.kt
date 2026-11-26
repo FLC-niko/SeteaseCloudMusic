@@ -72,7 +72,7 @@ import com.example.seteasecloudmusic.feature.player.presentation.ResolvedAudioDe
 /**
  * 歌曲操作面板页面状态：
  * ACTIONS: 默认动作菜单（下一首播放、喜欢/取消喜欢、收藏到歌单、下载、歌手、专辑）
- * ADD_TO_PLAYLIST: 收藏到歌单（内嵌平滑无缝切页，带返回箭头与新建歌单）
+ * ADD_TO_PLAYLIST: 收藏到歌单（内嵌切页，带返回按钮与新建歌单入口）
  */
 enum class TrackActionSheetPage {
     ACTIONS,
@@ -81,14 +81,14 @@ enum class TrackActionSheetPage {
 
 /**
  * 歌单曲目与播放页共用的歌曲更多操作二级菜单（底栏抽屉）。
- * 背景为纯白色，顺序严格为：
+ * 菜单项顺序：
  * 1. 下一首播放
  * 2. 喜欢 / 取消喜欢
  * 3. 收藏到歌单
  * 4. 下载
  * 5. 歌手
  * 6. 专辑
- * 7. 音频详细信息（可选，仅在传入 [audioDetails] 时融合展示）
+ * 7. 音频详细信息（可选，仅在传入 [audioDetails] 时展示）
  */
 @Composable
 fun TrackActionSheet(
@@ -129,18 +129,18 @@ fun TrackActionSheet(
                     .navigationBarsPadding()
                     .padding(bottom = 12.dp)
             ) {
-            // 头部歌曲信息预览区：左侧较大封面（60dp），右侧歌曲名（去除“歌曲：”）及歌手名
+            // 头部歌曲信息预览区：左侧封面，右侧歌名与歌手名
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. 歌曲封面（较原图更大，圆角 8.dp）
+                // 歌曲封面
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .size(60.dp) // 头部预览封面尺寸
+                        .clip(RoundedCornerShape(8.dp)) // 封面圆角
                         .background(colors.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
@@ -168,7 +168,7 @@ fun TrackActionSheet(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // 歌名（无“歌曲：”前缀）
+                    // 歌名
                     Text(
                         text = track.title,
                         style = MiuixTheme.textStyles.headline1.copy(
@@ -341,6 +341,7 @@ private fun TrackAudioDetailsItem(
     val isDark = AppTheme.isDark
     val colors = AppTheme.colors
     var isExpanded by rememberSaveable(trackId) { mutableStateOf(false) }
+    // 箭头旋转动画（无回弹阻尼，中低刚度）
     val chevronRotation by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
         animationSpec = spring(
@@ -391,6 +392,7 @@ private fun TrackAudioDetailsItem(
             onClick = { isExpanded = !isExpanded }
         )
 
+        // 音频详情面板展开/收起动画（无回弹弹簧 + 渐显 180ms / 渐隐 140ms）
         AnimatedVisibility(
             visible = isExpanded,
             enter = expandVertically(
@@ -406,9 +408,9 @@ private fun TrackAudioDetailsItem(
                 )
             ) + fadeOut(tween(140))
         ) {
-            val chipBg = if (isDark) Color(0xFF3A3A3E) else Color(0xFFE9E9EE)
-            val chipText = if (isDark) Color(0xFFE5E5EA) else Color(0xFF3A3A3C)
-            val detailsBg = if (isDark) Color.Black.copy(alpha = 0.25f) else colors.surface
+            val chipBg = if (isDark) Color(0xFF3A3A3E) else Color(0xFFE9E9EE) // 规格标签背景色（深色/浅色）
+            val chipText = if (isDark) Color(0xFFE5E5EA) else Color(0xFF3A3A3C) // 规格标签文字颜色（深色/浅色）
+            val detailsBg = if (isDark) Color.Black.copy(alpha = 0.25f) else colors.surface // 音频详情面板底色
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

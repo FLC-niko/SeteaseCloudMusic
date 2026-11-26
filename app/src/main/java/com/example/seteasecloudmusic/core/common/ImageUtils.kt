@@ -1,11 +1,12 @@
 package com.example.seteasecloudmusic.core.common
 
 /**
- * 将网易云音乐图片 URL 转为指定尺寸的高性能缩略图。
+ * 将网易云音乐图片 URL 转换为指定尺寸的缩略图 URL。
  *
- * 网易云音乐 CDN 原图通常高达 1000x1000 像素，在网格或列表中同时加载数十张原图会导致大量的
- * 内存占用、网络开销与 CPU 解码耗时，从而引起滑动掉帧和启动卡顿。
- * 添加 `param=${size}y${size}` 参数后，CDN 将直接返回轻量级缩略图（体积缩小 90%+，解码快 10 倍）。
+ * 通过追加 `param=${size}y${size}` 参数请求 CDN 返回对应分辨率图片，
+ * 以减少列表与网格场景下的内存占用及解码耗时。
+ *
+ * @param size 目标缩略图宽高像素值（默认 180，越大清晰度越高但内存与解码开销越大）
  */
 fun String?.toCoverThumbnailUrl(size: Int = 180): String? {
     if (this.isNullOrBlank()) return this

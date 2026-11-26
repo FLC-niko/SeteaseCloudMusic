@@ -126,6 +126,7 @@ private val TabActiveBg: Color
     get() = AppTheme.colors.accent
 private val TabActiveText = Color.White
 
+/** 搜索结果分类标签。 */
 private enum class SearchTab(val title: String) {
     BEST("最佳结果"),
     SONG("歌曲"),
@@ -176,11 +177,14 @@ private sealed interface SearchRowItem {
     }
 }
 
+/**
+ * 搜索页面入口：连接 [SearchViewModel] 状态与 [SearchScreenContent] 界面。
+ */
 @Composable
 fun SearchRoute(
     viewModel: SearchViewModel,
-    topContentPadding: Dp = 18.dp,
-    bottomContentPadding: Dp = 180.dp,
+    topContentPadding: Dp = 18.dp, // 列表顶部内容内边距（为顶部搜索框预留空间）
+    bottomContentPadding: Dp = 180.dp, // 列表底部内容内边距（为迷你播放器与导航栏预留空间）
     onArtistClick: (Long, String, String?) -> Unit = { _, _, _ -> },
     isForeground: Boolean = true,
     topHeader: @Composable () -> Unit = {}
@@ -217,11 +221,15 @@ fun SearchRoute(
     )
 }
 
+/**
+ * 搜索页主视图：根据输入与提交状态切换空态（历史+热搜）、实时联想建议、分类搜索结果，
+ * 并在宽屏分栏或全屏弹层中承载歌单/专辑详情页。
+ */
 @Composable
 fun SearchScreenContent(
     uiState: SearchUiState,
     topContentPadding: Dp,
-    bottomContentPadding: Dp = 180.dp,
+    bottomContentPadding: Dp = 180.dp, // 底部滚动留白（避开底部导航与迷你播放器）
     onSearchSubmit: () -> Unit = {},
     onSuggestionClick: (String) -> Unit = {},
     onHotSearchClick: (String) -> Unit = onSuggestionClick,
@@ -261,6 +269,7 @@ fun SearchScreenContent(
         action()
     }
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 结果区顶部内边距：在顶栏基础上额外为 44.dp 分类切换条及上下留白预留 58.dp
     val resultsTopPadding = topContentPadding + 58.dp
 
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
@@ -399,15 +408,15 @@ fun SearchScreenContent(
                     }
                 }
 
-                // 顶部渐进高斯模糊（顶部深、底部浅自然过渡，无状态栏白色遮罩）
+                // 顶部渐进高斯模糊（由顶至底模糊半径递减）
                 ProgressiveTopBlur(
                     backdrop = searchBackdrop,
-                    totalHeight = if (uiState.isSearchSubmitted) topContentPadding + 64.dp else topContentPadding + 18.dp,
+                    totalHeight = if (uiState.isSearchSubmitted) topContentPadding + 64.dp else topContentPadding + 18.dp, // 模糊区总高度（提交搜索后需覆盖分类标签栏）
                     statusBarHeight = statusBarHeight,
                     modifier = Modifier.align(Alignment.TopCenter),
-                    deepBlurRadius = 26.dp,
-                    mediumBlurRadius = 13.dp,
-                    shallowBlurRadius = 4.5.dp
+                    deepBlurRadius = 26.dp, // 顶部深层模糊半径（dp，越大越朦胧）
+                    mediumBlurRadius = 13.dp, // 中段过渡层模糊半径（dp）
+                    shallowBlurRadius = 4.5.dp // 底部浅层过渡模糊半径（dp，越小边缘衔接越柔和）
                 )
 
                 if (uiState.isSearchSubmitted) {
@@ -418,7 +427,7 @@ fun SearchScreenContent(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
-                            .padding(top = topContentPadding + 4.dp, start = 16.dp, end = 16.dp)
+                            .padding(top = topContentPadding + 4.dp, start = 16.dp, end = 16.dp) // 分类标签栏外边距
                     )
                 }
 
@@ -450,11 +459,13 @@ fun SearchScreenContent(
                 visible = uiState.activePlaylistDetail != null,
                 enter = slideInHorizontally(
                     initialOffsetX = { fullWidth -> fullWidth },
+                    // 详情页滑入弹簧：dampingRatio=0.92f（接近临界阻尼，几乎无回弹），stiffness=260f（中速偏稳）
                     animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
                 ),
                 exit = if (isForeground) {
                     slideOutHorizontally(
                         targetOffsetX = { fullWidth -> fullWidth },
+                        // 详情页滑出弹簧：stiffness=300f 略高于入场以加快退出响应
                         animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
                     )
                 } else {
@@ -511,9 +522,9 @@ private fun SearchTabsRow(
         selectedIndex = selectedIndex,
         onSelect = { settledIndex -> currentOnSelect(tabs[settledIndex]) },
         modifier = modifier.fillMaxWidth(),
-        barHeight = 44.dp,
-        cornerRadius = 22.dp,
-        maxPressScale = GlassSliderDefaults.CompactMaxPressScale
+        barHeight = 44.dp, // 分类切换条高度
+        cornerRadius = 22.dp, // 胶囊圆角半径（取高度一半）
+        maxPressScale = GlassSliderDefaults.CompactMaxPressScale // 按压高亮滑块的最大放大倍率
     ) { isInsideSlider ->
         Row(modifier = Modifier.fillMaxSize()) {
             tabs.forEach { tab ->
@@ -604,6 +615,7 @@ private fun SearchResultsList(
             }
     }
     BoxWithConstraints(modifier) {
+        // 宽屏网格阈值：容器宽度 >= 500.dp 时艺人/专辑/歌单切换为网格卡片展示
         val useGrid = artworkGrid && maxWidth >= 500.dp
         var previousGrid by rememberSaveable { mutableStateOf(useGrid) }
         LaunchedEffect(useGrid) {
@@ -626,15 +638,16 @@ private fun SearchResultsList(
                 }
             }
         }
+        // 大屏双栏阈值：折叠屏展开/桌面模式或宽度 >= 720.dp 且含混合结果时拆分为左卡片右列表
         if (window.isBook || window.isTabletop || (maxWidth >= 720.dp && mixedResults && !artworkGrid)) {
             val leading = if (mixedResults) items.filterNot { it is SearchRowItem.Song } else items.take((items.size + 1) / 2)
             val trailing = if (mixedResults) items.filterIsInstance<SearchRowItem.Song>() else items.drop((items.size + 1) / 2)
-            AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.42f,
+            AdaptiveTwoPane(Modifier.fillMaxSize(), primaryFraction = 0.42f, // 双栏模式下左侧卡片区宽度占比
                 primary = {
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, top = topContentPadding + 16.dp, end = 16.dp, bottom = bottomContentPadding),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp) // 双栏左侧卡片垂直间距
                     ) {
                         items(leading, key = { it.key }) { item ->
                             SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick, onAlbumClick, onPlaylistClick)
@@ -644,19 +657,19 @@ private fun SearchResultsList(
                 secondary = { resultsList(trailing) })
         } else if (useGrid) {
             LazyVerticalGrid(
-                GridCells.Adaptive(168.dp),
+                GridCells.Adaptive(168.dp), // 网格卡片最小自适应列宽（dp，决定每行列数）
                 Modifier.fillMaxSize(),
                 state = gridState,
                 contentPadding = PaddingValues(start = 20.dp, top = topContentPadding + 20.dp, end = 20.dp, bottom = bottomContentPadding),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                horizontalArrangement = Arrangement.spacedBy(20.dp), // 网格卡片水平间距
+                verticalArrangement = Arrangement.spacedBy(24.dp) // 网格卡片垂直间距
             ) {
                 items(items, key = { it.key }) { item ->
                     SearchArtworkCard(item, onRowClick, onArtistClick, onTrackClick, onAlbumClick, onPlaylistClick)
                 }
             }
         } else {
-            AdaptiveContent(maxWidth = 900.dp) { resultsList(items) }
+            AdaptiveContent(maxWidth = 900.dp) { resultsList(items) } // 窄/中屏单列最大内容宽度上限
         }
     }
 
@@ -683,6 +696,7 @@ private fun SearchArtworkCard(
         is SearchRowItem.Suggestion -> { image = null; title = item.keyword; subtitle = "搜索建议"; action = { onQuery(title) } }
     }
     Column(Modifier.fillMaxWidth().clickable(onClick = action).padding(4.dp)) {
+        // 1:1 封面容器：艺人使用圆形裁剪，其余使用 20.dp 超椭圆圆角
         Box(Modifier.fillMaxWidth().aspectRatio(1f).then(if (item is SearchRowItem.Artist) Modifier.clip(CircleShape) else Modifier.squircleClip(20.dp)).background(AppTheme.colors.placeholder), contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_nav_search),
@@ -715,7 +729,7 @@ private fun SongRow(
     ) {
         Artwork(
             imageUrl = track.coverUrl ?: track.album.coverUrl,
-            size = 56.dp,
+            size = 56.dp, // 列表行封面尺寸
             isCircle = false
         )
 
@@ -945,7 +959,7 @@ private fun Artwork(
     Box(
         modifier = Modifier
             .size(size)
-            .then(if (isCircle) Modifier.clip(CircleShape) else Modifier.squircleClip(10.dp))
+            .then(if (isCircle) Modifier.clip(CircleShape) else Modifier.squircleClip(10.dp)) // 圆形头像或 10.dp 超椭圆封面圆角
             .background(colors.placeholder),
         contentAlignment = Alignment.Center
     ) {
@@ -1120,9 +1134,10 @@ private fun SearchHistorySection(
 
         Spacer(modifier = Modifier.height(10.dp))
 
+        // 搜索历史标签流式布局（展示条数上限由 SearchHistoryManager.MAX_HISTORY_COUNT 控制）
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), // 历史标签水平间距
+            verticalArrangement = Arrangement.spacedBy(8.dp), // 历史标签垂直间距
             modifier = Modifier.fillMaxWidth()
         ) {
             history.forEach { keyword ->
@@ -1142,7 +1157,7 @@ private fun SearchHistorySection(
                         color = PrimaryText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp) // 历史标签内部留白
                     )
                 }
             }
@@ -1174,7 +1189,7 @@ private fun HotSearchSection(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp),
+                    .height(120.dp), // 热搜加载态占位高度
                 contentAlignment = Alignment.Center
             ) {
                 AppLoadingIndicator(
@@ -1185,9 +1200,10 @@ private fun HotSearchSection(
             }
         } else {
             val colors = AppTheme.colors
+            // 展示接口返回的全部热搜条目（不额外截断）
             hotSearches.forEachIndexed { index, item ->
                 val rank = index + 1
-                val isTopThree = rank <= 3
+                val isTopThree = rank <= 3 // 前 3 名序号与标题加粗并使用强调色
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1411,7 +1427,7 @@ private fun buildSearchItems(
 ): List<SearchRowItem> {
     val tracks = uiState.tracks
 
-    // 建立歌手头像高速索引表，优先从搜索歌手列表与建议歌手列表中提取真实头像
+    // 建立歌手头像索引表，优先从搜索歌手列表与建议歌手列表中提取真实头像
     val artistAvatarMap = mutableMapOf<Long, String>()
     uiState.artists.forEach { artist ->
         artist.coverUrl?.takeIf { it.isNotBlank() }?.let { artistAvatarMap[artist.id] = it }
@@ -1476,15 +1492,15 @@ private fun buildSearchItems(
     return when (selectedTab) {
         SearchTab.BEST -> {
             val mixed = mutableListOf<SearchRowItem>()
-            // 1) 搜索联想建议（最多 3 个）
+            // 1) 关键词联想建议展示上限（最多 3 条）
             mixed += uiState.suggestions.allMatch.take(3).map { SearchRowItem.Suggestion(it) }
-            // 2) 歌曲
+            // 2) 最佳结果中的歌曲展示上限（最多 8 首）
             mixed += tracks.take(8).map { SearchRowItem.Song(it) }
-            // 3) 艺人
+            // 3) 艺人展示上限（最多 4 位）
             mixed += artists.take(4)
-            // 4) 专辑
+            // 4) 专辑展示上限（最多 4 张）
             mixed += albums.take(4)
-            // 5) 歌单
+            // 5) 歌单展示上限（最多 4 个）
             mixed += playlists.take(4)
             mixed
         }

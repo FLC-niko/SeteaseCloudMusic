@@ -20,10 +20,10 @@ data class FriendlyError(
 )
 
 /**
- * 将异常解析为普通用户能看懂的友好错误提示。
+ * 将异常解析为用户可读的友好错误提示。
  *
- * 过滤掉如 "Failed to connect to ...", "UnknownHostException", "HTTP 502" 等极客、晦涩的底层技术信息，
- * 转译为通俗、明确的原因和后续操作指引。
+ * 过滤如 "Failed to connect to ..."、"UnknownHostException"、"HTTP 502" 等底层技术信息，
+ * 转译为明确的原因说明与后续操作指引。
  *
  * @param actionDescription 本次操作的业务名称，例如 "获取二维码"、"加载推荐歌单"、"搜索歌曲" 等。
  */
@@ -113,12 +113,12 @@ fun Throwable?.toUserFriendlyMessage(actionDescription: String = "操作"): Stri
         return rawMessage
     }
 
-    // 13. 兜底友善信息
+    // 13. 兜底提示
     return "$actionDescription 失败，请检查网络后重试"
 }
 
 /**
- * 将可能包含极客/底层异常的原始字符串转换为用户友好的提示信息。
+ * 将可能包含底层异常细节的原始字符串转换为用户可读的提示信息。
  */
 fun String?.toUserFriendlyMessage(fallbackAction: String = "操作"): String {
     if (this.isNullOrBlank()) return "$fallbackAction 失败，请稍后重试"
@@ -206,6 +206,7 @@ fun Throwable?.toFriendlyError(actionDescription: String = "加载内容"): Frie
     }
 }
 
+// 网易云接口风控拦截错误码集合（触发安全验证或网络风控时返回）
 private val RISK_CONTROL_ERROR_CODES = setOf(-460, -462, 10003, 250)
 
 /**

@@ -8,6 +8,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * 歌手模块 Hilt 依赖绑定。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class ArtistFeatureModule {

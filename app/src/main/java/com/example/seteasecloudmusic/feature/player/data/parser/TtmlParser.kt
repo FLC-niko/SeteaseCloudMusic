@@ -12,15 +12,16 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 完整兼容 Apple Music TTML 与 AMLL (amll-ttml-db) 规范的解析器：
+ * 兼容 Apple Music TTML 与 AMLL (amll-ttml-db) 规范的解析器：
  * - 支持 <iTunesMetadata> 侧挂翻译/音译（含逐词时间轴音译对齐）
  * - 支持行内 <span ttm:role="x-translation"> 与 <span ttm:role="x-roman">
- * - 支持背景人声和声 <span ttm:role="x-bg">（自动剥离外层括号并紧随主句输出）
+ * - 支持背景人声和声 <span ttm:role="x-bg">（剥离外层括号并紧随主句输出）
  * - 支持 ttm:agent 对唱角色识别（person / group / other 状态机）
  * - 支持 tts:ruby 振假名注音、amll:empty-beat、amll:obscene 以及 span 间空白保留
  */
 object TtmlParser {
 
+    // TTML 与扩展命名空间 URI
     private const val NS_TT = "http://www.w3.org/ns/ttml"
     private const val NS_ITUNES = "http://music.apple.com/lyric-ttml-internal"
     private const val NS_TTM = "http://www.w3.org/ns/ttml#metadata"
@@ -233,6 +234,7 @@ object TtmlParser {
         val lineKey = parser.getAttr(NS_ITUNES, "key") ?: parser.getAttr(null, "itunes:key") ?: parser.getAttr(null, "key")
         val agent = parser.getAttr(NS_TTM, "agent") ?: parser.getAttr(null, "ttm:agent")
         val lineBegin = parseTime(parser.getAttr(null, "begin")).coerceAtLeast(0)
+        // 缺少 end 属性时默认按 3000 ms 行时长兜底
         val lineEnd = parseTime(parser.getAttr(null, "end")).let { if (it > 0) it else lineBegin + 3000 }
 
         val mainWords = mutableListOf<LyricWord>()
@@ -518,6 +520,7 @@ object TtmlParser {
         }
     }
 
+    /** 将侧挂逐词音译按索引或起始时间容差（20 ms）对齐到主歌词词序列。 */
     private fun alignRomanWords(
         words: List<LyricWord>,
         romanSpans: List<Pair<IntRange, String>>

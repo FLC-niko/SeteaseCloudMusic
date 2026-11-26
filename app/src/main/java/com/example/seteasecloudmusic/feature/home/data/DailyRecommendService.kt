@@ -10,6 +10,9 @@ import retrofit2.http.Query
  * 首页推荐相关网络接口（每日推荐歌曲、推荐歌单、歌单详情、私人 DJ / 私人 FM 等）
  */
 interface DailyRecommendService {
+    /**
+     * 获取每日推荐歌曲列表（afresh=true 时强制刷新）
+     */
     @GET("recommend/songs")
     suspend fun getDailyRecommendSongs(
         @Query("afresh") afresh: Boolean = false

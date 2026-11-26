@@ -21,11 +21,18 @@ import com.example.seteasecloudmusic.core.ui.theme.tuneAmbientHslForTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** 浅色主题下封面未加载或取色失败时的默认氛围背景色 */
 val DefaultArtistAmbientLightBg = Color(0xFFF0F2F5)
+/** 深色主题下封面未加载或取色失败时的默认氛围背景色 */
 val DefaultArtistAmbientDarkBg = Color(0xFF171E24)
+/** 默认氛围背景色别名（指向深色兜底色） */
 val DefaultArtistAmbientBg = DefaultArtistAmbientDarkBg
 
+/**
+ * 歌手封面氛围色内存 LRU 缓存，按深浅主题与图片 URL 隔离键。
+ */
 private object ArtistCoverColorCache {
+    // 缓存最大条目数（条，超出按 LRU 淘汰）
     private val cache = LruCache<String, Color>(128)
 
     private fun key(url: String, isDark: Boolean): String = "${if (isDark) "d" else "l"}|$url"
@@ -42,11 +49,15 @@ private object ArtistCoverColorCache {
     }
 }
 
+/**
+ * 从歌手封面 Bitmap 提取主题适配的氛围背景色，并经 HSL 调优确保文字对比度。
+ */
 private fun extractArtistAmbientDarkColor(
     bitmap: Bitmap,
     isDark: Boolean,
     defaultColor: Color = if (isDark) DefaultArtistAmbientDarkBg else DefaultArtistAmbientLightBg
 ): Color {
+    // Palette 量化采样最大颜色数（越多越精确但耗时略增）
     val palette = Palette.from(bitmap).maximumColorCount(16).generate()
     val swatch = if (isDark) {
         palette.mutedSwatch
@@ -56,6 +67,7 @@ private fun extractArtistAmbientDarkColor(
             ?: palette.vibrantSwatch
     } else {
         val dominant = palette.dominantSwatch
+        // 浅色主题主色饱和度阈值（低于 0.18 视为偏灰，优先选用鲜艳色板避免背景发灰）
         if (dominant != null && dominant.hsl[1] >= 0.18f) {
             dominant
         } else {
@@ -74,6 +86,9 @@ private fun extractArtistAmbientDarkColor(
     return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = 1f)
 }
 
+/**
+ * 异步加载歌手封面并提取、缓存及平滑过渡当前主题的氛围背景色。
+ */
 @Composable
 fun rememberArtistAmbientDarkColor(
     imageUrl: String?,
@@ -106,6 +121,7 @@ fun rememberArtistAmbientDarkColor(
             runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(imageUrl)
+                    // 封面解码降采样尺寸（px，控制取色内存与耗时）
                     .size(128)
                     .allowHardware(false)
                     .build()
@@ -115,6 +131,7 @@ fun rememberArtistAmbientDarkColor(
                     val bitmap = if (drawable is BitmapDrawable && drawable.bitmap != null) {
                         drawable.bitmap
                     } else {
+                        // 非 BitmapDrawable 回退渲染到小尺寸软件位图（最大 128px）
                         val w = drawable.intrinsicWidth.coerceIn(1, 128)
                         val h = drawable.intrinsicHeight.coerceIn(1, 128)
                         Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bmp ->
@@ -137,6 +154,7 @@ fun rememberArtistAmbientDarkColor(
 
     return animateColorAsState(
         targetValue = extractedState.value,
+        // 氛围底色切换渐变时长（ms）
         animationSpec = tween(durationMillis = 420),
         label = "ArtistAmbientDarkColor"
     )

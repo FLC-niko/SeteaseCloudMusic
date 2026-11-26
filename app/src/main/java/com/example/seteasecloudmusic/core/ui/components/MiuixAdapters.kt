@@ -19,6 +19,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
 
+/** 浅色模式下的 Miuix 组件库配色映射（禁用态按钮透明度 0.38 / 0.42）。 */
 private val LightMiuixColorScheme = miuixLightColorScheme(
     primary = LightAppColors.accent,
     onPrimary = Color.White,
@@ -50,6 +51,7 @@ private val LightMiuixColorScheme = miuixLightColorScheme(
     windowDimming = LightAppColors.scrim
 )
 
+/** 深色模式下的 Miuix 组件库配色映射（禁用态按钮透明度 0.38 / 0.42）。 */
 private val DarkMiuixColorScheme = miuixDarkColorScheme(
     primary = DarkAppColors.accent,
     onPrimary = Color.White,

@@ -134,6 +134,7 @@ private val MinePageBase: Color
     @Composable
     get() = AppTheme.colors.backgroundSecondary
 
+/** “我的”页面主视图：展示账号信息、“我喜欢的音乐”入口、分类歌单列表及本地音乐管理，并在大屏下支持双栏详情联动。 */
 @Composable
 fun MineScreen(
     uiState: MineUiState,
@@ -260,12 +261,13 @@ fun MineScreen(
                 )
             }
         } else {
+            // 吸顶触发索引：0=顶栏占位, 1=用户卡片, 2=红心歌单卡片, 3=分类标签栏（到达索引 3 及以上时切换实色背景避免内容透底）
             val isTabsPinned by remember {
                 derivedStateOf { lazyListState.firstVisibleItemIndex >= 3 }
             }
             val tabsBackgroundColor by animateColorAsState(
                 targetValue = if (isTabsPinned) MinePageBase else Color.Transparent,
-                animationSpec = tween(durationMillis = 150),
+                animationSpec = tween(durationMillis = 150), // 标签栏吸顶背景色过渡时长（ms）
                 label = "tabsBg"
             )
 
@@ -319,7 +321,7 @@ fun MineScreen(
                 }
             }
 
-            // 原生吸顶：零延迟同一帧渲染，彻底解决上下滑动时的抖动问题
+            // 使用 LazyColumn 原生 stickyHeader，与列表同帧布局以避免吸顶抖动
             stickyHeader(key = "playlist_tabs") {
                 Box(
                     modifier = Modifier
@@ -544,12 +546,12 @@ fun MineScreen(
         visible = uiState.activePlaylistDetail != null,
         enter = slideInHorizontally(
             initialOffsetX = { fullWidth -> fullWidth },
-            animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+            animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f) // 详情页滑入动画：阻尼比 0.92f，刚度 260f
         ),
         exit = if (isForeground) {
             slideOutHorizontally(
                 targetOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f) // 详情页滑出动画：阻尼比 0.92f，刚度 300f（退场略快）
             )
         } else {
             ExitTransition.None
@@ -784,8 +786,8 @@ private fun UserProfileCenterpiece(
     GlassSurface(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onAccountClick),
-        cornerRadius = 28.dp,
-        surfaceAlpha = 0.30f,
+        cornerRadius = 28.dp, // 用户信息卡片圆角
+        surfaceAlpha = 0.30f, // 玻璃卡片底色透明度
         interactiveHighlight = true
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
@@ -796,7 +798,7 @@ private fun UserProfileCenterpiece(
                 UserAvatar(
                     avatarUrl = avatarUrl,
                     displayName = nickname,
-                    size = 64.dp,
+                    size = 64.dp, // 用户头像尺寸
                     showBorder = false
                 )
                 Spacer(modifier = Modifier.width(14.dp))
@@ -836,11 +838,11 @@ private fun UserProfileCenterpiece(
             }
 
             Spacer(modifier = Modifier.height(18.dp))
-            val statBgColor = Color.White.copy(alpha = if (AppTheme.isDark) 0.08f else 0.24f)
+            val statBgColor = Color.White.copy(alpha = if (AppTheme.isDark) 0.08f else 0.24f) // 统计栏胶囊背景透明度（深色/浅色区分）
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp)) // 统计栏圆角
                     .background(statBgColor)
                     .padding(vertical = 12.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -871,7 +873,7 @@ private fun GlassIconButton(
     LiquidGlassCircleButton(
         onClick = onClick,
         backdrop = backdrop,
-        size = 38.dp,
+        size = 38.dp, // 玻璃图标按钮直径
         enabled = enabled,
         contentDescription = contentDescription
     ) {
@@ -931,8 +933,8 @@ private fun MineLoggedOutView(
         GlassSurface(
             backdrop = backdrop,
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 30.dp,
-            surfaceAlpha = 0.32f
+            cornerRadius = 30.dp, // 未登录引导卡片圆角
+            surfaceAlpha = 0.32f // 未登录卡片玻璃底色透明度
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
@@ -940,7 +942,7 @@ private fun MineLoggedOutView(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(76.dp)
+                        .size(76.dp) // 未登录页耳机图标圆形底框尺寸
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.10f else 0.32f)),
                     contentAlignment = Alignment.Center
@@ -969,8 +971,8 @@ private fun MineLoggedOutView(
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = onLoginClick,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    cornerRadius = 24.dp,
+                    modifier = Modifier.fillMaxWidth().height(48.dp), // 登录按钮高度
+                    cornerRadius = 24.dp, // 登录按钮圆角（全胶囊）
                     colors = ButtonDefaults.buttonColorsPrimary(
                         color = MineAccentRed,
                         contentColor = Color.White
@@ -992,8 +994,8 @@ private fun LikedSongsHeroCard(
     GlassSurface(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        cornerRadius = 26.dp,
-        surfaceAlpha = 0.26f,
+        cornerRadius = 26.dp, // 红心歌单卡片圆角
+        surfaceAlpha = 0.26f, // 红心歌单卡片玻璃底色透明度
         interactiveHighlight = true
     ) {
         Row(
@@ -1002,8 +1004,8 @@ private fun LikedSongsHeroCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(70.dp)
-                    .squircleClip(18.dp)
+                    .size(70.dp) // 红心歌单封面尺寸
+                    .squircleClip(18.dp) // 封面超椭圆圆角
                     .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.10f else 0.32f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -1041,7 +1043,7 @@ private fun LikedSongsHeroCard(
             }
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(44.dp) // 卡片右侧播放按钮直径
                     .clip(CircleShape)
                     .background(MineAccentRed.copy(alpha = 0.92f)),
                 contentAlignment = Alignment.Center
@@ -1085,8 +1087,8 @@ private fun MinePlaylistTabs(
         selectedIndex = selectedIndex,
         onSelect = { settledIndex -> currentOnTabSelected(tabs[settledIndex].first) },
         modifier = modifier.fillMaxWidth(),
-        barHeight = 50.dp,
-        cornerRadius = 25.dp
+        barHeight = 50.dp, // 分类分段栏高度
+        cornerRadius = 25.dp // 分类分段栏圆角（半高形成胶囊外框）
     ) { isInsideSlider ->
         Row(modifier = Modifier.fillMaxSize()) {
             tabs.forEach { (tab, title) ->
@@ -1211,8 +1213,8 @@ private fun PlaylistRowItem(
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .squircleClip(10.dp)
+                .size(56.dp) // 歌单列表项封面尺寸
+                .squircleClip(10.dp) // 封面超椭圆圆角
                 .background(Color.White.copy(alpha = if (AppTheme.isDark) 0.12f else 0.42f)),
             contentAlignment = Alignment.Center
         ) {

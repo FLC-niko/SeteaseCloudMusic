@@ -22,8 +22,8 @@ internal interface NeteaseUpstreamTransport {
 }
 
 /**
- * Sends encrypted upstream requests directly to Netease official hosts (`music.163.com` /
- * `interface.music.163.com`) via a dedicated OkHttpClient that avoids Retrofit interceptor recursion.
+ * 通过独立 [OkHttpClient] 向网易云官方域名（`music.163.com` / `interface.music.163.com`）发送加密表单请求，
+ * 避免复用 Retrofit 客户端拦截器链引发递归拦截。
  */
 internal class OkHttpNeteaseUpstreamTransport(
     private val client: OkHttpClient

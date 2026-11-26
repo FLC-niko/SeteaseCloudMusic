@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+/**
+ * 发现页仓储实现，负责调用发现页接口并将 DTO 映射为领域模型（含音质标签与可播性推导）。
+ */
 class DiscoverRepositoryImpl @Inject constructor(
     private val discoverService: DiscoverService
 ) : DiscoverRepository {
@@ -120,7 +123,7 @@ class DiscoverRepositoryImpl @Inject constructor(
     private fun mapSongToTrack(song: NewsongItemResponse, fallbackCoverUrl: String?): Track {
         val qualityTags = mutableListOf<AudioQuality>()
         val pl = song.privilege?.pl
-        if (pl != null && pl >= 320000L) {
+        if (pl != null && pl >= 320000L) { // 可用码率 >= 320 kbps 时标记为高品/无损可用
             qualityTags.add(AudioQuality.LOSSLESS)
         }
 
@@ -140,6 +143,7 @@ class DiscoverRepositoryImpl @Inject constructor(
             coverUrl = song.album?.picUrl ?: fallbackCoverUrl
         )
 
+        // 优先依据 privilege 状态与可用码率判断可播性；缺失 privilege 时回退检查数字专辑付费标记 fee != 4
         val isPlayable = song.privilege?.let { privilege ->
             val blockedStatus = (privilege.st ?: 0) < 0
             val hasPlayableLevel = (privilege.pl ?: 0L) > 0L

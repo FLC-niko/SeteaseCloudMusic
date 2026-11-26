@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.artist.domain.model
 
 import com.example.seteasecloudmusic.core.model.Track
 
+/** 歌手基础资料与统计信息。 */
 data class ArtistDetailInfo(
     val id: Long,
     val name: String,
@@ -13,6 +14,7 @@ data class ArtistDetailInfo(
     val alias: String? = null
 )
 
+/** 歌手百科与分段经历。 */
 data class ArtistDescription(
     val brief: String,
     val sections: List<ArtistDescriptionSection>
@@ -59,11 +61,13 @@ data class ArtistAlbumDetail(
     val tracks: List<Track>
 )
 
+/** 歌手歌曲列表排序方式。 */
 enum class ArtistSongOrder(val value: String) {
     HOT("hot"),
     TIME("time")
 }
 
+/** 通用分页结果包装。 */
 data class PagedResult<T>(
     val items: List<T>,
     val nextOffset: Int,

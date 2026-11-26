@@ -10,8 +10,7 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 
 /**
- * Intercepts API requests addressed to the Node API server and fulfills all registered
- * Netease Cloud Music endpoints locally against official upstream hosts.
+ * 在本地直连模式下拦截指向主/备 API 代理节点的请求，交由 [NeteaseEndpointRegistry] 直接请求网易云官方上游并构造响应。
  */
 internal class LocalNeteaseApiInterceptor(
     primaryBaseUrl: String,
@@ -71,6 +70,7 @@ internal class LocalNeteaseApiInterceptor(
         return matchPrimary || matchBackup
     }
 
+    // 剥离 BaseUrl 中可能包含的路径前缀，得到用于路由匹配的相对路径
     private fun extractRelativeApiPath(url: HttpUrl): String {
         val rawPath = url.encodedPath
         val prefix = matchingPrefix(url)
@@ -96,6 +96,7 @@ internal class LocalNeteaseApiInterceptor(
         return ""
     }
 
+    // 合并 URL Query 参数与 POST FormBody 字段，FormBody 同名字段优先级更高
     private fun collectParams(request: okhttp3.Request): Map<String, String> {
         val params = LinkedHashMap<String, String>()
         val url = request.url

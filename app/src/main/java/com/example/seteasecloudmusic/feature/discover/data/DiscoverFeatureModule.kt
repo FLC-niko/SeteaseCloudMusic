@@ -7,6 +7,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * 绑定发现页仓储实现的 Hilt 模块。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class DiscoverFeatureModule {

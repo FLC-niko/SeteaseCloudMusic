@@ -37,6 +37,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
+/**
+ * 用户头像展示组件，按头像 URL -> 姓名首字母缩略 -> 访客/默认图标依次降级。
+ *
+ * @param size 头像外径（默认 46.dp）
+ * @param isGuest 为 true 且无头像和昵称时，展示主题强调色访客图标（缩放比例 0.58）
+ */
 @Composable
 fun UserAvatar(
     avatarUrl: String?,
@@ -116,6 +122,7 @@ fun UserAvatar(
     }
 }
 
+/** 从显示名称提取最多两位大写首字母缩略（多词取首尾词首字母，单词取前两字符）。 */
 fun buildAvatarMonogram(displayName: String?): String? {
     val normalized = displayName?.trim().orEmpty()
     if (normalized.isEmpty()) return null
@@ -133,6 +140,11 @@ fun buildAvatarMonogram(displayName: String?): String? {
     }
 }
 
+/**
+ * 可点击圆形用户头像按钮（在侧边栏模式下非侧栏入口时自动隐藏）。
+ *
+ * @param sideControl 是否位于侧边导航栏内；非侧栏按钮在启用 NavigationRail 时隐藏
+ */
 @Composable
 fun UserAvatarButton(
     avatarUrl: String?,
@@ -149,6 +161,7 @@ fun UserAvatarButton(
     val isGuest = !hasAvatar && !hasDisplayName
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    // 按压缩放至 0.94f，弹簧参数：刚度 760、阻尼比 0.76
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.94f else 1f,
         animationSpec = spring(stiffness = 760f, dampingRatio = 0.76f),

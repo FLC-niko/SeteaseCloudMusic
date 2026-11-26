@@ -6,6 +6,9 @@ import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrPollResult
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * 认证领域仓储接口，定义登录、二维码扫码、登出与会话状态订阅能力。
+ */
 interface AuthRepository : AuthStateProvider {
 
     suspend fun loginByPhone(
@@ -23,7 +26,7 @@ interface AuthRepository : AuthStateProvider {
         captcha: String
     ): Result<AuthSession>
 
-    //启动二维码登录流程：返回 key + 展示用二维码信息。
+    // 启动二维码登录流程：返回 key 与展示用二维码信息
     suspend fun startQrLogin(): Result<QrLoginStart>
 
     /**
@@ -43,6 +46,6 @@ interface AuthRepository : AuthStateProvider {
 
     suspend fun sendCaptcha(phone: String): Result<Unit>
 
-    //订阅当前登录态；null 代表未登录。
+    // 订阅当前登录态；null 代表未登录
     override fun observeAuthState(): Flow<AuthSession?>
 }

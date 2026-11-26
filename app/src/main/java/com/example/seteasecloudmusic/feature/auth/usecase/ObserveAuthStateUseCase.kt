@@ -4,6 +4,9 @@ import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * 订阅全局登录状态流（null 表示未登录）。
+ */
 class ObserveAuthStateUseCase (
     private val authRepository: AuthRepository
 ) {

@@ -7,10 +7,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
+/**
+ * 发现页路由入口，订阅 [DiscoverViewModel] 状态并向 [DiscoverScreen] 注入刷新回调。
+ */
 @Composable
 fun DiscoverRoute(
     topContentPadding: Dp,
-    bottomContentPadding: Dp = 180.dp,
+    bottomContentPadding: Dp = 180.dp, // 底部默认留白，用于避让悬浮播放栏与导航栏
     viewModel: DiscoverViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()

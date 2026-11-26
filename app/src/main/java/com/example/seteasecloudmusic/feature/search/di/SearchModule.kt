@@ -9,6 +9,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * Hilt 依赖注入模块：绑定搜索仓库与曲目播放准备接口到 [SearchRepositoryImpl]。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class SearchModule {

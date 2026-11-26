@@ -11,6 +11,7 @@ data class RadioTopArtistsResponse(
     val artists: List<RadioTopArtistItemResponse> = emptyList()
 )
 
+/** 热门歌手条目 DTO */
 data class RadioTopArtistItemResponse(
     val id: Long = 0L,
     val name: String = "",
@@ -26,6 +27,7 @@ data class RadioArtistTopSongResponse(
     val songs: List<RadioSongItemResponse> = emptyList()
 )
 
+/** 通用歌曲条目 DTO（dt/ar/al 与 duration/artists/album 适配不同接口字段名） */
 data class RadioSongItemResponse(
     val id: Long = 0L,
     val name: String = "",
@@ -38,12 +40,14 @@ data class RadioSongItemResponse(
     val album: RadioAlbumReferenceResponse? = null
 )
 
+/** 歌曲关联歌手引用 DTO */
 data class RadioArtistReferenceResponse(
     val id: Long? = null,
     val name: String? = null,
     val picUrl: String? = null
 )
 
+/** 歌曲关联专辑引用 DTO */
 data class RadioAlbumReferenceResponse(
     val id: Long? = null,
     val name: String? = null,
@@ -59,6 +63,7 @@ data class RadioIntelligenceResponse(
     val data: List<RadioIntelligenceItemResponse> = emptyList()
 )
 
+/** 智能漫游推荐条目 DTO */
 data class RadioIntelligenceItemResponse(
     val id: Long = 0L,
     val songInfo: RadioSongItemResponse? = null
@@ -81,6 +86,7 @@ data class RadioArtistNewSongResponse(
     val data: List<RadioArtistNewSongItemResponse> = emptyList()
 )
 
+/** 关注歌手新歌条目 DTO */
 data class RadioArtistNewSongItemResponse(
     val id: Long = 0L,
     val song: RadioSongItemResponse? = null

@@ -29,9 +29,9 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * 1:1 复刻 AMLL MeshGradientRenderer：
- * - Android 13+ (API 33+) 使用 AGSL RuntimeShader + 双三次 Hermite 曲面网格 (BHPMesh) 渲染流体封面取色背景
- * - Android 10~12 (API 29~32) 自动降级为同款 32x32 预处理纹理 + 旋转镜像 BitmapShader 混合渲染
+ * 流体渐变网格渲染器：
+ * - Android 13+ (API 33+) 使用 AGSL RuntimeShader + 双三次 Hermite 曲面网格 (BHPMesh) 渲染封面取色背景
+ * - Android 10~12 (API 29~32) 自动降级为 32x32 预处理纹理 + 旋转镜像 BitmapShader 混合渲染
  */
 internal class MeshAlbum internal constructor(
     internal val bitmap: Bitmap,
@@ -86,6 +86,7 @@ internal class MeshGradientRenderer {
     private val vignettePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var vignetteSize = IntSize.Zero
 
+    // 流体旋转与渐变速度倍率（越大流动越快）
     var flowSpeed: Float = 0.24f
         set(value) {
             if (field == value) return
@@ -128,6 +129,7 @@ internal class MeshGradientRenderer {
         if (isPlaying) accumulatedPlayingNanos += elapsedNanos
         val elapsedSeconds = elapsedNanos / 1e9f
 
+        // 切歌交叉淡入淡出速率（1.4/s 约 0.71 s 完成切换）；单帧步长上限 0.1 s 防止卡顿跳变
         val fadeDelta = elapsedSeconds.coerceIn(0f, 0.1f) * 1.4f
         val iterator = meshStates.iterator()
         while (iterator.hasNext()) {
@@ -148,6 +150,11 @@ internal class MeshGradientRenderer {
         lastFrameNanos = null
     }
 
+    /**
+     * 将网格背景录制并缩放绘制到目标 [DrawScope]。
+     *
+     * @param renderScale 离屏渲染缩放比例（[0.2, 1.0]，默认 0.72，同时受短边 720 px / 长边 1440 px 像素上限约束）
+     */
     fun draw(scope: DrawScope, layer: GraphicsLayer, renderScale: Float = 0.72f) = with(scope) {
         if (size.width <= 0f || size.height <= 0f) return@with
         val scale = min(
@@ -165,6 +172,7 @@ internal class MeshGradientRenderer {
             layer.clip = true
             layer.compositingStrategy = CompositingStrategy.Offscreen
             layer.record(bufferSize) {
+                // 离屏底色，防止边缘透明漏出
                 drawRect(Color(0xFF14151A))
                 drawIntoCanvas { composeCanvas ->
                     drawMeshes(composeCanvas.nativeCanvas, bufferSize)
@@ -239,12 +247,14 @@ internal class MeshGradientRenderer {
         val bmpShader = state.fallbackBitmapShader ?: return
         val w = size.width.toFloat()
         val h = size.height.toFloat()
+        // 放大 1.45 倍以覆盖纹理旋转时的矩形对角区域
         val maxDim = max(w, h) * 1.45f
         val texW = state.album.bitmap.width.toFloat().coerceAtLeast(1f)
         val texH = state.album.bitmap.height.coerceAtLeast(1).toFloat()
 
         state.fallbackMatrix.reset()
         state.fallbackMatrix.postTranslate(-texW * 0.5f, -texH * 0.5f)
+        // 114.59 ≈ 2.0 * 180 / π，与 AGSL Shader 中 time * 2.0 rad 的角速度保持一致
         state.fallbackMatrix.postRotate((time * 114.59f) % 360f)
         state.fallbackMatrix.postScale(maxDim / texW, maxDim / texH)
         state.fallbackMatrix.postTranslate(w * 0.5f, h * 0.45f)
@@ -257,6 +267,7 @@ internal class MeshGradientRenderer {
 
         if (vignetteSize != size) {
             vignetteSize = size
+            // 径向暗角：中心 32% 起渐暗至边缘 35% 不透明度黑色
             vignettePaint.shader = RadialGradient(
                 w * 0.5f,
                 h * 0.5f,
@@ -273,6 +284,11 @@ internal class MeshGradientRenderer {
     companion object {
         private val random = java.util.Random()
 
+        /**
+         * 在工作线程预处理封面纹理并构建网格顶点与 Shader 资源。
+         *
+         * @param subdivision 每个控制点片元的细分段数（默认 26，越大曲面越平滑）
+         */
         @WorkerThread
         fun prepareAlbum(bitmap: Bitmap, subdivision: Int = 26, preset: ControlPointPreset? = null): MeshAlbum {
             val source = if (bitmap.isRecycled) {
@@ -291,6 +307,7 @@ internal class MeshGradientRenderer {
                 if (source !== bitmap && !source.isRecycled) source.recycle()
             }
 
+            // 80% 概率选用预设拓扑，20% 概率随机生成控制点网格
             val selectedPreset = preset ?: if (random.nextFloat() < 0.8f) {
                 CONTROL_POINT_PRESETS[random.nextInt(CONTROL_POINT_PRESETS.size)]
             } else {

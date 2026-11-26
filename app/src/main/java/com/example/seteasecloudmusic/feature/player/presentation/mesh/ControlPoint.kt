@@ -2,6 +2,7 @@ package com.example.seteasecloudmusic.feature.player.presentation.mesh
 
 import kotlin.math.PI
 
+/** 单个网格控制点的拓扑与切线配置。 */
 internal data class ControlPointConf(
     val cx: Int,
     val cy: Int,
@@ -13,6 +14,7 @@ internal data class ControlPointConf(
     val vp: Float
 )
 
+/** 一组完整的网格变形预设（包含网格行列数与各控制点参数）。 */
 internal data class ControlPointPreset(
     val width: Int,
     val height: Int,
@@ -28,8 +30,10 @@ private fun p(
 private fun preset(w: Int, h: Int, conf: List<ControlPointConf>) =
     ControlPointPreset(w, h, conf)
 
+// 角度转弧度系数
 private const val D2R = PI.toFloat() / 180f
 
+/** 内置控制点拓扑预设集合（4x4 与 5x5 网格扭曲模板）。 */
 internal val CONTROL_POINT_PRESETS: List<ControlPointPreset> = listOf(
     preset(5, 5, listOf(
         p(0, 0, -1f, -1f, 0f, 0f, 1f, 1f),

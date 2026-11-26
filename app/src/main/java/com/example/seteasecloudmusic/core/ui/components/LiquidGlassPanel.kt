@@ -24,10 +24,16 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.RoundedRectangle
 
-/** Overlay sampling source. Content inside this source must use a separate background layer. */
+/** 浮层玻璃采样源 CompositionLocal；被采样子树内部不可直接作为采样目标，避免循环采样。 */
 val LocalGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
-/** A readable floating panel using the same optical material as the compact navigation. */
+/**
+ * 浮层液态玻璃面板修饰符（用于弹窗、占位卡片与半屏浮层）。
+ * 当 [backdrop] 为空时降级为渐变不透明面板，并保留重力 3D 高光棱边。
+ *
+ * @param cornerRadius 面板圆角半径（默认 28.dp）
+ * @param shadowElevation 外阴影弥散半径（默认 18.dp）
+ */
 fun Modifier.liquidGlassPanel(
     backdrop: Backdrop?,
     containerColor: Color = Color.White,
@@ -52,11 +58,13 @@ fun Modifier.liquidGlassPanel(
                     },
                     effects = {
                         vibrancy()
-                        blur(6.dp.toPx())
+                        blur(6.dp.toPx()) // 面板高斯模糊半径（6.dp）
                         noiseDither(GlassDefaults.NoiseDitherCoeff)
+                        // 边缘透镜折射：折射高度 16.dp、折射量 20.dp，开启色散
                         lens(16.dp.toPx(), 20.dp.toPx(), chromaticAberration = true)
                     },
                     onDrawSurface = {
+                        // 深色底 0.66 / 浅色底 0.50 铺底，兼顾透背景与文字对比度
                         drawRect(containerColor.copy(alpha = if (dark) 0.66f else 0.50f))
                         drawRect(
                             Brush.verticalGradient(

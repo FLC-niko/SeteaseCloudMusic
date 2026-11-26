@@ -10,6 +10,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/** “我的”页面依赖注入模块：绑定歌单仓库与本地音乐仓库实现。 */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class MineFeatureModule {

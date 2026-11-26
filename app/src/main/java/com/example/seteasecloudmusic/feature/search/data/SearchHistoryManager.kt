@@ -76,8 +76,8 @@ class SearchHistoryManager @Inject constructor(
     }
 
     companion object {
-        private const val PREF_NAME = "search_history_prefs"
-        private const val KEY_HISTORY = "search_history_list"
-        private const val MAX_HISTORY_COUNT = 30
+        private const val PREF_NAME = "search_history_prefs" // SharedPreferences 文件名
+        private const val KEY_HISTORY = "search_history_list" // 历史记录 JSON 存储键名
+        private const val MAX_HISTORY_COUNT = 30 // 本地搜索历史最大保留条数（超出后裁剪末尾旧记录）
     }
 }

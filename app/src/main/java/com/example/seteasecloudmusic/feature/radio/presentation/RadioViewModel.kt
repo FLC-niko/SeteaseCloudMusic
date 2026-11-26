@@ -29,11 +29,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * 电台页 UI 状态，聚合首屏加载/刷新状态、9 个分区列表以及内嵌歌单详情浮层状态。
+ */
 data class RadioUiState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
-    // 歌单详情层 (类似我的喜欢歌单页面)
+    // 内嵌歌单详情浮层数据
     val activePlaylistDetail: PlaylistDetail? = null,
     val isLoadingDetail: Boolean = false,
     // 1. 排行榜
@@ -56,6 +59,9 @@ data class RadioUiState(
     val followedArtistSection: FollowedArtistSectionData = FollowedArtistSectionData()
 )
 
+/**
+ * 电台页 ViewModel，负责并发加载 9 个分区数据、响应网络重连/登录态/收藏变化，以及管理详情浮层与快捷播放。
+ */
 @HiltViewModel
 class RadioViewModel @Inject constructor(
     private val radioRepository: RadioRepository,
@@ -122,8 +128,10 @@ class RadioViewModel @Inject constructor(
         loadAllSections(silent = false)
     }
 
+    /** 页面进入前台时，若收藏有变更或距上次刷新超过 2 分钟则刷新漫游列表。 */
     fun onEnterForeground() {
         val elapsedMs = System.currentTimeMillis() - lastRoamRefreshTimeMs
+        // 120_000 ms（2 分钟）前台回流自动刷新冷却阈值
         if (isRoamDirty || (lastRoamRefreshTimeMs > 0L && elapsedMs >= 120_000L)) {
             refreshRoamItems(debounced = false)
         }
@@ -133,7 +141,7 @@ class RadioViewModel @Inject constructor(
         roamRefreshJob?.cancel()
         roamRefreshJob = viewModelScope.launch {
             if (debounced) {
-                kotlinx.coroutines.delay(500L)
+                kotlinx.coroutines.delay(500L) // 收藏列表高频切换防抖延迟（ms）
             }
             val roam = radioRepository.getRoamItems().getOrNull() ?: return@launch
             isRoamDirty = false
@@ -192,9 +200,7 @@ class RadioViewModel @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 歌单详情层操作（类似我的喜欢歌单页面）
-    // ==========================================
+    // 歌单详情浮层操作（内存预览先行，再依次尝试磁盘缓存与网络刷新）
     fun openPlaylistDetail(playlistId: Long, name: String, coverUrl: String?) {
         playlistDetailJob?.cancel()
         val requestId = ++playlistDetailRequestId
@@ -285,9 +291,7 @@ class RadioViewModel @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 播放逻辑
-    // ==========================================
+    // 各分区卡片快捷播放
     fun playToplist(item: RadioToplistItem) {
         viewModelScope.launch {
             val tracks = radioRepository.getPlaylistTracks(item.id).getOrDefault(emptyList())

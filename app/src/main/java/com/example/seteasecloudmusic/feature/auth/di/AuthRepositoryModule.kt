@@ -9,6 +9,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * 绑定认证仓储与全局登录态提供者的 Hilt 模块。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class AuthRepositoryModule {

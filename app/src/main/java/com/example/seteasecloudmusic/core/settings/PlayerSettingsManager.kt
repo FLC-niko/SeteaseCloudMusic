@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 应用主题外观模式。 */
 enum class AppThemeMode(
     val title: String,
     val desc: String
@@ -17,6 +18,7 @@ enum class AppThemeMode(
     DARK("深色模式", "始终使用深色外观")
 }
 
+/** 在线播放可选音质等级及其服务端 `levelKey` 与展示文案映射。 */
 enum class OnlineAudioQuality(
     val title: String,
     val levelKey: String,
@@ -31,6 +33,7 @@ enum class OnlineAudioQuality(
     HIRES("Hi-Res", "hires", "高解析母带 · 24bit/96kHz", "Hi-Res", "Hi-Res", "高解析度无损 Hi-Res");
 
     companion object {
+        // 播放器音质菜单可选项顺序
         val PlayerSelectableQualities: List<OnlineAudioQuality> = listOf(
             STANDARD,
             HIGH,
@@ -40,6 +43,9 @@ enum class OnlineAudioQuality(
     }
 }
 
+/**
+ * 播放器与全局偏好设置管理器，基于 SharedPreferences 持久化并通过 StateFlow 对外广播变更。
+ */
 @Singleton
 class PlayerSettingsManager @Inject constructor(
     @param:ApplicationContext private val context: Context
@@ -169,17 +175,18 @@ class PlayerSettingsManager @Inject constructor(
     }
 
     companion object {
-        private const val PREF_NAME = "app_settings_prefs"
-        private const val KEY_AUDIO_QUALITY = "player_audio_quality"
-        private const val KEY_BLUETOOTH_LYRICS = "player_bluetooth_lyrics"
-        private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"
-        private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"
-        private const val KEY_PREDICTIVE_BACK = "predictive_back_enabled"
-        private const val KEY_LOCAL_DIRECT_API = "local_direct_api_enabled"
-        private const val KEY_THEME_MODE = "app_theme_mode"
-        private const val KEY_TOP_AMBIENT_ENABLED = "top_ambient_enabled"
-        private const val KEY_TOP_AMBIENT_COLOR_ARGB = "top_ambient_color_argb"
+        private const val PREF_NAME = "app_settings_prefs"                     // 全局设置 SharedPreferences 文件名
+        private const val KEY_AUDIO_QUALITY = "player_audio_quality"           // 在线音质偏好 Key（默认 OnlineAudioQuality.STANDARD）
+        private const val KEY_BLUETOOTH_LYRICS = "player_bluetooth_lyrics"     // 蓝牙歌词推送开关 Key（默认 false）
+        private const val KEY_SUPER_LYRIC_API = "player_super_lyric_api"       // 超级歌词/状态栏歌词开关 Key（默认 true）
+        private const val KEY_PLAYLIST_STYLE = "playlist_detail_style"         // 歌单详情页样式标识 Key（默认 "apple_music"）
+        private const val KEY_PREDICTIVE_BACK = "predictive_back_enabled"      // 预测性返回手势开关 Key（默认 true）
+        private const val KEY_LOCAL_DIRECT_API = "local_direct_api_enabled"    // 本地直连接口开关 Key（默认 true）
+        private const val KEY_THEME_MODE = "app_theme_mode"                    // 应用深浅主题模式 Key（默认 AppThemeMode.SYSTEM）
+        private const val KEY_TOP_AMBIENT_ENABLED = "top_ambient_enabled"      // 顶部氛围背景开关 Key（默认 true）
+        private const val KEY_TOP_AMBIENT_COLOR_ARGB = "top_ambient_color_argb"// 顶部氛围背景色 ARGB 整数值 Key
 
+        /** 顶部氛围背景默认颜色（ARGB）。 */
         const val DEFAULT_TOP_AMBIENT_COLOR_ARGB: Int = 0xFFFFE8ED.toInt()
 
         @Volatile

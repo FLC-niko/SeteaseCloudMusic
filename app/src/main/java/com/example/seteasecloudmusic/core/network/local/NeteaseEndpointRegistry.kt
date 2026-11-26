@@ -6,8 +6,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
 /**
- * Implements all 45 Netease Cloud Music API endpoints used across the app's Retrofit services,
- * matching the request mapping and response normalization of `@neteasecloudmusicapienhanced/api`.
+ * 本地直连端点注册与路由分发器：实现应用内 Retrofit 服务使用的 45 个网易云 API 端点，
+ * 负责将代理路由参数映射为网易云官方上游路径、选择加密模式并规范化响应字段。
  */
 internal class NeteaseEndpointRegistry(
     private val client: LocalNeteaseClient,
@@ -300,6 +300,7 @@ internal class NeteaseEndpointRegistry(
     private fun handlePlaylistDetail(q: Map<String, String>, cookie: String?): LocalApiResult {
         val data = JsonObject().apply {
             addProperty("id", q["id"].orEmpty())
+            // 拉取完整曲目列表（单歌单最大 100000 首），s 为最近收藏者返回人数（默认 8）
             addProperty("n", 100000)
             addProperty("s", q.intOrDefault("s", 8))
         }
@@ -330,6 +331,7 @@ internal class NeteaseEndpointRegistry(
             return LocalApiResult(200, wrapped.toString(), firstRes.setCookies)
         }
 
+        // 业务码 512 表示歌单曲目顺序/重复兼容情况，按上游约定将 trackIds 重复拼接后重试一次
         if (firstCode == 512) {
             val doubledArray = JsonArray().apply {
                 trackList.forEach(::add)
@@ -438,11 +440,13 @@ internal class NeteaseEndpointRegistry(
         val idsJson = JsonArray().apply { ids.forEach(::add) }.toString()
         val data = JsonObject().apply {
             addProperty("ids", idsJson)
+            // 默认请求最大可用码率上限（999000 bps），由服务端按曲目权限向下匹配
             addProperty("br", q.intOrDefault("br", 999000))
         }
         val res = client.request("/api/song/enhance/player/url", data, q, cookie, NeteaseCryptoMode.EAPI)
         val bodyObj = parseJsonObjectOrNull(res.bodyJson) ?: return res
         val rawArray = bodyObj.getAsJsonArray("data") ?: return res
+        // 按传入 ids 顺序重排返回数组，保证批量取链与入参一一对应
         val sortedItems = rawArray.sortedWith(compareBy { el ->
             val idStr = el.takeIf { it.isJsonObject }?.asJsonObject?.get("id")?.asString ?: ""
             val idx = ids.indexOf(idStr)
@@ -536,6 +540,15 @@ internal class NeteaseEndpointRegistry(
         }
 
     companion object {
+        /**
+         * 本地直连端点映射表（共 45 个路由，key 为归一化后的相对路径）：
+         * - 专辑与歌手：`/album`、`/artist/album|desc|detail|new/song|songs|sublist|top/song`、`/simi/artist`
+         * - 认证与账户：`/captcha/sent`、`/login/cellphone`、`/login/qr/key|create|check`、`/logout`、`/user/account|playlist`
+         * - 发现与榜单：`/homepage/block/page`、`/personalized`、`/personalized/newsong`、`/recommend/resource|songs`、`/top/artists|playlist|song`、`/toplist/detail`
+         * - 搜索：`/cloudsearch`、`/search/hot|hot/detail|suggest`
+         * - 歌曲与播放：`/like`、`/likelist`、`/lyric`、`/lyric/new`、`/personal_fm`、`/personal/fm/mode`、`/playmode/intelligence/list`、`/scrobble`、`/simi/song`、`/song/order/update`、`/song/url`、`/song/url/v1`
+         * - 歌单管理：`/playlist/create|detail|tracks`
+         */
         internal val HANDLERS: Map<String, (NeteaseEndpointRegistry, Map<String, String>, String?) -> LocalApiResult> =
             mapOf(
                 "/album" to NeteaseEndpointRegistry::handleAlbum,

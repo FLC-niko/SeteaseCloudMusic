@@ -78,6 +78,10 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.collectLatest
 
+/**
+ * 账户与偏好设置半屏弹窗内容。
+ * 承载登录方式选择、手机号验证码登录、二维码扫码登录，以及音质、外观、顶部氛围色与歌词等设置项。
+ */
 @Composable
 fun AccountLoginSheetContent(
     onDismiss: () -> Unit,
@@ -122,18 +126,18 @@ fun AccountLoginSheetContent(
                 .fillMaxSize()
                 .verticalScroll(contentScrollState)
                 .imePadding()
-                .padding(horizontal = 16.dp)
-                .padding(top = 12.dp, bottom = 76.dp)
+                .padding(horizontal = 16.dp) // 弹窗内容左右安全边距
+                .padding(top = 12.dp, bottom = 76.dp) // 底部留白为 Snackbar 提示预留空间
         ) {
             Header(onDismiss = onDismiss)
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(14.dp)) // 顶栏与主体内容间距
 
             // 已登录状态下强制展示账户主页，兜底避免再次打开时停留在登录子面板
             val effectivePanel = if (uiState.isLoggedIn) AuthPanel.METHODS else uiState.panel
             Crossfade(
                 targetState = effectivePanel,
-                animationSpec = tween(220),
+                animationSpec = tween(220), // 子面板切换淡入淡出时长（ms）
                 label = "accountPanelTransition",
                 modifier = Modifier.fillMaxWidth()
             ) { current ->
@@ -296,7 +300,7 @@ private fun Header(onDismiss: () -> Unit) {
         IconButton(
             onClick = onDismiss,
             modifier = Modifier
-                .size(44.dp)
+                .size(44.dp) // 遵循 44.dp 最小触控区域尺寸
                 .background(colors.surfaceVariant, CircleShape)
         ) {
             Icon(
@@ -421,11 +425,11 @@ private fun MethodSelectionPanel(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(20.dp)
+                                .size(20.dp) // 调色预览圆点直径
                                 .clip(CircleShape)
                                 .background(
                                     Color(topAmbientColorArgb).copy(
-                                        alpha = if (topAmbientEnabled) 1f else 0.35f
+                                        alpha = if (topAmbientEnabled) 1f else 0.35f // 关闭氛围色时弱化圆点透明度
                                     )
                                 )
                                 .border(1.dp, colors.coverBorder, CircleShape)
@@ -530,7 +534,7 @@ private fun ProfileCard(
             UserAvatar(
                 avatarUrl = avatarUrl,
                 displayName = displayName,
-                size = 52.dp,
+                size = 52.dp, // 账户主页头像展示尺寸
                 showBorder = false
             )
             Spacer(modifier = Modifier.size(12.dp))
@@ -772,7 +776,7 @@ internal fun QrPanel(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(190.dp)
+                        .size(190.dp) // 二维码卡片外框尺寸
                         .background(
                             if (imageBitmap != null) Color.White else colors.surfaceVariant,
                             RoundedCornerShape(20.dp)
@@ -797,7 +801,7 @@ internal fun QrPanel(
                             Image(
                                 bitmap = imageBitmap,
                                 contentDescription = "登录二维码",
-                                modifier = Modifier.size(170.dp)
+                                modifier = Modifier.size(170.dp) // 二维码实际绘制尺寸（四周保留 10.dp 静区）
                             )
                         }
                         else -> {
@@ -965,7 +969,7 @@ private fun <T> SettingsOptionDialog(
 ) {
     val colors = AppTheme.colors
     val isDark = AppTheme.isDark
-    val containerColor = if (isDark) Color(0xFF1C1C1E) else colors.surfaceVariant
+    val containerColor = if (isDark) Color(0xFF1C1C1E) else colors.surfaceVariant // 深色模式下选项卡片底色
 
     AdaptiveAlertDialog(
         onDismissRequest = onDismiss,

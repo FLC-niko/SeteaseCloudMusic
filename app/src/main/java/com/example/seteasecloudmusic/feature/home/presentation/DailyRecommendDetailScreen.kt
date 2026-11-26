@@ -14,6 +14,7 @@ import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailSty
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
+/** 每日推荐及首页聚合歌单详情页路由入口，绑定 HomeViewModel 播放动作。 */
 @Composable
 fun DailyRecommendDetailRoute(
     tracks: List<Track>,
@@ -36,6 +37,9 @@ fun DailyRecommendDetailRoute(
     )
 }
 
+/**
+ * 首页聚合推荐歌单详情页，复用 [PlaylistDetailScreen] 并按标题选择动态海报墙或全封面样式。
+ */
 @Composable
 fun DailyRecommendDetailScreen(
     tracks: List<Track>,
@@ -53,6 +57,7 @@ fun DailyRecommendDetailScreen(
     val glassBackdrop = backdrop ?: LocalGlassBackdrop.current ?: fallbackBackdrop
     val playlistDetail = remember(tracks, title, coverUrl) {
         PlaylistDetail(
+            // 使用负值虚拟 ID 区分首页聚合歌单与真实歌单
             id = when (title) {
                 "每日推荐" -> -1001L
                 "雷达歌单" -> -1002L

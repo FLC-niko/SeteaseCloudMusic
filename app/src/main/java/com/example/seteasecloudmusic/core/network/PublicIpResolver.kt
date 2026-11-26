@@ -16,11 +16,11 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 在内存中探测并缓存设备当前的中国大陆真实公网 IPv4 地址，
- * 仅在手动关闭本地直连、使用外部代理服务器模式（`localDirectApiEnabled == false`）时生效。
+ * 仅在关闭本地直连、使用外部代理服务器模式（`localDirectApiEnabled == false`）时生效。
  *
- * - 探测到的 IP 仅驻留内存，绝不写入磁盘或输出日志。
+ * - 探测到的 IP 仅驻留内存，不写入磁盘或输出日志。
  * - 网络切换（如 Wi-Fi 与移动数据互切）时自动失效缓存并刷新。
- * - 若设备当前处于海外代理/VPN 环境或探测超时失败，自动兜底为本次会话内固定的国内运营商 IP。
+ * - 若设备当前处于海外代理/VPN 环境或探测超时失败，回退为本次会话内固定的国内运营商 IP。
  */
 internal class PublicIpResolver(
     private val httpClient: OkHttpClient,
@@ -145,11 +145,13 @@ internal class PublicIpResolver(
     }
 
     companion object {
-        private const val CACHE_TTL_MS = 15 * 60 * 1000L
-        private const val DEFAULT_AUTH_WAIT_MS = 1_200L
+        private const val CACHE_TTL_MS = 15 * 60 * 1000L // 公网 IP 内存缓存有效期（15 分钟，ms）
+        private const val DEFAULT_AUTH_WAIT_MS = 1_200L  // 登录/验证码请求等待首次探测的最长阻塞时间（ms）
 
+        // 需排除的非中国大陆地区关键字，命中时视为海外出口并回退兜底 IP
         private val NON_MAINLAND_REGIONS = setOf("香港", "澳门", "台湾", "香港特别行政区", "澳门特别行政区", "台湾省")
 
+        // 中国大陆公网 IP 探测源列表（按顺序依次尝试，首个有效结果即返回）
         internal val DEFAULT_ENDPOINTS: List<IpProbeEndpoint> = listOf(
             IpProbeEndpoint(
                 url = "https://myip.ipip.net/json",

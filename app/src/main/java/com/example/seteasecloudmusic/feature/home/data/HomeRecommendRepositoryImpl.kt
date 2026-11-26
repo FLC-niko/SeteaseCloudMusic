@@ -20,6 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+/**
+ * 首页推荐数据仓库实现：聚合每日推荐、雷达歌单、私人 DJ、相似推荐、心动模式与喜好推荐。
+ * 本地缓存无固定 TTL，每次联网请求成功后覆盖写入；网络异常或未登录时依次降级至本地缓存与内置默认列表。
+ */
 class HomeRecommendRepositoryImpl @Inject constructor(
     private val dailyRecommendService: DailyRecommendService,
     private val discoverService: DiscoverService,
@@ -39,6 +43,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
 
     override suspend fun getRadarPlaylist(): Result<RadarPlaylistData> =
         fetchRadarPlaylist(
+            // 默认私人雷达歌单 ID（推荐接口未发现时使用）
             defaultPlaylistId = 3136952023L,
             defaultName = "私人雷达",
             defaultDescription = "反复聆听你最爱的歌",
@@ -144,7 +149,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // 走缓存或兜底
+                // 接口失败时降级至本地缓存或静态默认歌单
             }
 
             val cached = getCached()
@@ -173,7 +178,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
         try {
             val collected = mutableListOf<Track>()
 
-            // 1. 优先调用 /personal/fm/mode?mode=AIDJ 获取私人 DJ 模式推荐流
+            // 1. 优先调用 /personal/fm/mode?mode=AIDJ 获取私人 DJ 推荐流（单次拉取上限 10 首）
             try {
                 val aidjResp = dailyRecommendService.getPersonalFmMode(mode = "AIDJ", limit = 10)
                 if (aidjResp.code == 200 && aidjResp.data.isNotEmpty()) {
@@ -182,10 +187,10 @@ class HomeRecommendRepositoryImpl @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // 继续尝试标准私人 FM
+                // 继续尝试经典私人 FM
             }
 
-            // 2. 若 AIDJ 模式返回不足，补充或降级调用经典私人 FM /personal_fm
+            // 2. 若有效曲目不足 3 首，补充或降级调用经典私人 FM /personal_fm
             if (collected.size < 3) {
                 try {
                     val fmResp = dailyRecommendService.getPersonalFm()
@@ -195,7 +200,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // 走缓存或兜底
+                    // 接口失败时降级至缓存或默认列表
                 }
             }
 
@@ -254,7 +259,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // 走缓存或兜底
+                    // 相似推荐失败时降级至本地缓存或默认列表
                 }
             }
 
@@ -291,6 +296,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     override suspend fun getHeartModeSongs(): Result<List<Track>> = withContext(Dispatchers.IO) {
         try {
             val (likedPlaylistId, likedTracks) = loadLikedPlaylistSeedPool()
+            // 从我喜欢歌单前 8 首中随机抽取心动模式种子歌曲
             val seedTrack = likedTracks.take(8).randomOrNull()
 
             if (likedPlaylistId != null && likedPlaylistId > 0L && seedTrack != null && seedTrack.id > 0L) {
@@ -382,6 +388,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     private suspend fun pickSimiSeedTrack(): Track? {
         val (_, likedTracks) = loadLikedPlaylistSeedPool()
         if (likedTracks.isNotEmpty()) {
+            // 从我喜欢歌单前 8 首中随机抽取相似推荐种子
             return likedTracks.take(8).random()
         }
 
@@ -392,6 +399,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
         if (dailySeed != null) return dailySeed
 
         return runCatching {
+            // 无本地种子时拉取 6 首推荐新歌作为降级种子
             discoverService.getPersonalizedNewsong(limit = 6).result.firstOrNull()?.song?.let {
                 mapNewsongToTrack(it, null)
             }
@@ -401,7 +409,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     override suspend fun getDailyRecommendSongs(afresh: Boolean): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             try {
-                // 1. 若有登录态，优先尝试官方每日推荐接口 /recommend/songs
+                // 1. 已登录时优先请求每日推荐接口 /recommend/songs
                 if (hasLoginCookie()) {
                     try {
                         val response = dailyRecommendService.getDailyRecommendSongs(afresh)
@@ -422,17 +430,17 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
-                        // 网络或接口异常时继续向下走兜底
+                        // 网络或接口异常时降级至本地缓存
                     }
                 }
 
-                // 2. 若未登录或日推失败，先看本地持久化缓存
+                // 2. 未登录或日推请求失败时读取本地持久化缓存（无 TTL 限制）
                 val cached = homeRecommendCache.getDailyRecommend()
                 if (!cached.isNullOrEmpty()) {
                     return@withContext Result.success(cached)
                 }
 
-                // 3. 本地无缓存时，降级调用无需登录的推荐新歌接口 /personalized/newsong
+                // 3. 本地无缓存时，降级拉取 18 首无需登录的推荐新歌（/personalized/newsong）
                 try {
                     val newsongResponse = discoverService.getPersonalizedNewsong(limit = 18)
                     if (newsongResponse.code == 200 && newsongResponse.result.isNotEmpty()) {
@@ -450,10 +458,10 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // 继续
+                    // 降级接口异常时继续返回静态默认列表
                 }
 
-                // 4. 极致兜底：静态预设推荐歌曲（确保冷启动与断网均能完美呈现）
+                // 4. 最终降级：返回内置静态默认歌曲列表，保证冷启动与离线时有可展示内容
                 Result.success(getDefaultFallbackTracks())
             } catch (e: CancellationException) {
                 throw e
@@ -580,6 +588,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
 
     private suspend fun getNewSongRadarFallbackPlaylist(): RadarPlaylistData {
         val newsongTracks = runCatching {
+            // 新歌雷达接口失败时拉取 18 首推荐新歌作为降级列表
             val resp = discoverService.getPersonalizedNewsong(limit = 18)
             if (resp.code == 200) {
                 resp.result.mapNotNull { item ->
@@ -631,6 +640,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
         val isPlayable = when (playableByPrivilege) {
             true -> true
             false -> false
+            // 无权限字段时按 fee 兜底：fee == 4 为付费数字专辑不可直接播
             null -> song.fee != 4
         }
 
@@ -638,6 +648,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
             !song.recommendReason.isNullOrBlank() -> song.recommendReason
             !song.reason.isNullOrBlank() -> song.reason
             song.privilege?.fee == 1 -> "VIP"
+            // 热度阈值：>= 80 展示百万红心，>= 50 展示昨日上万播放
             (song.pop ?: 0) >= 80 -> "百万红心"
             (song.pop ?: 0) >= 50 -> "昨日上万播放"
             else -> "推荐"
@@ -660,6 +671,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     private fun mapNewsongToTrack(song: NewsongItemResponse, fallbackCoverUrl: String?): Track {
         val qualityTags = mutableListOf<AudioQuality>()
         val pl = song.privilege?.pl
+        // 可播码率 >= 320kbps 时补充无损音质标签
         if (pl != null && pl >= 320000L) {
             qualityTags.add(AudioQuality.LOSSLESS)
         }
@@ -788,7 +800,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     override suspend fun getFavoriteRecommendSongs(afresh: Boolean): Result<FavoriteRecommendSectionData> =
         withContext(Dispatchers.IO) {
             try {
-                // 1. 调用官方首页 Block 接口 /homepage/block/page（支持 cursor 翻页兜底查找）
+                // 1. 请求首页 Block 接口 /homepage/block/page（支持 cursor 翻页查找目标模块）
                 try {
                     val styleBlock = findHomepageBlockAcrossPages(
                         refresh = afresh,
@@ -822,16 +834,16 @@ class HomeRecommendRepositoryImpl @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // 网络不可用或接口异常时平滑向下走缓存
+                    // 网络不可用或接口异常时降级至本地缓存
                 }
 
-                // 2. 本地持久化缓存
+                // 2. 本地持久化缓存（无 TTL 限制）
                 val cached = homeRecommendCache.getFavoriteRecommend()
                 if (cached != null && cached.tracks.isNotEmpty()) {
                     return@withContext Result.success(cached)
                 }
 
-                // 3. 极致兜底：静态预设风格推荐数据（保证冷启动秒显）
+                // 3. 最终降级：返回内置静态默认风格推荐数据
                 Result.success(getDefaultFavoriteRecommendSection())
             } catch (e: CancellationException) {
                 throw e
@@ -1000,6 +1012,7 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     }
 
     companion object {
+        // 新歌雷达默认歌单 ID（首页 Block 与推荐歌单接口均未匹配时使用）
         private const val NEW_SONG_RADAR_PLAYLIST_ID = 5300458264L
     }
 }

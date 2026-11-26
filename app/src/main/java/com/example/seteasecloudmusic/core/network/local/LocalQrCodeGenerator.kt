@@ -10,8 +10,8 @@ import java.util.zip.CRC32
 import java.util.zip.Deflater
 
 /**
- * Generates `data:image/png;base64,...` QR code strings completely offline using ZXing + standard PNG encoding
- * (free of Android framework Bitmap dependencies so JVM unit tests run natively).
+ * 纯离线生成 `data:image/png;base64,...` 二维码字符串（基于 ZXing 与标准灰度 PNG 编码），
+ * 不依赖 Android `Bitmap`，可在 JVM 单元测试环境直接运行。
  */
 internal object LocalQrCodeGenerator {
 
@@ -19,6 +19,11 @@ internal object LocalQrCodeGenerator {
         0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
     )
 
+    /**
+     * 生成 Base64 Data URL 格式的二维码 PNG。
+     * @param sizePx 二维码输出边长（像素，默认 280）
+     * @param marginModules 二维码四周留白模块数（默认 2）
+     */
     fun toDataUrl(
         content: String,
         sizePx: Int = 280,
@@ -44,11 +49,11 @@ internal object LocalQrCodeGenerator {
         val width = matrix.width
         val height = matrix.height
 
-        // Grayscale 8-bit PNG (color type = 0, bit depth = 8): 1 filter byte + width pixel bytes per row
+        // 8-bit 灰度 PNG（color type = 0, bit depth = 8）：每行含 1 字节滤波标记 + width 字节像素
         val rawImage = ByteArray(height * (width + 1))
         for (y in 0 until height) {
             val rowOffset = y * (width + 1)
-            rawImage[rowOffset] = 0 // Filter type None
+            rawImage[rowOffset] = 0 // 滤波类型 None
             for (x in 0 until width) {
                 rawImage[rowOffset + 1 + x] = if (matrix.get(x, y)) 0x00 else 0xFF.toByte()
             }
@@ -61,11 +66,11 @@ internal object LocalQrCodeGenerator {
         val ihdr = ByteBuffer.allocate(13)
             .putInt(width)
             .putInt(height)
-            .put(8.toByte()) // bit depth
-            .put(0.toByte()) // color type: grayscale
-            .put(0.toByte()) // compression
-            .put(0.toByte()) // filter
-            .put(0.toByte()) // interlace
+            .put(8.toByte()) // 位深
+            .put(0.toByte()) // 颜色类型：灰度
+            .put(0.toByte()) // 压缩方式
+            .put(0.toByte()) // 滤波方式
+            .put(0.toByte()) // 隔行扫描
             .array()
         writeChunk(out, "IHDR", ihdr)
         writeChunk(out, "IDAT", compressed)
@@ -78,6 +83,7 @@ internal object LocalQrCodeGenerator {
         return try {
             deflater.setInput(input)
             deflater.finish()
+            // Zlib 压缩临时缓冲区大小（字节）
             val buf = ByteArray(4096)
             val baos = ByteArrayOutputStream()
             while (!deflater.finished()) {

@@ -71,31 +71,34 @@ internal data class DailyRecommendState(
     val coverUrl: String? = null
 )
 
-/** Keep large recommendation lists out of saved-instance bundles, but retain them across resizing. */
+/** 跨窗口尺寸变更保留选定艺人与每日推荐状态，避免将大列表写入 saved-instance bundle。 */
 internal class AppNavigationState : ViewModel() {
     var selectedArtist by mutableStateOf<SelectedArtist?>(null)
     var dailyRecommend by mutableStateOf<DailyRecommendState?>(null)
 }
 
-/** Quiet light behind the floating dock, sampled together with the page rather than the dock itself. */
+/** 悬浮侧栏背后的环境光底色，随页面一并参与毛玻璃背景采样。 */
 @Composable
 internal fun ExpandedChromeBackground(modifier: Modifier = Modifier, atStart: Boolean = false) {
     val isDark = AppTheme.isDark
     val bgColor = AppTheme.colors.background
+    // 环境光主/次光晕颜色与透明度（暗色/亮色分别调节）
     val firstGlow = if (isDark) Color(0xFF5A2038).copy(alpha = 0.24f) else Color(0xFFF5DCE8).copy(alpha = 0.36f)
     val secondGlow = if (isDark) Color(0xFF1C2E5A).copy(alpha = 0.22f) else Color(0xFFE1EAFB).copy(alpha = 0.32f)
     Canvas(modifier.fillMaxSize()) {
         drawRect(bgColor)
+        // 主径向光晕半径 280.dp（控制边缘氛围扩散范围）
         drawRect(Brush.radialGradient(
             listOf(firstGlow, Color.Transparent),
             center = Offset(if (atStart) 0f else size.width, size.height * 0.52f), radius = 280.dp.toPx()))
+        // 次径向光晕半径 220.dp
         drawRect(Brush.radialGradient(
             listOf(secondGlow, Color.Transparent),
             center = Offset(if (atStart) 40.dp.toPx() else size.width - 40.dp.toPx(), size.height * 0.2f), radius = 220.dp.toPx()))
     }
 }
 
-/** Side controls follow the outer edge; tabs stay bottom aligned as on Duo. */
+/** 宽屏/展开态侧边导航栏：外侧边缘纵向排布头像、迷你播放器、Tab 胶囊与独立搜索按钮。 */
 @Composable
 internal fun MusicNavigationRail(
     selectedIndex: Int,
@@ -121,12 +124,12 @@ internal fun MusicNavigationRail(
     val railAlphaProvider: () -> Float = { if (selectedIndex == 3) 0f else 1f }
     BoxWithConstraints(modifier.width(window.sideControlWidth).fillMaxHeight()
         .systemBarsPadding().imePadding().padding(vertical = 8.dp).testTag("expanded_glass_dock")) {
-        val collapsed = maxHeight < 480.dp
-        val controlsInOverflow = maxHeight < 360.dp
-        val showLabels = maxHeight >= 600.dp && LocalDensity.current.fontScale < 1.4f
-        val extent = if (showLabels) 64.dp else 56.dp
+        val collapsed = maxHeight < 480.dp // 窗口高度低于此阈值时侧栏 Tab 收起为溢出菜单按钮
+        val controlsInOverflow = maxHeight < 360.dp // 窗口高度极小时将迷你播放器收入溢出菜单
+        val showLabels = maxHeight >= 600.dp && LocalDensity.current.fontScale < 1.4f // 高度充足且系统字体未过大缩放时显示文字标签
+        val extent = if (showLabels) 64.dp else 56.dp // 单个侧栏 Tab 高度（带文字 64.dp / 仅图标 56.dp）
         val groupHeight = extent * items.size
-        val dockWidth = if (window.isRegularWidth) 68.dp else 56.dp
+        val dockWidth = if (window.isRegularWidth) 68.dp else 56.dp // 侧边 Tab 胶囊宽度（常规宽屏 68.dp / 紧凑侧栏 56.dp）
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             header()
             Spacer(Modifier.weight(1f))
@@ -184,7 +187,7 @@ internal fun MusicNavigationRail(
                 val railLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
                     val p = segmentState.pressProgress.value.coerceIn(0f, 1f)
                     if (size.height > 0f) {
-                        val maxScale = (size.height + 10.dp.toPx()) / size.height
+                        val maxScale = (size.height + 10.dp.toPx()) / size.height // 按压时纵向最多额外放大 10.dp
                         val s = lerp(1f, maxScale, p)
                         scaleX = s
                         scaleY = s
@@ -225,7 +228,7 @@ internal fun MusicNavigationRail(
                                 backdrop = backdrop,
                                 cornerRadius = railCorner,
                                 isDarkSurface = isDark,
-                                bloomExtraDegrees = -45f,
+                                bloomExtraDegrees = -45f, // 边缘高光偏转角度（度）
                                 layerBlock = railLayerBlock
                             )
                             .interactiveGlassHighlight(shape = railShape, isDarkSurface = isDark)
@@ -319,11 +322,13 @@ internal fun MusicNavigationRail(
             val searchInteractions = remember { MutableInteractionSource() }
             val searchPressed by searchInteractions.collectIsPressedAsState()
             val searchScale by animateFloatAsState(if (searchPressed) 1.06f else 1f,
+                // 侧栏搜索按钮按压缩放弹簧参数（阻尼比 0.8f，刚度 500f）
                 spring(dampingRatio = 0.8f, stiffness = 500f), label = "dockSearchPress")
             Box(Modifier.size(48.dp)
                 .liquidGlass(
                     backdrop = backdrop,
                     cornerRadius = 24.dp,
+                    // 选中搜索页时加重玻璃表面不透明度
                     surfaceAlpha = if (selectedIndex == 3) (if (isDark) 0.40f else 0.58f) else GlassDefaults.SurfaceAlphaBright,
                     isDarkSurface = isDark,
                     layerBlock = { scaleX = searchScale; scaleY = searchScale }
@@ -339,6 +344,7 @@ internal fun MusicNavigationRail(
     }
 }
 
+/** 宽屏侧栏内嵌迷你播放条：纵向排列封面、播放/暂停与队列按钮。 */
 @Composable
 internal fun SideMiniPlayer(
     stateFlow: StateFlow<PlaybackState>,
@@ -358,10 +364,12 @@ internal fun SideMiniPlayer(
     val colors = AppTheme.colors
     val shared = LocalPlayerArtwork.current
     val artwork = track?.coverUrl ?: track?.album?.coverUrl
+    // 侧栏迷你播放条宽度 56.dp、全圆角半径 28.dp
     Column(Modifier.width(56.dp).liquidGlass(backdrop, 28.dp, isDarkSurface = isDark, enableNoiseDither = true)
         .interactiveGlassHighlight(RoundedRectangle(28.dp), isDarkSurface = isDark)
         .padding(vertical = 6.dp).onGloballyPositioned { onBounds(it.boundsInRoot()) }.testTag("side_mini_player"),
         horizontalAlignment = Alignment.CenterHorizontally) {
+        // 封面槽尺寸 44.dp、圆角 12.dp
         Box(Modifier.size(44.dp).clip(RoundedRectangle(12.dp))
             .onGloballyPositioned { onArtworkBounds(it.boundsInRoot()) }
             .clickable { onOpen(artwork) }.semantics { contentDescription = "打开播放器" }, contentAlignment = Alignment.Center) {

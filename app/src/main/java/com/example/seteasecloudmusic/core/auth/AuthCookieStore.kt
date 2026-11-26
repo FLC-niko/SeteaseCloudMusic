@@ -4,18 +4,18 @@ import android.content.Context
 import com.example.seteasecloudmusic.core.network.CookieSanitizer
 
 /**
- * 全局统一的登录 Cookie 与登录态读写入口。
+ * 登录 Cookie 与登录态的统一读写入口。
  *
- * 将历史遗留的双存储（`auth_cookies` 与 `auth_prefs`）收口到同一套读写、清洗与判定规则，
- * 避免各模块自行读取 SharedPreferences 导致“是否已登录”口径不一致或退出清理不彻底。
+ * 同步维护 `auth_cookies` 与 `auth_prefs` 两处 SharedPreferences，
+ * 统一登录校验、Cookie 清洗与退出清理逻辑。
  */
 object AuthCookieStore {
-    private const val COOKIE_PREF_NAME = "auth_cookies"
-    private const val COOKIE_KEY = "cookie_string"
+    private const val COOKIE_PREF_NAME = "auth_cookies"      // 主 Cookie 存储文件名
+    private const val COOKIE_KEY = "cookie_string"          // 主 Cookie 字符串键名
 
-    private const val AUTH_PREF_NAME = "auth_prefs"
-    private const val AUTH_COOKIE_KEY = "cookie"
-    private const val AUTH_USER_ID_KEY = "user_id"
+    private const val AUTH_PREF_NAME = "auth_prefs"         // 登录会话存储文件名
+    private const val AUTH_COOKIE_KEY = "cookie"            // 会话备份 Cookie 键名
+    private const val AUTH_USER_ID_KEY = "user_id"          // 当前登录用户 ID 键名
 
     /**
      * 读取当前已保存的登录 Cookie（优先 `auth_cookies`，兜底 `auth_prefs`）。
@@ -94,7 +94,7 @@ object AuthCookieStore {
     }
 
     /**
-     * 彻底清除全部登录态与 Cookie 存储（用于退出登录或切回游客）。
+     * 清除全部登录态与 Cookie 存储（用于退出登录或切回游客）。
      */
     fun clearAllSessionAndCookies(context: Context) {
         context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)

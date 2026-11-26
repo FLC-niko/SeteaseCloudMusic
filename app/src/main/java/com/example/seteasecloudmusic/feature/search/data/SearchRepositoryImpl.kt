@@ -28,12 +28,8 @@ import javax.inject.Inject
 import javax.net.ssl.SSLException
 
 /**
- * `data.repository` 模块说明：
- *
- * Repository 实现层负责站在 data 和 domain 中间做衔接：
- * 1. 调用具体数据源，例如 Retrofit API、本地数据库、缓存等。
- * 2. 把网络返回的数据模型转换成 domain 层真正使用的模型。
- * 3. 屏蔽数据来源细节，让上层只依赖抽象接口。
+ * 搜索与播放预处理仓库实现，实现 [SearchRepository] 与 [TrackPlaybackPreparer]。
+ * 负责曲目/歌手/歌单搜索、本地与在线流媒体播放直链解析与缓存，以及听歌打卡上报。
  */
 class SearchRepositoryImpl @Inject constructor(
     private val musicService: NeteaseMusicService,
@@ -52,12 +48,13 @@ class SearchRepositoryImpl @Inject constructor(
         val level: String? = null
     )
 
-    // 内存高速缓存：按 trackId + 音质等级 联合缓存已解析的歌曲播放直链与获取时间 (0ms 极速切歌)
+    // 内存缓存：按 "$trackId-$level" 缓存已解析的播放直链、获取时间与音质元信息，避免重复请求
     private val trackUrlCache = ConcurrentHashMap<String, CachedTrackUrl>()
-    // 歌手头像高速缓存：按 artistId 缓存已解析的歌手头像，避免重复解析与空白占位
+    // 歌手头像内存缓存：按 artistId 缓存已解析的头像 URL，用于补全缺少头像的曲目与建议项
     private val artistAvatarCache = ConcurrentHashMap<Long, String>()
 
     private fun resolveCoverUrl(picUrl: String?, img1v1Url: String?): String? {
+        // 5639395138885805 为网易云默认空白占位头像 ID，存在真实头像时优先过滤
         val pic = picUrl?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
         val img = img1v1Url?.trim()?.takeIf { it.isNotBlank() && !it.contains("5639395138885805") }
         val chosen = pic ?: img ?: picUrl?.trim()?.takeIf { it.isNotBlank() } ?: img1v1Url?.trim()?.takeIf { it.isNotBlank() }
@@ -157,10 +154,11 @@ class SearchRepositoryImpl @Inject constructor(
     private fun isUrlExpired(
         url: String,
         fetchedAtMs: Long? = null,
-        safetyMarginMs: Long = 180_000L
+        safetyMarginMs: Long = 180_000L // 直链过期提前判定的安全余量（ms，默认提前 3 分钟失效）
     ): Boolean {
         if (!url.startsWith("http://") && !url.startsWith("https://")) return false
         val now = System.currentTimeMillis()
+        // 无路径时间戳时，缓存获取超过 15 分钟即判定过期
         if (fetchedAtMs != null && now - fetchedAtMs >= 15 * 60_000L) {
             return true
         }
@@ -298,7 +296,7 @@ class SearchRepositoryImpl @Inject constructor(
             }
         }
 
-        // 2. 核心省流量机制：在线歌单曲目优先检索本地已下载/已存在的本地音频
+        // 2. 优先匹配本地曲库中已存在的音频文件，命中后直接走本地播放以节省流量
         val localMatch = localMusicRepository.findMatchingLocalTrack(track)
         if (localMatch != null && !localMatch.playableUrl.isNullOrBlank()) {
             android.util.Log.d("SearchRepo", "Online track '${track.title}' (ID: ${track.id}) matched LOCAL FILE: ${localMatch.playableUrl}")
@@ -358,7 +356,7 @@ class SearchRepositoryImpl @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val sid = sourceId ?: 0L
 
-        // 1. 优先使用 NCBL 桌面端官方加密日志上报 PLD（直传 clientlog3.music.163.com，100% 实时落库官方今日收听与听歌足迹）
+        // 1. 优先通过 NCBL 上报播放结束日志（PLD）到 clientlog3.music.163.com，记录收听时长与足迹
         val ncblResult = ncblReporter.reportPld(
             songId = trackId,
             playDurationSeconds = durationSeconds,
@@ -367,7 +365,7 @@ class SearchRepositoryImpl @Inject constructor(
             endReason = "playend"
         )
 
-        // 2. 同时发起 Weblog /scrobble 兜底
+        // 2. 同步调用 /scrobble 接口作为兜底上报
         try {
             val response = musicService.scrobble(id = trackId, sourceId = sid, time = durationSeconds)
             android.util.Log.d("Scrobble", ">>> Server /scrobble response code: ${response.code}")
@@ -388,6 +386,7 @@ class SearchRepositoryImpl @Inject constructor(
 
         try {
             val query = if (artist.isNotBlank() && !artist.contains("未知")) "$title $artist" else title
+            // 本地曲目反查在线 ID 时最多拉取前 5 条候选进行标题匹配
             val searchRes = searchTracks(query, limit = 5, offset = 0).getOrNull() ?: emptyList()
             val matched = searchRes.firstOrNull { t ->
                 val normSearch = t.title.lowercase().replace(" ", "")
@@ -596,15 +595,19 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     companion object {
+        // 可识别的音频容器扩展名集合（用于从直链路径提取格式）
         private val SUPPORTED_AUDIO_FORMAT_EXTS = setOf(
             "flac", "mp3", "m4a", "aac", "wav", "ogg", "opus", "ape", "dff", "dsf", "wma", "alac"
         )
+        // 无损音频容器格式集合
         private val LOSSLESS_AUDIO_FORMATS = setOf(
             "FLAC", "WAV", "APE", "ALAC", "DFF", "DSF"
         )
+        // 视为无损/母带级别的音质等级标识
         private val LOSSLESS_QUALITY_LEVELS = setOf(
             "lossless", "hires", "jymaster"
         )
+        // /song/url/v1 加密策略重试顺序：依次尝试 weapi、api、无加密，全部失败后再降级到 /song/url 码率接口
         private val SONG_URL_CRYPTO_FALLBACK_ORDER = listOf("weapi", "api", null)
 
         internal fun extractAudioFormatFromUrl(url: String?): String? {
@@ -622,7 +625,7 @@ class SearchRepositoryImpl @Inject constructor(
         /**
          * 解析在线流媒体的实际音频格式：
          * 网易云 `/song/url/v1` 返回 Hi-Res / 无损流时，真实容器在 `url` 后缀与 `type` 中（如 `.flac` / `"flac"`），
-         * 而历史遗留字段 `encodeType` 经常仍返回 `"mp3"`。因此优先以真实 URL 后缀与 `type` 为准，
+         * 而接口字段 `encodeType` 经常仍返回 `"mp3"`。因此优先以真实 URL 后缀与 `type` 为准，
          * 仅在二者均缺失时才参考 `encodeType`，并拒绝在无损/高码率流上采信明显矛盾的 `"MP3"`。
          */
         internal fun resolveOnlineAudioFormat(
@@ -636,6 +639,7 @@ class SearchRepositoryImpl @Inject constructor(
             val typeFormat = type?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
             val encodeFormat = encodeType?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
             val normalizedLevel = level?.trim()?.lowercase(Locale.ROOT)
+            // 码率超过 320 kbps 视为无损流
             val isLosslessStream = normalizedLevel in LOSSLESS_QUALITY_LEVELS || (bitrateKbps != null && bitrateKbps > 320)
 
             fun sanitize(candidate: String?): String? {
@@ -656,6 +660,10 @@ class SearchRepositoryImpl @Inject constructor(
             return sanitize(encodeFormat)
         }
 
+        /**
+         * 按 [SONG_URL_CRYPTO_FALLBACK_ORDER] 依次尝试请求 `/song/url/v1`，均失败后降级调用 `/song/url`（最高码率参数）；
+         * 若遇底层网络连通性异常（DNS/超时/SSL 等）则直接向上抛出，避免无效重试。
+         */
         internal suspend fun resolveSongUrlWithFallback(
             fetchSongUrlV1: suspend (crypto: String?) -> SongResponse,
             fetchLegacySongUrl: suspend () -> SongResponse

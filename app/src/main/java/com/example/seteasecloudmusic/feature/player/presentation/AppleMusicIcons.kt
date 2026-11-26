@@ -43,7 +43,7 @@ import com.example.seteasecloudmusic.core.player.PlaybackMode
 import kotlin.math.min
 
 /**
- * 纯填充圆角多边形绘制（仅使用单次 STYLE.FILL + CornerPathEffect，绝不叠加 Stroke 描边，杜绝半透明边缘叠加发亮）
+ * 纯填充圆角多边形绘制（仅使用单次 Fill + CornerPathEffect，避免叠加描边导致半透明边缘发亮）
  */
 internal fun DrawScope.drawRoundedFilledPath(
     path: Path,
@@ -63,8 +63,7 @@ internal fun DrawScope.drawRoundedFilledPath(
 }
 
 /**
- * 1:1 来自 applemusic-like-lyrics-main/packages/react-full/src/components/PrebuiltLyricPlayer/icon_play.svg
- * 的播放图标路径 (viewBox 0 0 38 38)
+ * 播放图标矢量路径（viewBox 0 0 38 38）
  */
 private val AmllPlayIconPath by lazy {
     PathParser.createPathFromPathData(
@@ -73,7 +72,7 @@ private val AmllPlayIconPath by lazy {
 }
 
 /**
- * 1:1 复刻 Apple 经典播放实心圆角三角图标（基于 AMLL icon_play.svg 矢量路径）
+ * 播放按钮实心圆角三角图标
  */
 @Composable
 fun AppleMusicPlayTriangleIcon(
@@ -125,9 +124,9 @@ private fun DrawScope.drawSvgPathCentered(
 }
 
 /**
- * 1:1 复刻截图收藏爱心图标 (替换原 AppleMusicStarIcon)：
- * - 未收藏状态：粗线条加粗空心心形 (Stroke width = 86f)
- * - 已收藏状态：实心红心 (0xFFFA233B) + 心跳弹性缩放动效
+ * 收藏爱心图标：
+ * - 未收藏状态：空心心形轮廓
+ * - 已收藏状态：实心红心 (0xFFFA233B)，切换时触发缩放弹簧动效
  */
 @Composable
 fun AppleMusicHeartIcon(
@@ -144,6 +143,7 @@ fun AppleMusicHeartIcon(
             initialized = true
             return@LaunchedEffect
         }
+        // 切换收藏态时先缩至 0.72x 再按中等弹性回弹
         scale.snapTo(0.72f)
         scale.animateTo(
             targetValue = 1f,
@@ -199,7 +199,7 @@ fun AppleMusicHeartIcon(
 }
 
 /**
- * 保持向后兼容：AppleMusicStarIcon 统一委托给最新的 AppleMusicHeartIcon
+ * 收藏星标图标别名，统一委托给 [AppleMusicHeartIcon] 绘制
  */
 @Composable
 fun AppleMusicStarIcon(
@@ -217,8 +217,8 @@ fun AppleMusicStarIcon(
 }
 
 /**
- * 底部播放模式切换图标 (循环 ↔ 随机)：
- * - [PlaybackMode.SEQUENTIAL]: 列表循环双箭头 (加粗、放大、箭头无空心点)
+ * 底部播放模式切换图标：
+ * - [PlaybackMode.SEQUENTIAL]: 列表循环双箭头
  * - [PlaybackMode.SHUFFLE]: 随机播放交叉双箭头
  */
 @Composable
@@ -269,7 +269,7 @@ fun AppleMusicPlaybackModeIcon(
 }
 
 /**
- * 1:1 复刻截图右侧三圆点更多按钮 (•••)
+ * 右侧三圆点更多操作图标 (•••)
  */
 @Composable
 fun AppleMusicMoreIcon(
@@ -296,7 +296,7 @@ fun AppleMusicMoreIcon(
 }
 
 /**
- * 1:1 复刻镂空 [E] Explicit 标识
+ * 镂空 [E] Explicit 标识图标
  */
 @Composable
 fun AppleMusicExplicitBadge(
@@ -366,9 +366,9 @@ fun AppleMusicExplicitBadge(
 }
 
 /**
- * 1:1 复刻截图底部左侧歌词切换按钮（XML 矢量图标）：
- * - 未激活：圆角气泡轮廓 + 顺滑自然逗号引号
- * - 激活：半透明白色实心大圆底 + 中心镂空气泡 + 顺滑自然逗号引号
+ * 底部歌词切换按钮图标：
+ * - 未激活：圆角气泡轮廓与引号
+ * - 激活：半透明白色实心圆底与中心镂空气泡引号
  */
 @Composable
 fun AppleMusicLyricsToggleIcon(
@@ -401,7 +401,7 @@ fun AppleMusicLyricsToggleIcon(
 }
 
 /**
- * 1:1 复刻截图 AirPlay 音频投播图标（无描边纯填充实心圆角三角 + 3 层同心圆弧，Offscreen 统一透明度）
+ * 音频投播图标（实心圆角三角与三层同心圆弧，Offscreen 合成统一透明度）
  */
 @Composable
 fun AppleMusicAirPlayIcon(
@@ -441,7 +441,7 @@ fun AppleMusicAirPlayIcon(
             )
         }
 
-        // 底部实心向上等腰圆角三角：仅单次 Fill + CornerPathEffect，彻底去除外圈 Stroke 描边
+        // 底部实心向上等腰圆角三角：仅单次填充，不叠加外圈描边
         val triangle = Path().apply {
             moveTo(w * 0.50f, h * 0.57f)
             lineTo(w * 0.26f, h * 0.93f)
@@ -457,7 +457,7 @@ fun AppleMusicAirPlayIcon(
 }
 
 /**
- * 底部右侧待播列表图标（复用迷你播放器 XML：ic_mini_playlist）
+ * 底部待播列表图标
  */
 @Composable
 fun AppleMusicQueueIcon(
@@ -474,7 +474,7 @@ fun AppleMusicQueueIcon(
 }
 
 /**
- * 1:1 复刻音量条左侧静音/低音量小喇叭（XML 圆润矢量图标）
+ * 音量条左侧低音量图标
  */
 @Composable
 fun AppleMusicVolumeLowIcon(
@@ -491,7 +491,7 @@ fun AppleMusicVolumeLowIcon(
 }
 
 /**
- * 1:1 复刻音量条右侧高音量喇叭（XML 圆润矢量图标）
+ * 音量条右侧高音量图标
  */
 @Composable
 fun AppleMusicVolumeHighIcon(

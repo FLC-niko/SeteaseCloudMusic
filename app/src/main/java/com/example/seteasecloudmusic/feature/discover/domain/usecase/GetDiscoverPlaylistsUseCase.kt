@@ -4,6 +4,9 @@ import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlayl
 import com.example.seteasecloudmusic.feature.discover.domain.repository.DiscoverRepository
 import javax.inject.Inject
 
+/**
+ * 获取发现页个性化推荐歌单的用例。
+ */
 class GetDiscoverPlaylistsUseCase @Inject constructor(
     private val discoverRepository: DiscoverRepository
 ) {

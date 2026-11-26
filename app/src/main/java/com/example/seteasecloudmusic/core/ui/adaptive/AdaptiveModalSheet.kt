@@ -37,7 +37,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import top.yukonga.miuix.kmp.window.WindowDialog
 
-/** Hosts modal content wholly in one display segment; its scrim can still cover the full window. */
+/** 将弹窗内容约束在折叠屏单侧有效显示区域内，遮罩层仍可铺满整个窗口。 */
 @Composable
 fun AdaptiveOverlayPane(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val window = LocalAdaptiveWindow.current
@@ -69,6 +69,11 @@ fun AdaptiveOverlayPane(modifier: Modifier = Modifier, content: @Composable BoxS
     }
 }
 
+/**
+ * 自适应模态面板：
+ * - 紧凑屏幕（宽度 < 600.dp 且无分离折痕）：使用贴底 [WindowBottomSheet]（顶部圆角 28.dp）。
+ * - 宽屏或折叠屏：在单侧显示区居中弹出 [LiquidGlassPanel]（最大宽度 460.dp，外边距 20.dp）。
+ */
 @Composable
 fun AdaptiveModalSheet(
     onDismissRequest: () -> Unit,
@@ -79,6 +84,7 @@ fun AdaptiveModalSheet(
     val window = LocalAdaptiveWindow.current
     val scrimColor = AppTheme.colors.scrim
     val handleColor = AppTheme.colors.handleBar
+    // 600dp 为紧凑屏/大屏断点
     if (window.width < 600.dp && window.separatingFold == null) {
         var sheetVisible by remember { mutableStateOf(true) }
         WindowBottomSheet(
@@ -86,7 +92,7 @@ fun AdaptiveModalSheet(
             onDismissRequest = { sheetVisible = false },
             onDismissFinished = onDismissRequest,
             backgroundColor = containerColor,
-            cornerRadius = 28.dp,
+            cornerRadius = 28.dp, // 底部弹窗顶部圆角（dp）
             insideMargin = DpSize.Zero,
             dragHandleColor = handleColor,
             modifier = modifier
@@ -95,12 +101,14 @@ fun AdaptiveModalSheet(
         Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             var appeared by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { appeared = true }
+            // 居中浮层入场弹簧（阻尼比 0.82 轻微回弹，刚度 500）
             val reveal by animateFloatAsState(if (appeared) 1f else 0f,
                 spring(dampingRatio = 0.82f, stiffness = 500f), label = "glassSheetReveal")
             Box(Modifier.fillMaxSize().background(scrimColor).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismissRequest)) {
                 AdaptiveOverlayPane(Modifier.fillMaxSize().systemBarsPadding()) {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
+                        // 大屏浮层卡片：最大宽度 460.dp，四周最小留白 20.dp（总扣减 40.dp），入场缩放 0.94f -> 1f
                         LiquidGlassPanel(modifier.align(Alignment.Center).padding(20.dp).widthIn(max = 460.dp)
                             .fillMaxWidth().testTag("adaptive_modal_surface").heightIn(max = (maxHeight - 40.dp).coerceAtLeast(0.dp))
                             .graphicsLayer { alpha = reveal; scaleX = 0.94f + 0.06f * reveal; scaleY = scaleX }
@@ -115,6 +123,9 @@ fun AdaptiveModalSheet(
     }
 }
 
+/**
+ * 基于 Miuix [WindowDialog] 的通用自适应槽位弹窗（宽度 >= 600.dp 或存在折痕时切换为大屏居中样式）。
+ */
 @Composable
 fun AdaptiveAlertDialog(
     onDismissRequest: () -> Unit,

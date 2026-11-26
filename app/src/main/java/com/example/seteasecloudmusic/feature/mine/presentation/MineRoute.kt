@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+/** “我的”页面路由入口：连接 [MineViewModel] 状态并分发页面交互事件。 */
 @Composable
 fun MineRoute(
     topContentPadding: Dp,

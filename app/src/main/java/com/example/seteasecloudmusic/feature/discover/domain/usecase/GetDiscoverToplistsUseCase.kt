@@ -4,6 +4,9 @@ import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverTopli
 import com.example.seteasecloudmusic.feature.discover.domain.repository.DiscoverRepository
 import javax.inject.Inject
 
+/**
+ * 获取发现页排行榜详情列表的用例。
+ */
 class GetDiscoverToplistsUseCase @Inject constructor(
     private val discoverRepository: DiscoverRepository
 ) {

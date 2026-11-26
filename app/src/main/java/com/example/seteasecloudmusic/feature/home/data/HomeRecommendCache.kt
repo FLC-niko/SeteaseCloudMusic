@@ -8,7 +8,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** 首页推荐数据的本地缓存，只保存首页自己的模型。 */
+/** 首页推荐数据的本地持久化缓存（无固定 TTL，每次联网成功后覆盖更新）。 */
 @Singleton
 @Suppress("SENSELESS_COMPARISON")
 class HomeRecommendCache @Inject constructor(
@@ -51,9 +51,8 @@ class HomeRecommendCache @Inject constructor(
                 // getParameterized 直接构造泛型类型，行为确定。
                 TypeToken.getParameterized(List::class.java, Track::class.java).type
             )
-            // Gson 绕过 Kotlin 构造器与非空检查：旧缓存缺字段时会留下 null，
-            // 在 R8 去掉 Intrinsics 检查后延迟爆 NPE。这里直接过滤成合法列表，
-            // 无效则视为无缓存（调用方走网络刷新）。
+            // Gson 反序列化会绕过 Kotlin 构造器与非空检查，缺字段时可能留下 null；
+            // 此处直接过滤无效条目，结果为空时视为未命中缓存。
             tracks
                 ?.filterNotNull()
                 ?.filter { !it.title.isNullOrBlank() && it.album != null }
@@ -126,7 +125,7 @@ class HomeRecommendCache @Inject constructor(
     }
 
     companion object {
-        // 与旧 DataCacheManager 保持相同键，升级后不丢失已有缓存。
+        // SharedPreferences 文件名与各推荐模块的缓存键（无 TTL 过期时间）
         private const val PREF_NAME = "app_data_cache_prefs"
         private const val KEY_DAILY_RECOMMEND = "key_daily_recommend"
         private const val KEY_RADAR_PLAYLIST = "key_radar_playlist"

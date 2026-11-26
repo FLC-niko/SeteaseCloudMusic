@@ -52,23 +52,22 @@ import com.kyant.backdrop.effects.blur
 import kotlin.math.roundToInt
 
 /**
- * 顶部大标题 + 头像连续联动尺寸常量，确保列表顶部占位与浮层完全对齐。
+ * 顶部大标题与头像连续联动尺寸及折叠阈值常量。
  */
 object AppleMusicTopBarDefaults {
-    /** 展开态位于状态栏下方的垂直偏移，随上滑无缝收缩至 0.dp */
+    /** 展开态位于状态栏下方的垂直偏移（dp），随上滑线性收缩至 0.dp */
     val ExpandedTopOffset: Dp = 20.dp
-    /** 顶栏统一行高 */
+    /** 顶栏统一行高（dp） */
     val BarHeight: Dp = 52.dp
     /** 列表顶部透明占位高度（从 contentPadding.top = statusBarHeight + 8.dp 起算） */
     val HeaderSpacerHeight: Dp = 68.dp
-    /** 大标题与头像完全收缩衔接到顶部的滑动距离 */
+    /** 大标题与头像完全收缩到顶栏所需的滑动距离（dp，越小越早收起） */
     val CollapseThreshold: Dp = 64.dp
 }
 
 /**
- * 连续一体式 Apple Music 顶栏：大标题与右侧头像作为同一个实体，
- * 随手指上滑同步向上移动并按比例缩小，直接无缝衔接到顶部渐进式高斯模糊导航栏，
- * 不再通过两个分离组件交叉淡入淡出。
+ * 连续一体式顶栏：大标题与右侧头像作为同一实体随上滑同步上移并按比例缩放，
+ * 直接过渡到顶部渐进式高斯模糊导航栏，无需双标题交叉淡入淡出。
  */
 @Composable
 fun AppleMusicMorphingTopBar(
@@ -84,6 +83,7 @@ fun AppleMusicMorphingTopBar(
     val expandedOffsetPx = remember(density, expandedTopOffset) {
         with(density) { expandedTopOffset.toPx() }
     }
+    // 渐进模糊总高度：状态栏高度 + 80.dp 顶栏及底部羽化区域
     val blurTotalHeight = statusBarHeight + 80.dp
 
     Box(modifier = modifier.fillMaxWidth()) {
@@ -94,6 +94,7 @@ fun AppleMusicMorphingTopBar(
                 statusBarHeight = statusBarHeight,
                 alphaProvider = {
                     val f = collapseFractionProvider().coerceIn(0f, 1f)
+                    // 模糊背景淡入区间：折叠进度 5% 起渐显，60% 达到满不透明度
                     ((f - 0.05f) / 0.55f).coerceIn(0f, 1f)
                 }
             )
@@ -152,10 +153,10 @@ fun AppleMusicMorphingTopBar(
 }
 
 /**
- * 监听 LazyListState 的滑动距离并计算出符合 Apple Music 规范的折叠进度 (0f..1f)。
+ * 监听 [LazyListState] 滑动距离并计算顶栏折叠进度 (0f..1f)。
  *
  * @param lazyListState 列表滑动状态
- * @param collapseThresholdDp 折叠完成所需的滚动距离，默认 80.dp
+ * @param collapseThresholdDp 折叠完成所需的滚动阈值（dp，越小越早收起，默认 80.dp）
  */
 @Composable
 fun rememberAppleMusicCollapseFraction(
@@ -178,7 +179,7 @@ fun rememberAppleMusicCollapseFraction(
 }
 
 /**
- * Apple Music 风格大标题（靠左对齐，随动自然微缩至小标题尺寸）。
+ * 列表顶部大标题，随滚动折叠进度连续缩小至小标题尺寸。
  *
  * @param title 标题文字（如“首页”、“我的”）
  * @param collapseFraction 折叠进度 (0f..1f)
@@ -192,9 +193,9 @@ fun AppleMusicLargeTitle(
     modifier: Modifier = Modifier,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    // 平滑连续缩小：从 1.0f 缩小到 0.62f（34sp -> 21sp），始终严格以左侧为锚点缩放
+    // 连续缩放：从 1.0f 缩小到 0.62f（34sp -> 21sp），左对齐锚点
     val titleScale = 1f - collapseFraction * 0.38f
-    // 当完全缩小到位时淡出，由顶栏左侧同等大小的固定标题平滑接管
+    // 折叠进度超过 70% 后淡出，由顶栏固定小标题接替
     val titleAlpha = (1f - ((collapseFraction - 0.70f) / 0.30f)).coerceIn(0f, 1f)
 
     Row(
@@ -230,16 +231,16 @@ fun AppleMusicLargeTitle(
 }
 
 /**
- * 顶部渐进式高斯模糊遮罩（顶部模糊较深，底部模糊较浅，过渡自然，无状态栏白色底罩）。
+ * 顶部渐进式高斯模糊遮罩（顶部模糊较深、底部逐层衰减至透明，不叠加纯白状态栏底罩）。
  *
- * 通过三层不同半径的高斯模糊（深 -> 中 -> 浅）与平滑 S 型透明度遮罩垂直叠合，
- * 避免单层模糊半透明渐变产生的重影感，同时不叠加任何白色雾罩或状态栏纯白背景。
+ * 通过三层不同半径的高斯模糊（深 -> 中 -> 浅）与 S 型透明度遮罩垂直叠合，
+ * 减少单层模糊半透明渐变产生的边缘重影。
  *
  * @param backdrop 底层页面内容采样源，须置于被采样容器之外以避免循环采样
  * @param totalHeight 模糊区域总高度（建议包含状态栏、顶栏内容及底部羽化延伸区）
  * @param statusBarHeight 系统状态栏高度
  * @param alphaProvider 整体透明度提供器（在绘制阶段读取，避免滚动期频繁重组）
- * @param deepBlurRadius 顶部最深模糊半径（默认 26.dp）
+ * @param deepBlurRadius 顶部最深模糊半径（默认 26.dp，越大顶部越朦胧）
  * @param mediumBlurRadius 中段过渡模糊半径（默认 13.dp）
  * @param shallowBlurRadius 底部浅层模糊半径（默认 4.5.dp）
  */
@@ -375,18 +376,14 @@ private fun ProgressiveBlurTier(
 }
 
 /**
- * Apple Music 风格纯透明渐进式高斯模糊导航栏。
- *
- * 顶部状态栏区域采用较深的高斯模糊，向下平滑过渡至浅层模糊并在底部自然融化至 0，
- * 不叠加任何白色雾罩或状态栏纯白背景。
- * 标题布局：保持在左侧（左对齐，不居中跳变），与大标题左对齐自然衔接。
+ * 纯透明渐进式高斯模糊导航栏（左对齐标题，配合大标题折叠淡入或二级页常驻显示）。
  *
  * @param title 小标题文字
  * @param collapseFraction 折叠进度 (0f..1f)，二级页面常驻时可设为 1f
  * @param statusBarHeight 状态栏高度
  * @param modifier 外部修饰符
  * @param backdrop 背景采样 Backdrop
- * @param showBackButton 是否展示左侧 Apple 风格圆形玻璃返回按钮
+ * @param showBackButton 是否展示左侧圆形玻璃返回按钮
  * @param onBackClick 返回按钮点击回调
  * @param trailingContent 顶栏右侧操作组件（如微型头像）
  */
@@ -402,13 +399,14 @@ fun AppleMusicCollapsedTopBar(
     isDark: Boolean = AppTheme.isDark,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    // 模糊背景淡入阈值：有返回按钮时 0..0.45 淡入，无返回按钮时 0.16..0.70 淡入
     val fullBlurAlpha = if (showBackButton) {
         (collapseFraction / 0.45f).coerceIn(0f, 1f)
     } else {
         ((collapseFraction - 0.16f) / 0.54f).coerceIn(0f, 1f)
     }
 
-    // 小标题淡入：当大标题缩小接近顶部时，在左侧平滑淡入无缝接替
+    // 小标题淡入阈值：无返回按钮时在大标题折叠至 68% 后淡入接替
     val titleAlpha = if (showBackButton) {
         collapseFraction.coerceIn(0f, 1f)
     } else {
@@ -462,7 +460,7 @@ fun AppleMusicCollapsedTopBar(
                     Spacer(modifier = Modifier.size(12.dp))
                 }
 
-                // 标题文本：始终保持靠左对齐，不居中，字号 21sp 与缩小后的大标题无缝吻合
+                // 标题文本始终靠左对齐，21sp 与缩放后的大标题末态字号一致
                 Text(
                     text = title,
                     fontSize = 21.sp,

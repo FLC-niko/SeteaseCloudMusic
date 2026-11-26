@@ -4,9 +4,10 @@ import okhttp3.HttpUrl
 import java.util.Locale
 
 /**
- * Normalizes persisted NetEase cookie strings and redacts cookie query parameters from logs.
+ * 规范化网易云持久化 Cookie 字符串（剥离 Set-Cookie 属性与空值键），并对日志 URL 中的 `cookie` 参数脱敏。
  */
 internal object CookieSanitizer {
+    // 需要过滤的 Set-Cookie 响应头属性键（统一小写匹配）
     private val SET_COOKIE_ATTRIBUTE_KEYS = setOf(
         "path",
         "expires",
@@ -20,21 +21,21 @@ internal object CookieSanitizer {
     )
 
     /**
-     * Parses cookie name-value pairs in order, stripping Set-Cookie attributes and empty-value deletions.
+     * 按出现顺序解析 Cookie 键值对，跳过 Set-Cookie 属性，并在值为空时移除对应键。
      */
     fun parsePairs(rawCookie: String?): LinkedHashMap<String, String> {
         return linkedMapOf<String, String>().also { appendPairs(rawCookie, it) }
     }
 
     /**
-     * Returns a deduplicated Cookie string containing only valid key=value session pairs.
+     * 返回去重且仅含有效 `key=value` 会话键值对的 Cookie 字符串。
      */
     fun sanitize(rawCookie: String?): String {
         return formatPairs(parsePairs(rawCookie))
     }
 
     /**
-     * Merges [incomingCookie] updates on top of [existingCookie] while discarding Set-Cookie metadata.
+     * 将 [incomingCookie] 增量合并到 [existingCookie] 上，同时丢弃 Set-Cookie 元数据。
      */
     fun merge(existingCookie: String?, incomingCookie: String?): String {
         return linkedMapOf<String, String>().apply {
@@ -44,7 +45,7 @@ internal object CookieSanitizer {
     }
 
     /**
-     * Redacts `cookie` query values for debug logging while preserving non-sensitive API parameters.
+     * 对调试日志中的 URL 进行脱敏：保留其余 API 参数，将 `cookie` 查询参数替换为长度占位符。
      */
     fun sanitizeUrlForLog(url: HttpUrl): String {
         val cookieValues = url.queryParameterValues("cookie")

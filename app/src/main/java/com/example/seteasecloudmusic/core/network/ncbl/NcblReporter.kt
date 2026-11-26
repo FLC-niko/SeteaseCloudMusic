@@ -30,35 +30,31 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 网易云官方桌面客户端 NCBL (Netease Client Log) 加密日志上报器。
- * 完全对齐 SPlayer-Next 原生实现（Zstd 压缩 + ChaCha20 + RSA-256 + PC 客户端签名）。
+ * 网易云官方桌面客户端 NCBL v3 加密日志上报器（Zstd 压缩 + ChaCha20 流加密 + RSA-256 密钥封装 + PC 客户端签名）。
  *
- * 核心原理：
- * 1. 采用网易云 NCBL v3 协议规范；
- * 2. 日志 Body 严格使用符合 RFC 8878 规范的 Zstandard (Zstd) 帧结构（服务端强制要求 zstd 解压）；
- * 3. 纯原生 Kotlin 生成标准 Zstd Raw Frame，0 本地动态库依赖，0 Unsafe 风险，永不闪退；
- * 4. 使用 ChaCha20 流密码与 RSA-256 (256-bit 模数因式分解) 进行端到端加密；
- * 5. 直传网易云官方客户端日志中枢：https://clientlog3.music.163.com/api/clientlog/encrypt/upload?multiupload=true
- *
- * 效果：
- * 听歌时长与播放记录 100% 实时落库到官方 App 的「听歌足迹/今日收听时长/年度报告」！
+ * 1. 按 NCBL v3 协议封装请求：纯 Kotlin 构造 RFC 8878 标准 Zstd Raw Frame（不依赖本地动态库或 Unsafe）。
+ * 2. 使用 ChaCha20 对元数据与压缩载荷分片加密，并用 256-bit RSA 封装随机对称密钥。
+ * 3. 直传网易云客户端日志接口 `https://clientlog3.music.163.com/api/clientlog/encrypt/upload?multiupload=true`，上报起播与听歌时长。
  */
 @Singleton
 class NcblReporter @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     private val random = SecureRandom()
+    // NCBL v3 协议用于封装随机对称密钥 keyA 的 256-bit RSA 公钥模数与指数
     private val RSA_N = BigInteger("fd90bd466ff9bc8a3fec2fbcf263b90d5c564879fa5d7aab89b31c1d5cb4139d", 16)
     private val RSA_E = BigInteger.valueOf(65537)
+    // ChaCha20 状态矩阵魔数常量（"expand 32-byte k"）
     private val SIGMA = intArrayOf(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574)
 
     private val smartDns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
-            // 上报主机没有国内 CDN 兜底需求，直接使用全部网易云固定节点
+            // 日志上报域名直接回退全部预置网易云节点
             return SmartDns.systemLookupOrNull(hostname, "NCBL") ?: SmartDns.addressesFor(hostname)
         }
     }
 
+    // 上报专用直连客户端（连接/读取/写入超时均为 15 秒）
     private val directClient = OkHttpClient.Builder()
         .dns(smartDns)
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -143,13 +139,13 @@ class NcblReporter @Inject constructor(
     }
 
     /**
-     * 生成符合 RFC 8878 标准规范的 Zstandard (Zstd) 帧（Raw_Block 模式）。
+     * 生成符合 RFC 8878 规范的 Zstandard (Zstd) 帧（Raw_Block 模式）。
      *
-     * 规范定义：
-     * 1. Magic: 0xFD2FB528 (Little Endian: 0x28, 0xB5, 0x2F, 0xFD)
-     * 2. Frame Header: 0x00, 0x00 (FCS_Flag=0, Single_Segment=0, No Dict, 1KB window)
-     * 3. Block Header: 3 字节 (Last_Block=1, Block_Type=0 Raw, Block_Size=len)
-     * 4. Raw Bytes (完全由服务端标准 Zstd 解压器原生还原)
+     * 结构：
+     * 1. Magic: `0xFD2FB528`（Little Endian: `0x28, 0xB5, 0x2F, 0xFD`）
+     * 2. Frame Header: `0x00, 0x00`（FCS_Flag=0, Single_Segment=0, 无字典, 1KB window）
+     * 3. Block Header: 3 字节（Last_Block=1, Block_Type=0 Raw, Block_Size=len）
+     * 4. Raw Bytes（服务端由标准 Zstd 解压器读取）
      */
     private fun compressBodyZstd(data: ByteArray): ByteArray {
         val magic = byteArrayOf(0x28.toByte(), 0xb5.toByte(), 0x2f.toByte(), 0xfd.toByte())
@@ -171,6 +167,7 @@ class NcblReporter @Inject constructor(
     private fun encryptNcbl(metaBytes: ByteArray, bodyBytes: ByteArray): ByteArray {
         val keyA = ByteArray(32)
         random.nextBytes(keyA)
+        // 约束 keyA 首字节小于 RSA_N 首字节，确保 BigInteger(keyA) < RSA_N
         if ((keyA[0].toInt() and 0xFF) >= 0xa3) {
             keyA[0] = 0xa2.toByte()
         }
@@ -183,19 +180,21 @@ class NcblReporter @Inject constructor(
 
         val nonce = uuid.copyOfRange(0, 12)
         val counter = ByteBuffer.wrap(uuid, 12, 4).order(ByteOrder.LITTLE_ENDIAN).int ushr 2
+        // 起始分片序号（1000..40999）
         val baseSeq = random.nextInt(40000) + 1000
 
         val metaCipher = chacha20Crypt(keyB, counter, nonce, metaBytes)
         val metaBlockBuf = ByteBuffer.allocate(4 + metaCipher.size).order(ByteOrder.LITTLE_ENDIAN)
-        metaBlockBuf.putShort(0x4343.toShort())
+        metaBlockBuf.putShort(0x4343.toShort()) // 元数据块魔数标识
         metaBlockBuf.putShort(metaCipher.size.toShort())
         metaBlockBuf.put(metaCipher)
         val metaBlock = metaBlockBuf.array()
 
+        // NCBL v3 固定头（70 字节）+ 加密元数据块总长度
         val headerLen = 70 + metaBlock.size
-        // 核心对齐：使用 Zstd 规范帧包装
         val compressed = compressBodyZstd(bodyBytes)
 
+        // 单个加密数据分片最大字节数（32KB）
         val maxFrame = 0x8000
         val frameList = mutableListOf<ByteArray>()
         var seq = baseSeq
@@ -297,7 +296,11 @@ class NcblReporter @Inject constructor(
     }
 
     /**
-     * 上报歌曲播放起播行为（PLV）
+     * 上报歌曲起播行为（PLV）。
+     *
+     * @param songId 歌曲 ID
+     * @param totalDurationSeconds 歌曲总时长（秒；小于 30 秒时按 30 秒下限上报）
+     * @param sourceId 来源歌单或专辑 ID（为空或非正数时回退为 [songId]）
      */
     suspend fun reportPlv(
         songId: Long,
@@ -306,6 +309,7 @@ class NcblReporter @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val ctx = createNcblContext() ?: return@withContext Result.failure(Exception("No valid cookie"))
         val srcIdStr = (sourceId?.takeIf { it > 0 } ?: songId).toString()
+        // 上报总时长最小下限（秒）
         val totalSec = totalDurationSeconds.coerceAtLeast(30)
 
         val plvData = JSONObject().apply {
@@ -339,7 +343,13 @@ class NcblReporter @Inject constructor(
     }
 
     /**
-     * 上报歌曲播放结束或达到里程碑行为（PLD）
+     * 上报歌曲播放结束或达标节点行为（PLD）。
+     *
+     * @param songId 歌曲 ID
+     * @param playDurationSeconds 本次实际播放时长（秒；小于 30 秒时按 30 秒下限上报）
+     * @param totalDurationSeconds 歌曲总时长（秒；非正数时回退为 [playTimeSec]）
+     * @param sourceId 来源歌单或专辑 ID（为空或非正数时回退为 [songId]）
+     * @param endReason 结束原因标识（如 `"interrupt"`、`"playend"`）
      */
     suspend fun reportPld(
         songId: Long,
@@ -350,6 +360,7 @@ class NcblReporter @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val ctx = createNcblContext() ?: return@withContext Result.failure(Exception("No valid cookie"))
         val srcIdStr = (sourceId?.takeIf { it > 0 } ?: songId).toString()
+        // 有效播放时长最小下限（秒）
         val playTimeSec = playDurationSeconds.coerceAtLeast(30)
         val totalSec = if (totalDurationSeconds > 0) totalDurationSeconds else playTimeSec
 
@@ -389,7 +400,7 @@ class NcblReporter @Inject constructor(
     }
 
     /**
-     * 同时上报 PLV + PLD (SPlayer-Next 标准打卡模式)
+     * 依次上报歌曲起播（PLV）与播放结束（PLD）记录。
      */
     suspend fun reportNcblPlayback(
         songId: Long,
@@ -406,8 +417,8 @@ class NcblReporter @Inject constructor(
 
     companion object {
         /**
-         * 构造与主网络栈（[NeteaseRequestContextBuilder] + [NeteaseTokenStore]）完全一致的 NCBL 上报上下文：
-         * 复用本机持久化的 deviceId、_ntes_nuid、_ntes_nnid、WNMCID、clientSign，以及统一的 PC 版本号与 UA。
+         * 构造与主网络栈（[NeteaseRequestContextBuilder] + [NeteaseTokenStore]）一致的 NCBL 上报上下文：
+         * 复用本机持久化的 `deviceId`、`_ntes_nuid`、`_ntes_nnid`、`WNMCID`、`clientSign` 及 PC 端版本与 UA。
          */
         internal fun buildNcblContext(
             rawCookie: String?,

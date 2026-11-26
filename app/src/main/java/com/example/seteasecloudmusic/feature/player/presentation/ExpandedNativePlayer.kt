@@ -68,6 +68,9 @@ import com.example.seteasecloudmusic.core.player.PlayerStatus
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveTwoPane
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 
+/**
+ * 横屏及大屏展开态下的双栏播放器界面，左侧展示专辑封面，右侧展示曲目信息、控制栏或歌词。
+ */
 @Composable
 internal fun ExpandedNativePlayer(
     viewModel: PlayerViewModel,
@@ -128,6 +131,7 @@ internal fun ExpandedNativePlayerContent(
     val isExplicit = remember(track?.id, track?.title, lyrics) { isExplicitTrack(track, lyrics) }
     val sharedArtwork = LocalPlayerArtwork.current
     val fontGrowth = (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+    // 歌词页底部悬浮控制栏容器高度（展开大屏 196dp / 窄横屏 144dp，并随系统字号扩展）
     val lyricsBarHeight = if (window.isBook) 196.dp + 64.dp * fontGrowth else 144.dp + 32.dp * fontGrowth
 
     val controls: @Composable () -> Unit = {
@@ -167,7 +171,7 @@ internal fun ExpandedNativePlayerContent(
                 .fillMaxSize()
                 .systemBarsPadding()
         ) {
-            // 顶部居中收起小白条（仅此区域支持下拉或点按收起）
+            // 顶部居中收起指示条（仅此区域响应点按或下滑 > 80dp 收起）
             Box(
                 modifier = Modifier
                     .align(if (window.isBook) Alignment.End else Alignment.CenterHorizontally)
@@ -205,7 +209,9 @@ internal fun ExpandedNativePlayerContent(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
+                // 主栏（封面）占比：极矮横屏 0.36，较窄展开屏 0.50，常规大屏 0.44
                 primaryFraction = if (window.height < 480.dp) 0.36f else if (window.width < 760.dp) 0.50f else 0.44f,
+                // 左右分栏间距（dp）
                 gap = 28.dp,
                 primary = {
                     Column(
@@ -220,6 +226,7 @@ internal fun ExpandedNativePlayerContent(
                                 .fillMaxWidth().testTag("player_media"),
                             contentAlignment = Alignment.Center
                         ) {
+                            // 封面边长上限 400dp，并按容器宽高预留内边距
                             val coverSize = minOf(maxWidth - 16.dp, maxHeight - 12.dp, 400.dp).coerceAtLeast(0.dp)
                             val playbackScale by rememberAppleMusicPlaybackScale(playing)
                             Box(

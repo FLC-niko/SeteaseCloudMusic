@@ -18,7 +18,7 @@ enum class PlaylistDetailStyle(
 
     /**
      * 静态海报墙：
-     * 多封面拼贴海报无字背景，下侧用取色的颜色渐变遮罩自然融合。
+     * 4x4 多封面拼贴网格，底部使用取色渐变遮罩衔接页面背景。
      */
     POSTER_WALL(
         id = "poster_wall",
@@ -27,7 +27,7 @@ enum class PlaylistDetailStyle(
 
     /**
      * 动态海报墙：
-     * 首页同款 30° 倾斜交替多列滚动海报墙，下侧取色渐变遮罩自然融合。
+     * 30° 倾斜交替多列滚动海报墙，底部使用取色渐变遮罩衔接页面背景。
      */
     DYNAMIC_POSTER_WALL(
         id = "dynamic_poster_wall",
@@ -36,7 +36,7 @@ enum class PlaylistDetailStyle(
 
     /**
      * 全屏封面：
-     * 顶部全宽沉浸封面，下侧轻柔渐变融入取色背景，保留歌单名与播放键。
+     * 顶部全宽封面，底部通过渐变融入取色背景，保留歌单名与播放键。
      */
     FULL_COVER(
         id = "full_cover",

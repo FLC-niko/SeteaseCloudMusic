@@ -75,10 +75,9 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * 播放页音质切换液态玻璃悬浮小弹窗。
+ * 播放页音质切换液态玻璃悬浮弹窗。
  *
- * 外壳材质、选中液态玻璃滑块与跟手物理动画（Gooey 拉伸 + 按压张力缩放）与底部导航栏完全一致，
- * 仅将水平分段滑块旋转为垂直分段滑块，在播放页居中音质按钮上方就近弹出。
+ * 采用与底部导航栏相同的液态玻璃材质与垂直分段滑块交互，在音质按钮上方就近弹出。
  */
 @Composable
 internal fun AudioQualityLiquidGlassPopup(
@@ -98,7 +97,9 @@ internal fun AudioQualityLiquidGlassPopup(
     }
 
     val density = LocalDensity.current
+    // 弹窗距安全区边缘的最小留白（dp）
     val edgeMarginPx = with(density) { 16.dp.roundToPx() }
+    // 弹窗底部与音质徽标锚点之间的垂直间距（dp）
     val anchorGapPx = with(density) { 12.dp.roundToPx() }
     var hostOriginInRoot by remember { mutableStateOf(Offset.Zero) }
 
@@ -107,7 +108,7 @@ internal fun AudioQualityLiquidGlassPopup(
             .fillMaxSize()
             .zIndex(20f)
     ) {
-        // 透明触控蒙层：保持底部导航栏同款通透采样，同时支持点击弹窗外关闭
+        // 透明触控蒙层（0.06f 浅压暗），用于点击弹窗外区域关闭
         AnimatedVisibility(
             visibleState = visibleState,
             enter = fadeIn(animationSpec = tween(180)),
@@ -141,6 +142,7 @@ internal fun AudioQualityLiquidGlassPopup(
             Layout(
                 modifier = Modifier.fillMaxSize(),
                 content = {
+                    // 弹窗进场/退场弹簧缩放（以底部中心为轴展开与收起）
                     AnimatedVisibility(
                         visibleState = visibleState,
                         enter = fadeIn(animationSpec = tween(170)) + scaleIn(
@@ -231,6 +233,7 @@ internal fun AudioQualityLiquidGlassCard(
     }
 
     val density = LocalDensity.current
+    // 弹窗基准尺寸随系统字号缩放：宽度上限 1.3x，单项槽位高度上限 1.2x
     val fontScaleFactor = density.fontScale.coerceIn(1f, 1.3f)
     val popupWidth = 192.dp * fontScaleFactor
     val slotHeight = 50.dp * density.fontScale.coerceIn(1f, 1.2f)
@@ -268,6 +271,7 @@ internal fun AudioQualityLiquidGlassCard(
     val outerLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
         val progress = segmentState.pressProgress.value.coerceIn(0f, 1f)
         if (size.width > 0f) {
+            // 按压时外框向四周膨胀 8dp 的目标缩放比
             val maxScale = (size.width + 8f.dp.toPx()) / size.width
             val scale = lerp(1f, maxScale, progress)
             scaleX = scale

@@ -28,6 +28,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * 账户弹窗 UI 状态模型，包含当前面板、表单输入、倒计时与登录会话信息。
+ */
 data class AuthUiState(
     val panel: AuthPanel = AuthPanel.METHODS,
     val phone: String = "",
@@ -43,12 +46,18 @@ data class AuthUiState(
     val showLogoutConfirmDialog: Boolean = false
 )
 
+/**
+ * 账户弹窗内的子面板类型。
+ */
 enum class AuthPanel {
     METHODS,
     CAPTCHA,
     QR
 }
 
+/**
+ * 认证流程 ViewModel，负责手机验证码登录、二维码生成与状态轮询、登出及会话资料补全。
+ */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val sendCaptchaUseCase: SendCaptchaUseCase,
@@ -107,7 +116,7 @@ class AuthViewModel @Inject constructor(
     fun onPhoneChanged(phone: String) {
         _uiState.update {
             it.copy(
-                phone = phone.filter(Char::isDigit).take(11),
+                phone = phone.filter(Char::isDigit).take(11), // 限制中国大陆手机号最大长度为 11 位
                 errorMessage = null,
                 isRiskControlError = false
             )
@@ -311,7 +320,7 @@ class AuthViewModel @Inject constructor(
         captchaCooldownJob = viewModelScope.launch {
             for (remaining in durationSeconds downTo 1) {
                 _uiState.update { it.copy(captchaCooldownSeconds = remaining) }
-                delay(1_000L)
+                delay(1_000L) // 倒计时每秒递减步长（ms）
             }
             _uiState.update { it.copy(captchaCooldownSeconds = 0) }
         }
@@ -354,11 +363,12 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    // 按固定间隔轮询扫码状态；二维码过期（状态码 800）由服务端判定并终止轮询
     private fun startQrPolling(key: String, requestId: Long) {
         stopQrPolling()
         qrPollJob = viewModelScope.launch {
             while (isActive) {
-                delay(2000L)
+                delay(2000L) // 二维码状态轮询间隔（ms），过短会增加服务端请求压力
                 val result = pollQrStatusUseCase(key)
                 if (!isActive || requestId != qrRequestId || _uiState.value.panel != AuthPanel.QR) {
                     return@launch
@@ -413,7 +423,7 @@ class AuthViewModel @Inject constructor(
     }
 
     private fun stopQrLoginFlow() {
-        qrRequestId += 1L
+        qrRequestId += 1L // 递增请求序号，使在途异步回调自动失效
         qrStartJob?.cancel()
         qrStartJob = null
         stopQrPolling()
@@ -440,6 +450,6 @@ class AuthViewModel @Inject constructor(
     }
 
     companion object {
-        private const val CAPTCHA_COOLDOWN_SECONDS = 60
+        private const val CAPTCHA_COOLDOWN_SECONDS = 60 // 发送验证码后的重发冷却时长（秒）
     }
 }

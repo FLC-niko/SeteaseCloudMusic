@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 fun Modifier.verticalElasticOverscroll(): Modifier = composed {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    // 边界最大可拉出缓冲距离（72.dp，越大越界拉伸幅度越大）
     val maximumOffsetPx = remember(density) { with(density) { 72.dp.toPx() } }
 
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -63,6 +64,7 @@ fun Modifier.verticalElasticOverscroll(): Modifier = composed {
 
                 settleJob?.cancel()
                 val distanceFraction = (kotlin.math.abs(offsetY) / maximumOffsetPx).coerceIn(0f, 1f)
+                // 随越界距离递增的阻尼系数：初始 0.34，到达极限时衰减 72%
                 val resistance = 0.34f * (1f - distanceFraction * 0.72f)
                 offsetY = (offsetY + available.y * resistance)
                     .coerceIn(-maximumOffsetPx, maximumOffsetPx)
@@ -78,6 +80,7 @@ fun Modifier.verticalElasticOverscroll(): Modifier = composed {
                     settleJob = scope.launch {
                         Animatable(startOffset).animateTo(
                             targetValue = 0f,
+                            // 松手回弹弹簧（阻尼比 0.82 轻微缓冲，中等刚度）
                             animationSpec = spring(
                                 dampingRatio = 0.82f,
                                 stiffness = Spring.StiffnessMedium

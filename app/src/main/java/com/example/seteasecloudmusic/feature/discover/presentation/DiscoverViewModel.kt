@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * 发现页 UI 状态模型，分别维护四个内容分区的数据、加载态与错误信息。
+ */
 data class DiscoverUiState(
     val personalizedPlaylists: List<DiscoverPlaylist> = emptyList(),
     val hotPlaylists: List<DiscoverPlaylist> = emptyList(),
@@ -33,6 +36,9 @@ data class DiscoverUiState(
     val toplistsErrorMessage: String? = null
 )
 
+/**
+ * 发现页 ViewModel，并发拉取并独立管理推荐歌单、热门歌单、推荐新歌与榜单的刷新生命周期。
+ */
 @HiltViewModel
 class DiscoverViewModel @Inject constructor(
     private val getDiscoverPlaylistsUseCase: GetDiscoverPlaylistsUseCase,
@@ -63,7 +69,7 @@ class DiscoverViewModel @Inject constructor(
         personalizedJob?.cancel()
         personalizedJob = viewModelScope.launch {
             _uiState.update { it.copy(isPersonalizedLoading = true, personalizedErrorMessage = null) }
-            getDiscoverPlaylistsUseCase(limit = 8)
+            getDiscoverPlaylistsUseCase(limit = 8) // 推荐歌单默认拉取条数
                 .onSuccess { playlists ->
                     _uiState.update {
                         it.copy(
@@ -88,7 +94,7 @@ class DiscoverViewModel @Inject constructor(
         hotPlaylistsJob?.cancel()
         hotPlaylistsJob = viewModelScope.launch {
             _uiState.update { it.copy(isHotPlaylistsLoading = true, hotPlaylistsErrorMessage = null) }
-            getDiscoverHotPlaylistsUseCase(limit = 10, offset = 0)
+            getDiscoverHotPlaylistsUseCase(limit = 10, offset = 0) // 热门歌单首屏拉取条数与偏移量
                 .onSuccess { playlists ->
                     _uiState.update {
                         it.copy(
@@ -113,7 +119,7 @@ class DiscoverViewModel @Inject constructor(
         newsongsJob?.cancel()
         newsongsJob = viewModelScope.launch {
             _uiState.update { it.copy(isNewsongsLoading = true, newsongsErrorMessage = null) }
-            getDiscoverNewsongsUseCase(limit = 10)
+            getDiscoverNewsongsUseCase(limit = 10) // 推荐新歌默认拉取条数
                 .onSuccess { tracks ->
                     _uiState.update {
                         it.copy(

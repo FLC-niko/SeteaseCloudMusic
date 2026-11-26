@@ -10,7 +10,7 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** “我的” Feature 的缓存，只依赖本 Feature 的领域模型。 */
+/** “我的”页面本地缓存管理器：基于 SharedPreferences 缓存歌单列表与首屏预览，完整曲目以 JSON 文件存储。 */
 @Singleton
 class MineCacheManager @Inject constructor(
     @ApplicationContext context: Context
@@ -114,11 +114,11 @@ class MineCacheManager @Inject constructor(
     }
 
     companion object {
-        // 与旧 DataCacheManager 保持相同键，升级后不丢失已有缓存。
+        // SharedPreferences 文件名与缓存键（保持键名稳定以保留本地已有缓存）
         private const val PREF_NAME = "app_data_cache_prefs"
         private const val KEY_USER_PLAYLISTS = "key_user_playlists"
         private const val KEY_PLAYLIST_DETAIL_PREVIEW = "key_playlist_detail_preview"
         private const val FULL_DETAIL_DIR_NAME = "playlist_detail_full"
-        private const val PREVIEW_TRACK_LIMIT = 20
+        private const val PREVIEW_TRACK_LIMIT = 20 // 首屏轻量预览缓存最大曲目数（控制 SharedPreferences 体积）
     }
 }

@@ -77,6 +77,7 @@ class PlayerViewModel @Inject constructor(
         _parsedLyrics.value = EmptyLyrics
         _isLyricsLoading.value = true
         lyricJob = viewModelScope.launch {
+            // 切歌防抖延迟（ms），快速连续切歌时取消未完成的歌词请求
             delay(60L)
             val result = getLyricsUseCase(songId)
             if (isActive && requestId == lyricRequestId && controller.playbackState.value.currentTrack?.id == songId) {

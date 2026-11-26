@@ -4,7 +4,7 @@ import androidx.compose.ui.graphics.Color
 import com.example.seteasecloudmusic.core.model.Track
 
 /**
- * 1. 排行榜
+ * 1. 排行榜卡片数据模型，包含榜单基本信息、前几首预览曲目名及渐变底色。
  */
 data class RadioToplistItem(
     val id: Long,
@@ -16,7 +16,7 @@ data class RadioToplistItem(
 )
 
 /**
- * 2. 雷达歌单
+ * 2. 雷达歌单卡片数据模型。
  */
 data class RadioRadarItem(
     val id: Long,
@@ -27,7 +27,7 @@ data class RadioRadarItem(
 )
 
 /**
- * 3. 从你喜欢的歌曲开始漫游
+ * 3. 喜欢歌曲漫游卡片数据模型，聚合起点曲目与关联漫游曲目列表。
  */
 data class RadioRoamItem(
     val id: Long,
@@ -39,7 +39,7 @@ data class RadioRoamItem(
 )
 
 /**
- * 4. 歌手推荐
+ * 4. 歌手推荐头像卡片数据模型。
  */
 data class RadioArtistItem(
     val id: Long,
@@ -48,7 +48,7 @@ data class RadioArtistItem(
 )
 
 /**
- * 5. 推荐歌单
+ * 5. 推荐歌单卡片数据模型。
  */
 data class RadioPlaylistItem(
     val id: Long,
@@ -59,7 +59,7 @@ data class RadioPlaylistItem(
 )
 
 /**
- * 6. 艺人热门金曲
+ * 6. 艺人热门金曲卡片数据模型。
  */
 data class RadioArtistHotItem(
     val artistId: Long,
@@ -70,6 +70,9 @@ data class RadioArtistHotItem(
     val songs: List<Track> = emptyList()
 )
 
+/**
+ * 艺人热门金曲区块数据，包含领衔艺人信息与艺人卡片列表。
+ */
 data class ArtistHotSectionData(
     val leadArtistName: String = "AGA",
     val leadArtistAvatarUrl: String? = null,
@@ -77,7 +80,7 @@ data class ArtistHotSectionData(
 )
 
 /**
- * 7. 每周新热趋势
+ * 7. 每周新热趋势卡片数据模型。
  */
 data class RadioTrendItem(
     val id: Long,
@@ -88,7 +91,7 @@ data class RadioTrendItem(
 )
 
 /**
- * 8. 心情氛围
+ * 8. 心情氛围歌单卡片数据模型。
  */
 data class RadioMoodItem(
     val id: Long,
@@ -99,7 +102,7 @@ data class RadioMoodItem(
 )
 
 /**
- * 9. 你关注的艺人新动向
+ * 9. 关注艺人新动向单曲卡片数据模型。
  */
 data class RadioFollowedArtistNewSongItem(
     val songId: Long,
@@ -111,6 +114,9 @@ data class RadioFollowedArtistNewSongItem(
     val track: Track? = null
 )
 
+/**
+ * 关注艺人新动向区块数据，包含头部叠放头像列表与新单曲列表。
+ */
 data class FollowedArtistSectionData(
     val artistAvatars: List<String> = emptyList(),
     val items: List<RadioFollowedArtistNewSongItem> = emptyList()

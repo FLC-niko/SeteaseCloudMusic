@@ -4,7 +4,7 @@ import com.google.gson.JsonParser
 import java.io.IOException
 
 /**
- * Structured HTTP error carrying optional Netease API error code and message parsed from the error body.
+ * 结构化 HTTP 异常，携带 HTTP 状态码及从响应体解析出的可选网易云 API 错误码与提示信息。
  */
 class ApiHttpException(
     val httpStatusCode: Int,
@@ -13,6 +13,9 @@ class ApiHttpException(
     message: String
 ) : IOException(message)
 
+/**
+ * 解析非 2xx HTTP 响应体中的 `code` 与 `message`/`msg` 字段，构造 [ApiHttpException]。
+ */
 internal object HttpErrorParser {
     fun parse(
         httpStatusCode: Int,

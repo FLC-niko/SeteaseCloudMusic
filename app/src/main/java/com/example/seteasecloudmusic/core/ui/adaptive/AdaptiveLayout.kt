@@ -23,7 +23,7 @@ import androidx.window.layout.WindowInfoTracker
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
 
-/** Window information is separate from pane constraints: a lyric pane can be narrow on a wide screen. */
+/** 当前窗口尺寸与折叠形态信息（独立于子面板约束，例如宽屏下的窄歌词面板）。 */
 @Immutable
 data class AdaptiveWindowInfo(
     val width: Dp = 0.dp,
@@ -33,22 +33,36 @@ data class AdaptiveWindowInfo(
     val isFoldable: Boolean = false,
     val sideControlsAtStart: Boolean = false
 ) {
+    /** 宽度断点：>= 600.dp 为常规/宽屏窗口（平板或展开态折叠屏），小于此值视为紧凑手机布局。 */
     val isRegularWidth get() = width >= 600.dp
-    // Duo: side controls on the cover/landscape; horizontal bars on inner portrait/tabletop.
-    // 600dp is Android's compact/medium window boundary, independent of a device's pixel size.
+
+    /**
+     * 是否启用侧边导航栏：高度 >= 400.dp 且非桌面半折叠（tabletop）形态时，
+     * 横屏窗口或非展开态外屏折叠屏使用侧边栏，其余使用底栏。
+     */
     val useNavigationRail get() = height >= 400.dp && !isTabletop &&
         (width > height || (isFoldable && !isRegularWidth))
+
+    /** 书本折叠态、桌面半折叠态或宽屏横屏（width >= 600.dp 且横屏）时启用展开式双栏播放器。 */
     val useExpandedPlayer get() = isBook || isTabletop || (isRegularWidth && width > height)
+
+    /** 侧边导航栏宽度：宽屏（>= 600.dp）为 84.dp，紧凑横屏为 72.dp。 */
     val sideControlWidth get() = if (isRegularWidth) 84.dp else 72.dp
     val isTabletop get() = separatingFold != null && horizontalFold
     val isBook get() = separatingFold != null && !horizontalFold
 
+    /** 详情页与列表并排展示条件：内容区 >= 720.dp x 360.dp，或处于折叠屏半折叠形态。 */
     fun showDetailAlongside(hasSelection: Boolean, contentWidth: Dp, contentHeight: Dp): Boolean =
         hasSelection && ((contentWidth >= 720.dp && contentHeight >= 360.dp) || isBook || isTabletop)
 }
 
+/** 全局自适应窗口信息 CompositionLocal。 */
 val LocalAdaptiveWindow = staticCompositionLocalOf { AdaptiveWindowInfo() }
+
+/** 页面底部默认留白高度（dp，用于避让底栏与迷你播放栏）。 */
 val LocalContentBottomPadding = staticCompositionLocalOf { 120.dp }
+
+/** 标识当前子树是否已处于双栏拆分容器内，避免嵌套拆分。 */
 val LocalPaneAlreadySplit = staticCompositionLocalOf { false }
 
 @Composable
@@ -89,7 +103,11 @@ fun ProvideAdaptiveWindow(activity: Activity, content: @Composable () -> Unit) {
     }
 }
 
-/** A centred reading surface keeps long song rows and forms comfortable on very wide windows. */
+/**
+ * 居中限制内容最大阅读宽度，防止超宽屏下列表与表单横向过度拉伸。
+ *
+ * @param maxWidth 内容区最大宽度上限（默认 1280.dp）
+ */
 @Composable
 fun AdaptiveContent(
     modifier: Modifier = Modifier,
@@ -102,8 +120,11 @@ fun AdaptiveContent(
 }
 
 /**
- * Uses measured window coordinates for hinges, including when hosted inside a navigation rail.
- * Both panes retain their composition slot when switching between horizontal and vertical layouts.
+ * 基于窗口坐标与折叠铰链区域的双栏自适应容器，支持水平（Book）与垂直（Tabletop）拆分。
+ * 切换布局方向时保留主/副面板组合槽位，避免子状态重建。
+ *
+ * @param primaryFraction 无分离折痕时主面板宽度占比（0f..1f，默认 0.4f）
+ * @param gap 两面板或折痕两侧的隔离间距（默认 24.dp）
  */
 @Composable
 fun AdaptiveTwoPane(

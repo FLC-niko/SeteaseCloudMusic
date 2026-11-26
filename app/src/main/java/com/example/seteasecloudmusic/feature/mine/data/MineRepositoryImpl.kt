@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
+/** “我的”页面数据仓库实现：协调远端 API 请求、本地预览/完整缓存及内存曲目 ID 顺序表。 */
 class MineRepositoryImpl @Inject constructor(
     private val mineService: MineService,
     private val mineCacheManager: MineCacheManager
@@ -349,8 +350,9 @@ class MineRepositoryImpl @Inject constructor(
     }
 
     companion object {
-        private const val SONG_DETAIL_BATCH_SIZE = 300
+        private const val SONG_DETAIL_BATCH_SIZE = 300 // /song/detail 单次批量补全曲目 ID 上限（越大请求越少但单次 URL 越长）
 
+        /** 按 [allTrackIds] 顺序合并 [initialTracks] 并分批串行拉取缺失曲目。 */
         internal suspend fun resolveCompletePlaylistTracks(
             initialTracks: List<Track>,
             allTrackIds: List<Long>,

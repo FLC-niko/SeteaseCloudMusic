@@ -4,10 +4,13 @@ import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricWord
 import kotlin.math.abs
 
+/** 标准 LRC 逐行歌词解析器，支持同时对齐翻译与罗马音时间轴。 */
 object LrcParser {
 
+    // 匹配 LRC 时间标签，如 [01:23.45] 或 [01:23:456]
     private val TIME_PATTERN = Regex("""\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?]""")
 
+    /** 解析主歌词与可选侧挂翻译/音译文本为按时间升序排列的 [LyricLine] 列表。 */
     fun parse(
         lrcText: String,
         tlyricText: String? = null,
@@ -26,6 +29,7 @@ object LrcParser {
             val (startTime, text) = timedTexts[i]
             if (text.isBlank()) continue
             val endTime = if (i + 1 < timedTexts.size) {
+                // 最短行时长 400 ms，避免相邻时间戳过近；末行默认持续 5000 ms
                 maxOf(startTime + 400, timedTexts[i + 1].first)
             } else {
                 startTime + 5000
@@ -58,6 +62,11 @@ object LrcParser {
             .sortedBy { it.first }
     }
 
+    /**
+     * 在已按时间升序排列的文本列表中查找距离 [targetMs] 最近的条目。
+     *
+     * @param toleranceMs 最大时间匹配容差（ms，越大越宽松）
+     */
     internal fun findNearestTimedText(
         sortedPairs: List<Pair<Int, String>>,
         targetMs: Int,

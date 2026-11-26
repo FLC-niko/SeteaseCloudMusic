@@ -36,7 +36,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
- * 基于 Miuix [WindowDialog] 的通用自适应提示与输入弹窗，保持原有签名兼容所有调用方。
+ * 基于 Miuix [WindowDialog] 的通用自适应提示与输入弹窗。
  */
 @Composable
 fun Ios26LiquidGlassDialog(
@@ -66,6 +66,7 @@ fun Ios26LiquidGlassDialog(
         summaryColor = colors.textSecondary,
         backgroundColor = if (isDark) Color.Black else Color.White,
         onDismissRequest = onDismissRequest,
+        // 宽度 >= 600.dp 或存在折叠屏分离折痕时使用大屏居中样式
         largeScreen = window.width >= 600.dp || window.separatingFold != null,
         modifier = modifier
     ) {
@@ -151,7 +152,7 @@ fun Ios26LiquidGlassDialog(
 }
 
 /**
- * 专用于断网场景的 iOS 26 液态玻璃重试小弹窗（清爽无多余中栏）。
+ * 专用于断网重连提示的弹窗，仅展示标题、说明与底部操作按钮。
  */
 @Composable
 fun Ios26NetworkOfflineDialog(
@@ -177,14 +178,12 @@ fun Ios26NetworkOfflineDialog(
         isPrimaryLoading = isRetrying,
         onSecondaryClick = onDismiss,
         onPrimaryClick = onRetry,
-        content = null // 断网场景无需中间多余信息栏，清爽干净！
+        content = null
     )
 }
 
 /**
- * iOS 26 原设计图输入框卡片（还原解析图中的 Value 输入栏）。
- *
- * 包含两个输入栏以及中间极细分割线，支持单行/双行输入。
+ * 分组圆角输入框卡片（18.dp 圆角，支持单行或带 0.6.dp 分割线的双行输入）。
  */
 @Composable
 fun Ios26DialogInputCard(
@@ -277,7 +276,7 @@ private fun Ios26InputFieldRow(
 }
 
 /**
- * iOS 26 只读 Value 展示卡片（供信息展示、状态诊断等复用场景使用）。
+ * 分组只读信息展示卡片（18.dp 圆角，支持单行或带分割线的双行键值展示）。
  */
 @Composable
 fun Ios26ValueContainer(

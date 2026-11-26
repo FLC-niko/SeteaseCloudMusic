@@ -48,6 +48,9 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Check
 
+/**
+ * 顶部氛围颜色选择弹窗，提供实时渐变预览、预设色板点选与 HSV 滑块微调。
+ */
 @Composable
 internal fun TopAmbientColorPickerDialog(
     currentColorArgb: Int,
@@ -94,14 +97,14 @@ internal fun TopAmbientColorPickerDialog(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp) // 预览卡、色板与滑块之间的垂直间距
         ) {
             // 实时效果预览卡片
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(84.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .height(84.dp) // 效果预览卡片高度
+                    .clip(RoundedCornerShape(18.dp)) // 效果预览卡片圆角
                     .border(1.dp, colors.coverBorder, RoundedCornerShape(18.dp))
                     .drawBehind {
                         drawRect(colors.background)
@@ -138,7 +141,7 @@ internal fun TopAmbientColorPickerDialog(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(colors.surface.copy(alpha = 0.78f))
+                        .background(colors.surface.copy(alpha = 0.78f)) // 色值标签胶囊背景透明度
                         .border(1.dp, colors.coverBorder, RoundedCornerShape(999.dp))
                         .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
@@ -189,11 +192,11 @@ internal fun TopAmbientColorPickerDialog(
                     val swatchColor = Color(preset.colorArgb)
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(36.dp) // 预设色板圆点直径
                             .clip(CircleShape)
                             .background(swatchColor)
                             .border(
-                                width = if (isSelected) 2.5.dp else 1.dp,
+                                width = if (isSelected) 2.5.dp else 1.dp, // 选中态加粗边框以突出当前色板
                                 color = if (isSelected) colors.accent else colors.coverBorder,
                                 shape = CircleShape
                             )
@@ -204,6 +207,7 @@ internal fun TopAmbientColorPickerDialog(
                             Icon(
                                 imageVector = MiuixIcons.Basic.Check,
                                 contentDescription = preset.name,
+                                // 高亮度浅色底切换深色对勾以保证图标对比度
                                 tint = if (swatchColor.luminance() > 0.55f) Color(0xFF1C1C1E) else Color.White,
                                 modifier = Modifier.size(16.dp)
                             )

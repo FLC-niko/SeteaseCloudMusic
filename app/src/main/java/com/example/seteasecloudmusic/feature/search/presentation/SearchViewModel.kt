@@ -61,6 +61,10 @@ data class SearchUiState(
     val isLoadingDetail: Boolean = false
 )
 
+/**
+ * 搜索页 ViewModel：负责输入联想防抖、正式搜索（单曲/歌手/歌单并发）、热搜与搜索历史管理，
+ * 以及歌单/专辑详情预览与队列播放调度。
+ */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val searchMusicUseCase: SearchMusicUseCase,
@@ -87,9 +91,9 @@ class SearchViewModel @Inject constructor(
     private var detailRequestId = 0L
 
     companion object {
-        // 输入联想不需要每次敲字都立刻请求，做一层轻量防抖更节省接口调用。
+        // 输入联想防抖延时（ms，越大越减少接口请求，越小联想响应越快）
         private const val SEARCH_SUGGEST_DEBOUNCE_MS = 250L
-        // 专辑使用独立负向 ID 空间映射到 PlaylistDetail，避免与真实歌单 ID 冲突。
+        // 专辑详情复用歌单视图时使用的负向 ID 偏移量，避免与真实歌单 ID 冲突
         private const val SYNTHETIC_ALBUM_PLAYLIST_OFFSET = 1_000_000_000L
     }
 
@@ -363,7 +367,7 @@ class SearchViewModel @Inject constructor(
                     }
                 }
 
-                // 5) 为歌曲中可能缺少头像的歌手做异步兜底补充
+                // 5) 最多异步补全前 8 位缺失头像的歌手，控制额外详情请求数量
                 val missingArtistIds = tracks
                     .flatMap { it.artists }
                     .filter { it.coverUrl.isNullOrBlank() && it.id > 0L }

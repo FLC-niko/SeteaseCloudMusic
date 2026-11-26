@@ -6,6 +6,7 @@ import com.example.seteasecloudmusic.feature.artist.domain.model.PagedResult
 import com.example.seteasecloudmusic.feature.artist.domain.repository.ArtistRepository
 import javax.inject.Inject
 
+/** 校验参数并分页获取歌手歌曲列表（默认每页 50 首）。 */
 class GetArtistSongsUseCase @Inject constructor(
     private val artistRepository: ArtistRepository
 ) {

@@ -4,9 +4,12 @@ import com.example.seteasecloudmusic.feature.player.domain.model.LyricLine
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricWord
 import kotlin.math.abs
 
+/** 网易云 YRC 逐字歌词解析器，支持逐词时间戳、和声括号识别及侧挂翻译/音译对齐。 */
 object YrcParser {
 
+    // 匹配行时间头 [lineStartMs,lineDurationMs]
     private val LINE_PATTERN = Regex("""^\[(\d+),(\d+)]""")
+    // 匹配词时间头 (wordStartMs,wordDurationMs,flag)
     private val WORD_PATTERN = Regex("""\((\d+),(\d+),\d+\)""")
     private val BEGIN_PAREN = Regex("""^[（(]+""")
     private val END_PAREN = Regex("""[）)]+$""")

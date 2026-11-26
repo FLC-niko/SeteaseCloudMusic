@@ -11,6 +11,9 @@ import com.example.seteasecloudmusic.feature.radio.domain.model.RadioRoamItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioToplistItem
 import com.example.seteasecloudmusic.feature.radio.domain.model.RadioTrendItem
 
+/**
+ * 电台页数据仓库接口，负责获取各电台分区内容及歌单/艺人曲目列表。
+ */
 interface RadioRepository {
     suspend fun getToplists(): Result<List<RadioToplistItem>>
     suspend fun getRadarPlaylists(): Result<List<RadioRadarItem>>

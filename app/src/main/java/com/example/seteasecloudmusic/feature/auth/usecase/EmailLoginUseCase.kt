@@ -3,6 +3,9 @@ package com.example.seteasecloudmusic.feature.auth.usecase
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 
+/**
+ * 邮箱密码登录用例，执行输入格式校验后委托仓储登录。
+ */
 class EmailLoginUseCase(
     private val authRepository: AuthRepository
 ) {

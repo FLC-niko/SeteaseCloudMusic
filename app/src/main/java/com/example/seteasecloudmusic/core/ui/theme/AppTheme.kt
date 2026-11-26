@@ -19,15 +19,17 @@ import com.example.seteasecloudmusic.core.ui.components.MiuixThemeHost
 
 /**
  * 根据浅色/深色主题调校封面取色 HSL：
- * - 浅色模式：保持较高饱和度与鲜艳通透的浅色氛围底色（明度 0.75..0.84），搭配深色文字。
- * - 深色模式：生成深邃沉静的暗色氛围底色（明度 0.13..0.21），搭配浅色文字。
+ * - 深色模式：彩色饱和度收束至 [0.16, 0.38]（中性灰 < 0.08 收束至 [0.02, 0.08]），明度压低至 [0.13, 0.21]。
+ * - 浅色模式：彩色饱和度调校至 [0.32, 0.68]（中性灰 < 0.06 收束至 [0.02, 0.08]），明度提亮至 [0.75, 0.84]。
  */
 fun tuneAmbientHslForTheme(hsl: FloatArray, isDark: Boolean) {
     if (isDark) {
+        // 中性灰判定阈值 0.08，避免低饱和像素放大后偏色
         val isNearNeutral = hsl[1] < 0.08f
         hsl[1] = if (isNearNeutral) hsl[1].coerceIn(0.02f, 0.08f) else hsl[1].coerceIn(0.16f, 0.38f)
         hsl[2] = (hsl[2] * 0.14f + 0.12f).coerceIn(0.13f, 0.21f)
     } else {
+        // 浅色模式下中性灰判定阈值 0.06
         val isNearNeutral = hsl[1] < 0.06f
         hsl[1] = if (isNearNeutral) {
             hsl[1].coerceIn(0.02f, 0.08f)
@@ -48,7 +50,7 @@ fun resolveDarkTheme(themeMode: AppThemeMode, isSystemDark: Boolean): Boolean = 
 }
 
 /**
- * 应用语义化色彩令牌（对齐 Apple HIG & iOS 26 Liquid Glass 规范）。
+ * 应用语义化色彩令牌，统一管理浅色与深色模式下的背景、文本、图标、标签与玻璃容器配色。
  */
 @Immutable
 data class AppColorPalette(
@@ -83,6 +85,7 @@ data class AppColorPalette(
     val handleBar: Color
 )
 
+/** 浅色模式默认语义色彩配置。 */
 val LightAppColors = AppColorPalette(
     isDark = false,
     accent = Color(0xFFFA233B),
@@ -103,7 +106,7 @@ val LightAppColors = AppColorPalette(
     divider = Color(0xFFE5E5EA),
     dividerSubtle = Color(0xFFF0F0F2),
     placeholder = Color(0xFFE4E4E8),
-    coverBorder = Color(0x12000000),
+    coverBorder = Color(0x12000000), // 浅底封面极淡暗描边（约 7% 透明黑）
     errorContainer = Color(0xFFFFF2F0),
     errorContent = Color(0xFFD32F2F),
     errorIcon = Color(0xFFE53935),
@@ -111,10 +114,11 @@ val LightAppColors = AppColorPalette(
     tagContent = Color(0xFFE53935),
     glassSurface = Color(0xFFF7F7FA),
     glassPanelContainer = Color(0xFFFFFFFF),
-    scrim = Color.Black.copy(alpha = 0.24f),
+    scrim = Color.Black.copy(alpha = 0.24f), // 浅色模式弹窗遮罩透明度
     handleBar = Color(0xFFD2D2D8)
 )
 
+/** 深色模式默认语义色彩配置（纯黑 OLED 主背景配深灰分组层级）。 */
 val DarkAppColors = AppColorPalette(
     isDark = true,
     accent = Color(0xFFFF2D55),
@@ -135,7 +139,7 @@ val DarkAppColors = AppColorPalette(
     divider = Color(0xFF38383A),
     dividerSubtle = Color(0xFF262629),
     placeholder = Color(0xFF242428),
-    coverBorder = Color(0x1FFFFFFF),
+    coverBorder = Color(0x1FFFFFFF), // 深底封面极淡亮描边（约 12% 透明白）
     errorContainer = Color(0xFF2C1618),
     errorContent = Color(0xFFFF6961),
     errorIcon = Color(0xFFFF453A),
@@ -143,10 +147,11 @@ val DarkAppColors = AppColorPalette(
     tagContent = Color(0xFFFF6482),
     glassSurface = Color(0xFF1C1C24),
     glassPanelContainer = Color(0xFF1C1C1E),
-    scrim = Color.Black.copy(alpha = 0.52f),
+    scrim = Color.Black.copy(alpha = 0.52f), // 深色模式弹窗遮罩透明度
     handleBar = Color(0xFF48484A)
 )
 
+/** 顶部氛围背景外观配置（开关状态与基础调色 ARGB）。 */
 @Immutable
 data class TopAmbientAppearance(
     val enabled: Boolean = true,
@@ -156,6 +161,7 @@ data class TopAmbientAppearance(
 val LocalAppColors = staticCompositionLocalOf { LightAppColors }
 val LocalTopAmbientAppearance = staticCompositionLocalOf { TopAmbientAppearance() }
 
+/** 主题颜色与顶部氛围外观访问入口。 */
 object AppTheme {
     val colors: AppColorPalette
         @Composable
@@ -173,6 +179,9 @@ object AppTheme {
         get() = LocalTopAmbientAppearance.current
 }
 
+/**
+ * 应用根主题容器：注入语义色板与顶部氛围配置，同步系统状态栏/导航栏图标亮暗与窗口底色，并挂载 Miuix 主题。
+ */
 @Composable
 fun SeteaseCloudMusicTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,

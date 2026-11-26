@@ -120,11 +120,12 @@ fun detectDeviceCornerRadius(
         }
     }
 
-    // 3. 回退策略：平板或侧边栏模式为平角 (0.dp)；主流全面屏手机回退至经典舒适的 32.dp 圆角
+    // 3. 回退策略：平板或侧边栏模式使用 0.dp 直角；普通手机回退至默认 32.dp 圆角
     if (isTabletOrRail) {
         return DeviceCornerRadius(0.dp, 0.dp, 0.dp, 0.dp)
     }
 
+    // 无法读取系统/硬件圆角时的默认手机圆角半径（dp）
     val defaultRadius = 32.dp
     return DeviceCornerRadius(defaultRadius, defaultRadius, defaultRadius, defaultRadius)
 }

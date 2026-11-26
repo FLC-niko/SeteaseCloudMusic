@@ -4,6 +4,7 @@ import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistAlbumDeta
 import com.example.seteasecloudmusic.feature.artist.domain.repository.ArtistRepository
 import javax.inject.Inject
 
+/** 校验专辑 ID 并获取专辑详情与曲目列表。 */
 class GetAlbumDetailUseCase @Inject constructor(
     private val artistRepository: ArtistRepository
 ) {

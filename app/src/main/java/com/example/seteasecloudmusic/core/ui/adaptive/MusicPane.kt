@@ -46,6 +46,7 @@ fun RetainedMusicFeed(visible: Boolean, content: @Composable () -> Unit) {
         }) { content() }
 }
 
+/** 音乐分栏页顶栏：提供标题、副标题及左右侧圆形液态玻璃操作按钮。 */
 @Composable
 fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Unit)? = null, onMore: (() -> Unit)? = null) {
     val backdrop = LocalGlassBackdrop.current
@@ -56,7 +57,7 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
             LiquidGlassCircleButton(
                 onClick = { onClose?.invoke() },
                 backdrop = backdrop,
-                size = 44.dp,
+                size = 44.dp, // 顶栏玻璃圆形按钮尺寸（dp）
                 contentDescription = "返回"
             ) {
                 Icon(MiuixIcons.Back, "返回", tint = colors.iconPrimary, modifier = Modifier.size(22.dp))
@@ -85,6 +86,7 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
     }
 }
 
+/** 宽屏双栏模式下右侧详情页未选中内容时的液态玻璃占位视图。 */
 @Composable
 fun MusicDetailPlaceholder(title: String = "你的音乐，尽在这里", description: String = "选择左侧歌单，开始探索与聆听") {
     val background = rememberLayerBackdrop { drawContent() }
@@ -93,6 +95,7 @@ fun MusicDetailPlaceholder(title: String = "你的音乐，尽在这里", descri
     val firstGlow = if (isDark) Color(0xFF5A2038).copy(alpha = 0.42f) else Color(0xFFFCE4EB)
     val secondGlow = if (isDark) Color(0xFF1C2E5A).copy(alpha = 0.36f) else Color(0xFFE8E8FC).copy(alpha = 0.75f)
     BoxWithConstraints(Modifier.fillMaxSize().testTag("music_detail_placeholder")) {
+        // 高度低于 300.dp 时缩小主图标尺寸以适配半屏折叠形态
         val compact = maxHeight < 300.dp
         Canvas(Modifier.fillMaxSize().layerBackdrop(background)) {
             drawRect(colors.background)
@@ -101,6 +104,7 @@ fun MusicDetailPlaceholder(title: String = "你的音乐，尽在这里", descri
             drawRect(Brush.radialGradient(listOf(secondGlow, Color.Transparent),
                 center = Offset(size.width * 0.75f, size.height * 0.58f), radius = 180.dp.toPx()))
         }
+        // 占位卡片最大宽度 340.dp，外边距 20.dp（总扣减 40.dp）
         LiquidGlassPanel(Modifier.align(Alignment.Center).padding(20.dp).widthIn(max = 340.dp).fillMaxWidth()
             .heightIn(max = (maxHeight - 40.dp).coerceAtLeast(0.dp)), backdrop = background) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),

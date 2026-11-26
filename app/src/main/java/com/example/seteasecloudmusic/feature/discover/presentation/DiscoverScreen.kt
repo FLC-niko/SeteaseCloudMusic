@@ -92,6 +92,9 @@ private val DiscoverCardSurface: Color
     @Composable
     get() = AppTheme.colors.surface
 
+/**
+ * 发现页主界面，按分区展示推荐歌单、榜单、推荐新歌与热门歌单，并支持下拉刷新与顶部渐进模糊。
+ */
 @Composable
 fun DiscoverScreen(
     uiState: DiscoverUiState,
@@ -122,6 +125,7 @@ fun DiscoverScreen(
             uiState.isToplistsLoading
         )
     val topBlurAlpha by remember(listState, density) {
+        // 顶部渐进模糊从透明过渡到完全显示的滚动距离（越小越早触发）
         val fadeDistancePx = with(density) { 40.dp.toPx().coerceAtLeast(1f) }
         derivedStateOf {
             if (listState.firstVisibleItemIndex > 0) 1f
@@ -145,8 +149,8 @@ fun DiscoverScreen(
         AdaptiveSectionColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
-            contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding + 16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            contentPadding = PaddingValues(top = topContentPadding, bottom = bottomContentPadding + 16.dp), // 底部在悬浮栏之上追加安全留白
+            verticalArrangement = Arrangement.spacedBy(20.dp) // 各发现分区之间的垂直间距
         ) {
             item {
                 DiscoverChipSection(
@@ -201,6 +205,7 @@ fun DiscoverScreen(
 
         ProgressiveTopBlur(
             backdrop = discoverBackdrop,
+            // 顶部模糊区高度，至少覆盖状态栏加顶栏最小高度（56.dp）
             totalHeight = (topContentPadding + 16.dp).coerceAtLeast(statusBarHeight + 56.dp),
             statusBarHeight = statusBarHeight,
             modifier = Modifier.align(Alignment.TopCenter),
@@ -215,7 +220,7 @@ private fun DiscoverSectionHeader(
     subtitle: String
 ) {
     Column(
-        modifier = Modifier.padding(horizontal = 20.dp)
+        modifier = Modifier.padding(horizontal = 20.dp) // 分区标题水平安全边距
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -262,7 +267,7 @@ private fun DiscoverChipSection(
             playlists.isEmpty() -> DiscoverEmptyPanel("暂无推荐歌单")
             else -> LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp) // 横向推荐歌单卡片间距
             ) {
                 items(playlists, key = { it.id }) { playlist ->
                     DiscoverChipCard(playlist = playlist)
@@ -277,11 +282,11 @@ private fun DiscoverChipCard(
     playlist: DiscoverPlaylist
 ) {
     Column(
-        modifier = Modifier.width(136.dp),
+        modifier = Modifier.width(136.dp), // 推荐歌单卡片宽度
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Card(
-            cornerRadius = 28.dp,
+            cornerRadius = 28.dp, // 歌单卡片圆角
             colors = CardDefaults.defaultColors(color = DiscoverCardSurface),
             modifier = Modifier
                 .fillMaxWidth()
@@ -290,7 +295,7 @@ private fun DiscoverChipCard(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
-                    model = playlist.coverUrl.toCoverThumbnailUrl(200),
+                    model = playlist.coverUrl.toCoverThumbnailUrl(200), // 缩略图请求尺寸（px）
                     contentDescription = playlist.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -298,7 +303,7 @@ private fun DiscoverChipCard(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.White.copy(alpha = 0.16f))
+                        .background(Color.White.copy(alpha = 0.16f)) // 封面高光提亮遮罩透明度
                 )
             }
         }
@@ -336,12 +341,12 @@ private fun DiscoverNowPlayingSection(
         )
 
         when {
-            isLoading && toplists.isEmpty() -> DiscoverLoadingRow(cardHeight = 420.dp)
+            isLoading && toplists.isEmpty() -> DiscoverLoadingRow(cardHeight = 420.dp) // 榜单加载占位卡片高度
             !errorMessage.isNullOrBlank() && toplists.isEmpty() -> DiscoverErrorPanel(errorMessage, onRetry)
             toplists.isEmpty() -> DiscoverEmptyPanel("暂无榜单内容")
             else -> LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp) // 榜单卡片横向间距
             ) {
                 items(toplists, key = { it.id }) { toplist ->
                     DiscoverToplistCard(toplist = toplist)
@@ -359,18 +364,18 @@ private fun DiscoverToplistCard(
         cornerRadius = 28.dp,
         colors = CardDefaults.defaultColors(color = DiscoverCardSurface),
         modifier = Modifier
-            .width(320.dp)
+            .width(320.dp) // 榜单大卡片宽度
             .squircleBorder(1.dp, DiscoverDivider, 28.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(280.dp) // 榜单顶部封面区高度
                     .background(DiscoverSurface)
             ) {
                 AsyncImage(
-                    model = toplist.coverUrl.toCoverThumbnailUrl(320),
+                    model = toplist.coverUrl.toCoverThumbnailUrl(320), // 榜单封面缩略图请求尺寸（px）
                     contentDescription = toplist.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -409,6 +414,7 @@ private fun DiscoverToplistCard(
                         fontWeight = FontWeight.Medium
                     )
                 }
+                // 每张榜单卡片最多预览前 3 首代表曲目
                 toplist.previews.take(3).forEachIndexed { index, preview ->
                     DiscoverPreviewRow(index = index + 1, preview = preview)
                 }
@@ -471,6 +477,7 @@ private fun DiscoverSongSection(
                 .squircleClip(24.dp)
                 .background(DiscoverCardSurface)
         ) {
+            // 推荐新歌列表最多展示 10 首
             tracks.take(10).forEachIndexed { index, track ->
                 DiscoverSongRow(track = track)
                 if (index != tracks.take(10).lastIndex) {
@@ -496,10 +503,10 @@ private fun DiscoverSongRow(
         Card(
             cornerRadius = 14.dp,
             colors = CardDefaults.defaultColors(color = DiscoverSurface),
-            modifier = Modifier.size(56.dp)
+            modifier = Modifier.size(56.dp) // 新歌行封面尺寸
         ) {
             AsyncImage(
-                model = track.coverUrl.toCoverThumbnailUrl(140),
+                model = track.coverUrl.toCoverThumbnailUrl(140), // 新歌封面缩略图请求尺寸（px）
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -549,6 +556,7 @@ private fun DiscoverPlaylistListSection(
                 .squircleClip(24.dp)
                 .background(DiscoverCardSurface)
         ) {
+            // 热门歌单分区最多展示 6 个条目
             playlists.take(6).forEachIndexed { index, playlist ->
                 DiscoverPlaylistRow(playlist = playlist)
                 if (index != playlists.take(6).lastIndex) {
@@ -573,10 +581,10 @@ private fun DiscoverPlaylistRow(
         Card(
             cornerRadius = 16.dp,
             colors = CardDefaults.defaultColors(color = DiscoverSurface),
-            modifier = Modifier.size(72.dp)
+            modifier = Modifier.size(72.dp) // 热门歌单封面尺寸
         ) {
             AsyncImage(
-                model = playlist.coverUrl.toCoverThumbnailUrl(160),
+                model = playlist.coverUrl.toCoverThumbnailUrl(160), // 热门歌单封面缩略图请求尺寸（px）
                 contentDescription = playlist.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -619,16 +627,16 @@ private fun DiscoverPlaylistRow(
 
 @Composable
 private fun DiscoverLoadingRow(
-    cardHeight: Dp = 120.dp
+    cardHeight: Dp = 120.dp // 默认横向加载占位卡片高度
 ) {
     Row(
         modifier = Modifier.padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        repeat(3) {
+        repeat(3) { // 占位卡片数量
             Box(
                 modifier = Modifier
-                    .width(132.dp)
+                    .width(132.dp) // 占位卡片宽度
                     .height(cardHeight)
                     .squircleClip(28.dp)
                     .background(DiscoverCardSurface),

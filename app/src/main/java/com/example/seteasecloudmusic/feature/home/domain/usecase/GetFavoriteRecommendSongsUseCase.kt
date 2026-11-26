@@ -5,7 +5,7 @@ import com.example.seteasecloudmusic.feature.home.domain.repository.HomeRecommen
 import javax.inject.Inject
 
 /**
- * 获取首页「根据你喜爱的歌曲推荐」（对应官方 HOMEPAGE_BLOCK_STYLE_RCMD 风格推荐模块）用例
+ * 获取首页「根据你喜爱的歌曲推荐」（对应 HOMEPAGE_BLOCK_STYLE_RCMD 风格推荐模块）用例。
  */
 class GetFavoriteRecommendSongsUseCase @Inject constructor(
     private val repository: HomeRecommendRepository

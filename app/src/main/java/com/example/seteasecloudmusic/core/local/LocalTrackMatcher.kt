@@ -6,20 +6,21 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * Pure matching logic between online catalog tracks and scanned local audio files.
+ * 在线曲目与本地扫描音频文件的匹配器。
  */
 internal object LocalTrackMatcher {
-    private val LEADING_TRACK_INDEX_REGEX = Regex("^\\d+[.\\-_\\s]+")
-    private val NON_GREEDY_BRACKETS_REGEX = Regex("\\([^)]*\\)|\\[[^\\]]*\\]|\\{[^}]*\\}|【[^】]*】|（[^）]*）")
-    private val PUNCTUATION_REGEX = Regex("[-_~`!@#\$%^&*+=|:;\"'<>,.?/\\\\()\\[\\]{}【】（）\\s]+")
-    private val UNKNOWN_ARTIST_TOKENS = setOf("unknown", "未知", "未知歌手", "variousartists", "群星", "va")
+    private val LEADING_TRACK_INDEX_REGEX = Regex("^\\d+[.\\-_\\s]+")                                      // 曲目前导序号（如 "01 - "）
+    private val NON_GREEDY_BRACKETS_REGEX = Regex("\\([^)]*\\)|\\[[^\\]]*\\]|\\{[^}]*\\}|【[^】]*】|（[^）]*）") // 标题中常见括号附注（如 Live/Feat 版本说明）
+    private val PUNCTUATION_REGEX = Regex("[-_~`!@#\$%^&*+=|:;\"'<>,.?/\\\\()\\[\\]{}【】（）\\s]+")           // 用于文本归一化的标点与空白分隔符
+    private val UNKNOWN_ARTIST_TOKENS = setOf("unknown", "未知", "未知歌手", "variousartists", "群星", "va")    // 无效或泛化歌手名集合，不作为歌手确认依据
 
-    private const val STRICT_DURATION_TOLERANCE_MS = 5_000L
-    private const val RELAXED_DURATION_TOLERANCE_MS = 15_000L
+    private const val STRICT_DURATION_TOLERANCE_MS = 5_000L   // 严格时长误差容限（ms）：本地歌手未知时用于防止同名异曲误匹配
+    private const val RELAXED_DURATION_TOLERANCE_MS = 15_000L // 宽松时长误差容限（ms）：允许版本剪辑或前奏空白造成的轻微差异
 
     /**
-     * Finds a matching playable local audio track for [onlineTrack], guarding against empty
-     * normalized strings, unknown-artist collisions, and large duration mismatches.
+     * 为在线曲目 [onlineTrack] 查找可播放的本地匹配曲目。
+     *
+     * 过滤空白归一化标题、未知歌手冲突与过大时长偏差，避免误命中。
      */
     fun findMatchingLocalTrack(onlineTrack: Track, localTracks: List<Track>): Track? {
         if (localTracks.isEmpty()) return null
@@ -30,7 +31,7 @@ internal object LocalTrackMatcher {
         val targetArtists = extractKnownArtists(onlineTrack)
         val targetDurationMs = onlineTrack.durationMs ?: 0L
 
-        // Tier 1: exact normalized title (or exact normalized filename), checking known artist + duration
+        // 第一层匹配：归一化歌名或文件名完全一致，并校对已知歌手与时长
         localTracks.firstOrNull { local ->
             if (local.playableUrl.isNullOrBlank()) return@firstOrNull false
             val localTitleNorm = normalizeTitle(local.title)
@@ -53,7 +54,7 @@ internal object LocalTrackMatcher {
                     filenameMentionsArtist(rawFilenameNorm, targetArtists)
             }
             if (localArtists.isEmpty() && targetArtists.isNotEmpty()) {
-                // Unknown local artist: avoid matching unrelated songs sharing the same title
+                // 本地缺少有效歌手标签时，优先通过文件名或更严格的时长容限确认
                 if (filenameMentionsArtist(rawFilenameNorm, targetArtists)) return@firstOrNull true
                 return@firstOrNull targetDurationMs > 0L &&
                     localDurationMs > 0L &&
@@ -62,7 +63,7 @@ internal object LocalTrackMatcher {
             true
         }?.let { return it }
 
-        // Tier 2: filename contains both normalized artist and title (e.g. "Artist - Song.flac")
+        // 第二层匹配：文件名同时包含归一化歌手名与歌名（例如 "Artist - Song.flac"）
         if (targetTitleNorm.length < 2 || targetArtists.isEmpty()) return null
         return localTracks.firstOrNull { local ->
             if (local.playableUrl.isNullOrBlank()) return@firstOrNull false

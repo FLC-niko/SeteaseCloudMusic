@@ -2,7 +2,12 @@ package com.example.seteasecloudmusic.core.player
 
 import com.example.seteasecloudmusic.core.model.Track
 
+/**
+ * 曲目播放准备与听歌打卡接口。
+ * 负责在起播前解析或校验可用播放地址，并提供线上与本地曲目的听歌打卡上报能力。
+ */
 interface TrackPlaybackPreparer {
+    /** 解析并补全曲目的可播放地址与音频元数据 */
     suspend operator fun invoke(track: Track): Result<Track>
 
     /**

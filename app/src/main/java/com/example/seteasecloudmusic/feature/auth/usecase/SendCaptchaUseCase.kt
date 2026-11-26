@@ -2,6 +2,9 @@ package com.example.seteasecloudmusic.feature.auth.usecase
 
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 
+/**
+ * 发送手机短信验证码用例，发起请求前先校验大陆手机号格式。
+ */
 class SendCaptchaUseCase (
     private val authRepository: AuthRepository
 ) {

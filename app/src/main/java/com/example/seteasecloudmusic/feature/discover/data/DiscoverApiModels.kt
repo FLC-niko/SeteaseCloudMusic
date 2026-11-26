@@ -2,6 +2,9 @@ package com.example.seteasecloudmusic.feature.discover.data
 
 import com.google.gson.annotations.SerializedName
 
+/**
+ * 推荐歌单接口响应体。
+ */
 data class PersonalizedResponse(
     val code: Int = 0,
     val result: List<PersonalizedItemResponse> = emptyList()
@@ -16,6 +19,9 @@ data class PersonalizedItemResponse(
     val trackCount: Int? = null
 )
 
+/**
+ * 推荐新歌接口响应体。
+ */
 data class PersonalizedNewsongResponse(
     val code: Int = 0,
     val result: List<PersonalizedNewsongItemResponse> = emptyList()
@@ -55,6 +61,9 @@ data class NewsongPrivilegeResponse(
     val pl: Long? = null
 )
 
+/**
+ * 排行榜详情接口响应体。
+ */
 data class ToplistDetailResponse(
     val code: Int = 0,
     val list: List<ToplistItemResponse> = emptyList()
@@ -74,6 +83,9 @@ data class ToplistTrackPreviewResponse(
     val second: String? = null
 )
 
+/**
+ * 热门歌单分页接口响应体。
+ */
 data class HotPlaylistResponse(
     val code: Int = 0,
     val playlists: List<HotPlaylistItemResponse> = emptyList()

@@ -85,11 +85,11 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 1:1 复刻截图 Apple Music 底部播放控制器：
- * 1. 无滑块圆角胶囊进度条（7dp -> 12dp 按压弹性膨胀、左已播时间、中 Dolby Atmos 位置可点击切换音质、右剩余时间 `-3:48`）
- * 2. 核心三键（双圆角三角 520ms 跑马切歌动效、圆角双竖条暂停 ↔ 圆角三角播放收缩弹性变形）
- * 3. 系统级实时同步胶囊音量条（左无波纹小喇叭 + 按压变粗胶囊滑轨 + 右三波纹大喇叭）
- * 4. 底部三功能键（激活态圆形镂空歌词按钮、循环 ↔ 随机播放模式切换、待播列表）
+ * 播放页底部主控制区：
+ * 1. 圆角胶囊进度条（支持按压膨胀、左右时间标签与居中音质切换入口）
+ * 2. 核心播放控制三键（切歌跑马动效与播放/暂停弹性切换）
+ * 3. 系统媒体音量胶囊滑条（实时同步硬件音量键）
+ * 4. 底部功能栏（歌词开关、播放模式切换、待播列表）
  */
 @Composable
 fun AppleMusicPlaybackControls(
@@ -116,6 +116,7 @@ fun AppleMusicPlaybackControls(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            // 控制区左右安全边距
             .padding(horizontal = 28.dp)
     ) {
         AppleMusicProgressSlider(
@@ -188,6 +189,7 @@ fun AppleMusicProgressSlider(
 
     LaunchedEffect(pendingSeekMs) {
         if (pendingSeekMs != null) {
+            // Seek 后锁定显示目标时间（ms），等待底层位置同步避免进度条回弹闪烁
             delay(850)
             pendingSeekMs = null
         }
@@ -196,6 +198,7 @@ fun AppleMusicProgressSlider(
     val validDuration = hasTrack && durationMs > 0
     val activePressed = validDuration && isPressed
 
+    // 进度条按压状态弹性参数：按下时横向/纵向放大、轨道加粗（7dp -> 12dp）并提高不透明度
     val scaleState = animateFloatAsState(
         targetValue = if (activePressed) 1.035f else 1f,
         animationSpec = spring(dampingRatio = 0.62f, stiffness = 210f),
@@ -222,6 +225,7 @@ fun AppleMusicProgressSlider(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                // 触控热区高度（大于 14dp 绘制区，提升横向拖拽命中率）
                 .height(22.dp)
                 .pointerInput(validDuration, durationMs) {
                     if (!validDuration) return@pointerInput
@@ -269,6 +273,7 @@ fun AppleMusicProgressSlider(
                     }
             ) {
                 val smoothPos = smoothPositionState.floatValue
+                // 若底层上报与 Seek 目标差值超过 900ms，优先展示 Seek 目标防止闪烁
                 val liveMs = pendingSeekMs?.takeIf { abs(smoothPos - it) > 900f }?.toFloat() ?: smoothPos
                 val displayFraction = if (activePressed) {
                     dragFractionState.floatValue
@@ -303,7 +308,7 @@ fun AppleMusicProgressSlider(
             }
         }
 
-        // 左已播时间 · 居中 Dolby Atmos 槽位音质切换按钮 · 右剩余时间 (-3:48)
+        // 左已播时间 · 居中音质切换入口 · 右剩余时间 (-3:48)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -453,6 +458,7 @@ fun AppleMusicMainTransportButtons(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // 上一首按钮（62dp 圆形点击热区，42dp 图标）
         Box(
             modifier = Modifier
                 .size(62.dp)
@@ -477,6 +483,7 @@ fun AppleMusicMainTransportButtons(
             )
         }
 
+        // 播放/暂停主按钮（72dp 圆形点击热区，48dp 图标）
         Box(
             modifier = Modifier
                 .size(72.dp)
@@ -538,9 +545,9 @@ fun AppleMusicMainTransportButtons(
 }
 
 /**
- * 1:1 复刻截图播放/暂停圆角变形动效：
- * - 暂停态：两条微圆角矩形竖条（匹配截图 1/2/4 的扁顶微圆角矩形，而非胶囊半圆）
- * - 播放态：圆角顶点等边向右三角形
+ * 播放/暂停切换动效图标：
+ * - 暂停态：双圆角矩形竖条
+ * - 播放态：圆角实心向右三角形
  */
 @Composable
 fun AppleMusicPlayPauseAnimatedIcon(
@@ -561,6 +568,7 @@ fun AppleMusicPlayPauseAnimatedIcon(
             return@LaunchedEffect
         }
         coroutineScope {
+            // 切换状态时先在 65ms 内快速收缩至 0.38x，再通过弹性弹簧回弹至 1f
             launch {
                 scale.animateTo(0.38f, tween(65, easing = EaseOutQuad))
                 scale.animateTo(1f, spring(dampingRatio = 0.64f, stiffness = 240f))
@@ -651,6 +659,7 @@ fun AppleMusicPlayPauseAnimatedIcon(
     }
 }
 
+// 切歌三三角跑马动效总时长（ms）
 private const val AppleMusicSkipDurationMillis = 520
 
 private data class AppleMusicSkipTriangle(val position: Float, val scale: Float, val alpha: Float)
@@ -799,7 +808,7 @@ fun AppleMusicSkipIcon(
 }
 
 /**
- * Apple Music 音量胶囊条（支持点按 + 拖拽 + 硬件音量键实时同步）
+ * 音量胶囊滑条（支持点按、拖拽调节并监听系统音量广播实时同步）
  */
 @Composable
 fun AppleMusicVolumeSlider(modifier: Modifier = Modifier) {
@@ -837,6 +846,7 @@ fun AppleMusicVolumeSlider(modifier: Modifier = Modifier) {
         }
     }
 
+    // 按压音量条时轨道从 6.5dp 加粗到 11dp，并提高不透明度
     val thickness by animateDpAsState(
         targetValue = if (isPressed) 11.dp else 6.5.dp,
         animationSpec = spring(dampingRatio = 0.64f, stiffness = 220f),
@@ -949,7 +959,7 @@ fun AppleMusicBottomToolbar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. 歌词按钮（激活态为 42dp 半透明白圆 + 镂空气泡双引号，无缺口）
+        // 1. 歌词按钮（42dp 点击热区，激活态显示圆形镂空图标）
         Box(
             modifier = Modifier
                 .size(42.dp)
@@ -971,7 +981,7 @@ fun AppleMusicBottomToolbar(
             )
         }
 
-        // 2. 播放模式切换按钮（循环 ↔ 随机，与左右图标保持视觉尺寸与线宽一致）
+        // 2. 播放模式切换按钮（循环 <-> 随机）
         Box(
             modifier = Modifier
                 .size(42.dp)

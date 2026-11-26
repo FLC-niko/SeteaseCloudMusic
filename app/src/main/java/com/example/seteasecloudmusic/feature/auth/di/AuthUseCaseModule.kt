@@ -16,6 +16,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 
+/**
+ * 提供认证模块各类 UseCase 实例的 Hilt 模块。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 object AuthUseCaseModule {

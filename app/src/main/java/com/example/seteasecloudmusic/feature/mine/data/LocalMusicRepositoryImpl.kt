@@ -25,6 +25,7 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 本地音乐仓库实现：负责扫描系统 MediaStore 与自定义目录、曲目去重及在线曲目匹配。 */
 @Singleton
 class LocalMusicRepositoryImpl @Inject constructor(
     @param:ApplicationContext private val context: Context
@@ -60,11 +61,11 @@ class LocalMusicRepositoryImpl @Inject constructor(
             setCustomDirectoryPath(directoryPath)
             val combinedTracks = mutableListOf<Track>()
 
-        // 1. 扫描系统 MediaStore
+            // 1. 扫描系统 MediaStore
             val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
             combinedTracks.addAll(mediaStoreTracks)
 
-        // 2. 扫描指定目录
+            // 2. 扫描指定目录
             val dir = File(directoryPath)
             if (dir.exists() && dir.isDirectory) {
                 val dirTracks = LocalMusicScanner.scanDirectory(context, dir, fallbackToMediaStore = false)
@@ -88,11 +89,11 @@ class LocalMusicRepositoryImpl @Inject constructor(
 
             val combinedTracks = mutableListOf<Track>()
 
-        // 1. 优先扫描系统 MediaStore
+            // 1. 优先扫描系统 MediaStore
             val mediaStoreTracks = LocalMusicScanner.scanMediaStore(context)
             combinedTracks.addAll(mediaStoreTracks)
 
-        // 2. 扫描常用音频目录
+            // 2. 扫描常用音频目录
             val targetDirs = mutableListOf<File>()
             val customPath = getCustomDirectoryPath()
             if (!customPath.isNullOrBlank()) {
@@ -129,6 +130,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
             val normTitle = LocalTrackMatcher.normalizeTitle(track.title)
             val normArtist = track.artists.joinToString("") { LocalTrackMatcher.normalizeToken(it.name) }
             val key = if (normTitle.isNotBlank()) {
+                // 时长按 3000ms（3 秒）取整分桶，容忍同一曲目不同编码间的微小偏差
                 "$normTitle-$normArtist-${(track.durationMs ?: 0L) / 3000L}"
             } else {
                 track.playableUrl ?: track.id.toString()

@@ -7,6 +7,19 @@ import java.nio.IntBuffer
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * 双三次 Hermite 曲面网格控制点。
+ *
+ * @property x 归一化横坐标（[-1, 1]）
+ * @property y 归一化纵坐标（[-1, 1]）
+ * @property r 顶点颜色 R 分量（[0, 1]）
+ * @property g 顶点颜色 G 分量（[0, 1]）
+ * @property b 顶点颜色 B 分量（[0, 1]）
+ * @property ur U 方向切线旋转角（rad）
+ * @property vr V 方向切线旋转角（rad）
+ * @property up U 方向切线张力倍率
+ * @property vp V 方向切线张力倍率
+ */
 internal data class ControlPoint(
     var x: Float,
     var y: Float,
@@ -25,6 +38,7 @@ internal data class ControlPoint(
         get() = floatArrayOf(-vp * sin(vr), vp * cos(vr))
 }
 
+// 三次 Hermite 基函数矩阵及其转置
 private val H = floatArrayOf(
     2f, -2f, 1f, 1f,
     -3f, 3f, -2f, -1f,
@@ -60,10 +74,15 @@ private fun mat4Transpose(out: FloatArray, m: FloatArray) {
     }
 }
 
+/**
+ * 双三次 Hermite 曲面（Bicubic Hermite Patch）网格生成器，
+ * 将控制点网格插值细分为三角形顶点缓冲（x, y, r, g, b, u, v）与索引缓冲。
+ */
 internal class BHPMesh(
     var controlPointWidth: Int = 5,
     var controlPointHeight: Int = 5
 ) {
+    // 每个控制点片元的细分段数（越大曲线越平滑，顶点数按平方增长）
     var subdivisionLevel: Int = 20
         private set
 
@@ -85,6 +104,7 @@ internal class BHPMesh(
     val indices: Int
         get() = indexCount
 
+    /** 设置单个片元的细分段数，限制在 [4, 50] 以兼顾平滑度与顶点开销。 */
     fun resetSubdivision(n: Int) {
         subdivisionLevel = n.coerceIn(4, 50)
     }

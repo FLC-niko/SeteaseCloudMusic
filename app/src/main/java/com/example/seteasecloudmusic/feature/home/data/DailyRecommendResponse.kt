@@ -26,6 +26,7 @@ data class DailyRecommendSongsDataResponse(
     val dailyRecommendInfo: Any? = null
 )
 
+/** 每日推荐歌曲的推荐理由条目。 */
 data class DailyRecommendReasonResponse(
     val songId: Long = 0L,
     val reason: String? = null,
@@ -96,6 +97,7 @@ data class DailyRecommendSongItemResponse(
     val privilege: DailyRecommendPrivilegeResponse? = null
 )
 
+/** 每日推荐及私人 FM 歌曲所属专辑信息。 */
 data class DailyRecommendAlbumResponse(
     val id: Long? = null,
     val name: String? = null,
@@ -106,6 +108,7 @@ data class DailyRecommendAlbumResponse(
     val picStr: String? = null
 )
 
+/** 每日推荐及私人 FM 歌手信息。 */
 data class DailyRecommendArtistResponse(
     val id: Long? = null,
     val name: String? = null,
@@ -113,6 +116,7 @@ data class DailyRecommendArtistResponse(
     val tns: List<String> = emptyList()
 )
 
+/** 歌曲音质档位信息（码率、采样率及文件大小）。 */
 data class DailyRecommendQualityResponse(
     val br: Long? = null,
     val fid: Long? = null,
@@ -121,6 +125,7 @@ data class DailyRecommendQualityResponse(
     val vd: Long? = null
 )
 
+/** 歌曲播放与下载版权权限信息。 */
 data class DailyRecommendPrivilegeResponse(
     val id: Long? = null,
     val fee: Int? = null,
@@ -160,6 +165,7 @@ data class DailyRecommendPrivilegeResponse(
     val bd: Any? = null
 )
 
+/** 歌曲收费档位信息。 */
 data class DailyRecommendChargeInfoResponse(
     val rate: Long? = null,
     val chargeUrl: String? = null,
@@ -167,6 +173,7 @@ data class DailyRecommendChargeInfoResponse(
     val chargeType: Int? = null
 )
 
+/** 免费试听权限信息。 */
 data class DailyRecommendFreeTrialPrivilegeResponse(
     val resConsumable: Boolean? = null,
     val userConsumable: Boolean? = null,
@@ -186,6 +193,7 @@ data class RecommendResourceResponse(
     val recommend: List<RecommendResourcePlaylistItem> = emptyList()
 )
 
+/** 每日推荐歌单条目。 */
 data class RecommendResourcePlaylistItem(
     val id: Long? = 0L,
     val name: String? = null,
@@ -197,6 +205,7 @@ data class RecommendResourcePlaylistItem(
     val creator: RecommendResourceCreator? = null
 )
 
+/** 推荐歌单创建者信息。 */
 data class RecommendResourceCreator(
     val nickname: String? = null,
     val userId: Long? = null,
@@ -212,6 +221,7 @@ data class PersonalFmResponse(
     val data: List<PersonalFmSongItemResponse> = emptyList()
 )
 
+/** 私人 FM / 私人 DJ 曲目条目，兼容 duration/dt 与 artists/ar 字段别名。 */
 data class PersonalFmSongItemResponse(
     val id: Long = 0L,
     val name: String = "",

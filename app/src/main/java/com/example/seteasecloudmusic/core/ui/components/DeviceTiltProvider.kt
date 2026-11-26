@@ -25,9 +25,13 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+/** 设备平放或无传感器时的默认重力光源方向角（-90°，即正上方）。 */
 internal const val DEFAULT_TILT_ANGLE_RAD: Float = (-PI / 2.0).toFloat()
-internal const val TILT_QUANTIZATION_STEP_RAD: Float = (PI / 60.0).toFloat() // 3°
+/** 倾角量化步长（3°），抑制传感器微抖导致玻璃高光频繁重绘。 */
+internal const val TILT_QUANTIZATION_STEP_RAD: Float = (PI / 60.0).toFloat()
+/** 一阶低通滤波平滑系数（0f..1f，越小越平滑但响应越滞后）。 */
 internal const val TILT_LOW_PASS_ALPHA: Float = 0.15f
+/** 水平放置判定阈值（重力 XY 投影模长平方 <= 0.01f 时锁定默认方向）。 */
 internal const val TILT_FLAT_THRESHOLD_SQ: Float = 0.01f
 
 /**
@@ -174,6 +178,7 @@ fun ProvideDeviceTilt(content: @Composable () -> Unit) {
     }
 }
 
+/** 按精度与功耗优先级选择倾斜传感器：游戏旋转矢量 > 旋转矢量 > 重力 > 加速度计。 */
 private fun selectTiltSensor(sensorManager: SensorManager?): Pair<Sensor, Boolean>? {
     if (sensorManager == null) return null
     sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)?.let { return it to true }

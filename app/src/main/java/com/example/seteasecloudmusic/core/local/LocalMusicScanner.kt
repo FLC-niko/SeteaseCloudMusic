@@ -18,19 +18,17 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * 本地音乐扫描器：
- * 1. 深度适配 Android 各版本 Scoped Storage，通过 ContentResolver 与 MediaStore 保证 100% 检索到音频
- * 2. 支持直接文件目录遍历与元数据解析
- * 3. 自动合并与去重，保证高兼容性
+ * 本地音乐扫描器，负责从系统 MediaStore 与指定物理目录检索音频并提取元数据。
  */
 object LocalMusicScanner {
 
+    // 支持扫描的本地音频文件扩展名白名单
     private val SUPPORTED_AUDIO_EXTENSIONS = setOf(
         "mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "ape", "wma", "dff", "dsf"
     )
 
     /**
-     * 扫描系统 MediaStore 中的音频库（系统索引，速度极快且完全兼容 Android 10+ 作用域存储）
+     * 扫描系统 MediaStore 音频库（兼容 Android 10+ 作用域存储）。
      */
     suspend fun scanMediaStore(context: Context): List<Track> = withContext(Dispatchers.IO) {
         val tracks = mutableListOf<Track>()
@@ -50,7 +48,7 @@ object LocalMusicScanner {
         }
         val projection = projectionList.toTypedArray()
 
-        // 筛选条件：去除小于 5 秒的提示音与录音碎片，放宽 IS_MUSIC 条件以防部分 ROM 误标
+        // 过滤最小时长（ms）：排除小于 5 秒的提示音与录音碎片，放宽 IS_MUSIC 以防部分系统误标
         val selection = "${MediaStore.Audio.Media.DURATION} >= 5000"
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
 
@@ -96,7 +94,7 @@ object LocalMusicScanner {
                     val mimeType = if (mimeCol >= 0) cursor.getString(mimeCol) else null
                     val rawBitrate = if (bitrateCol >= 0) cursor.getInt(bitrateCol).takeIf { it > 0 } else null
 
-                    // 生成 MediaStore 标准 Content Uri，在 Android 10/11/12/13/14/15 均可稳定播放
+                    // 生成 MediaStore Content Uri 作为作用域存储下的兜底播放地址
                     val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaId)
 
                     // 优先提供可用直链
@@ -126,6 +124,7 @@ object LocalMusicScanner {
 
                     val audioFormat = ext.takeIf { it.isNotBlank() }?.uppercase()
                         ?: formatFromMimeType(mimeType)
+                    // 部分设备返回的码率单位为 bps，超过 10000 时换算为 kbps；缺失时按文件大小与时长估算
                     val audioBitrateKbps = rawBitrate?.let { if (it > 10000) (it + 500) / 1000 else it }?.takeIf { it > 0 }
                         ?: if (fileSizeBytes != null && durationMs > 0L) {
                             ((fileSizeBytes * 8L) / durationMs).toInt().takeIf { it > 0 }
@@ -184,7 +183,7 @@ object LocalMusicScanner {
             val retriever = MediaMetadataRetriever()
             try {
                 val audioFiles = directory.walkTopDown()
-                    .maxDepth(10)
+                    .maxDepth(10) // 目录递归最大深度，避免深层目录树拖慢扫描
                     .filter { it.isFile && SUPPORTED_AUDIO_EXTENSIONS.contains(it.extension.lowercase()) }
                     .toList()
 
@@ -210,6 +209,7 @@ object LocalMusicScanner {
                         val artistName = rawArtist?.takeIf { it.isNotBlank() } ?: parsed.second
                         val albumName = rawAlbum?.takeIf { it.isNotBlank() } ?: "本地音乐"
 
+                        // 添加高位掩码，避免目录扫描生成的本地 ID 与 MediaStore 媒体 ID 冲突
                         val localId = ((file.absolutePath.hashCode().toLong() and 0x7FFFFFFF) or 0x40000000_00000000L)
 
                         val ext = file.extension.lowercase()
@@ -262,7 +262,7 @@ object LocalMusicScanner {
             }
         }
 
-        // 如果直接文件遍历因 Scoped Storage 受限返回为空，则从 MediaStore 中智能匹配该目录相关的音频
+        // 直接文件遍历受作用域存储限制返回为空时，回退到 MediaStore 按目录名过滤匹配
         if (directTracks.isEmpty() && fallbackToMediaStore) {
             val mediaStoreTracks = scanMediaStore(context)
             val filtered = mediaStoreTracks.filter {

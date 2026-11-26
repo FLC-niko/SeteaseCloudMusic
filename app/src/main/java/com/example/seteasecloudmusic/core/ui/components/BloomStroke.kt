@@ -31,6 +31,14 @@ import kotlin.math.sqrt
 
 /**
  * 3D 倒角法线高光光源配置，支持跟随设备重力旋转或保持固定方向。
+ *
+ * @property extraDegrees 相对设备重力方向的额外偏转角（度）
+ * @property z 光源 Z 轴深度分量（负值位于屏幕前方，绝对值越小边缘高光越集中）
+ * @property color 光源高光颜色
+ * @property intensity 高光强度倍率
+ * @property followGravity 是否随设备倾斜改变光源方向
+ * @property staticDirX 固定光源 X 分量（仅 `followGravity = false` 时使用）
+ * @property staticDirY 固定光源 Y 分量（仅 `followGravity = false` 时使用）
  */
 @Immutable
 data class BloomLightSource(
@@ -44,17 +52,17 @@ data class BloomLightSource(
 )
 
 /**
- * LSPosed / HyperOS 同款 3D SDF 玻璃棱边高光样式。
+ * 3D SDF 玻璃棱边高光样式配置。
  *
- * @property strokeWidth 边缘描边宽度
- * @property innerBlurRadius 内部 3D 半球倒角法线深度，决定边缘高光的柔顺与折角焦散宽度
+ * @property strokeWidth 边缘描边宽度（dp）
+ * @property innerBlurRadius 内部 3D 半球倒角法线深度（dp），决定高光衰减宽度与折角焦散范围
  * @property strokeColor 基础边缘反光颜色
- * @property primaryLight 跟随设备倾斜的主高光光源
+ * @property primaryLight 主高光光源
  * @property secondaryLight 辅助高光光源（可固定或反相旋转）
- * @property dualPeak 是否启用双方向轴向衰减（使对角棱边产生锐利双峰焦散）
+ * @property dualPeak 是否启用双方向轴向衰减（产生对角棱边双峰焦散）
  * @property blendMode 混合模式（默认 [BlendMode.Plus] 加法高光）
  * @property alpha 整体高光透明度
- * @property lightSurfaceSubtleOutlineAlpha 浅色背景下的极细物理轮廓补偿，防止浅底融边
+ * @property lightSurfaceSubtleOutlineAlpha 浅色背景下的细轮廓补偿透明度，防止浅底融边
  */
 @Immutable
 data class BloomStrokeStyle(
@@ -83,7 +91,9 @@ data class BloomStrokeStyle(
     val lightSurfaceSubtleOutlineAlpha: Float = 0f
 )
 
+/** 各形态液态玻璃容器的 [BloomStrokeStyle] 默认预设集。 */
 object BloomStrokeDefaults {
+    /** 浅色背景外框预设（带 0.06f 暗轮廓补偿） */
     val OuterLight: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 1.dp,
         innerBlurRadius = 2.dp,
@@ -107,6 +117,7 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0.06f
     )
 
+    /** 深色背景外框预设 */
     val OuterDark: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 1.dp,
         innerBlurRadius = 2.dp,
@@ -130,6 +141,7 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0f
     )
 
+    /** 分段滑块激活态水滴棱边预设（副光 z=-0.50，强度 0.45） */
     val DropletPill: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 1.dp,
         innerBlurRadius = 2.dp,
@@ -153,6 +165,7 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0.04f
     )
 
+    /** 浅色浮层面板预设（倒角深度 2.5.dp，主光强度 0.95） */
     val PanelLight: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 1.dp,
         innerBlurRadius = 2.5.dp,
@@ -176,6 +189,7 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0.06f
     )
 
+    /** 深色浮层面板预设 */
     val PanelDark: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 1.dp,
         innerBlurRadius = 2.5.dp,
@@ -199,6 +213,7 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0f
     )
 
+    /** 浅色/深色弹窗面板预设 */
     val DialogLight: BloomStrokeStyle = PanelLight.copy(
         strokeWidth = 1.dp,
         innerBlurRadius = 2.5.dp,
@@ -211,6 +226,7 @@ object BloomStrokeDefaults {
         lightSurfaceSubtleOutlineAlpha = 0f
     )
 
+    /** 紧凑小尺寸按钮预设（描边 0.85.dp、倒角深度 1.75.dp） */
     val CompactControl: BloomStrokeStyle = BloomStrokeStyle(
         strokeWidth = 0.85.dp,
         innerBlurRadius = 1.75.dp,
@@ -374,7 +390,9 @@ private val BLOOM_SHADER_SINGLE = buildString {
 }
 
 /**
- * 为圆角矩形叠加 LSPosed 同款 3D SDF 棱边高光与重力扫光。
+ * 为圆角矩形叠加 3D SDF 棱边高光与重力扫光（API < 33 降级为线性渐变描边）。
+ *
+ * @param extraDegrees 初始光源相对重力方向的偏转角（默认 -45° 斜向高光）
  */
 fun Modifier.bloomStroke(
     cornerRadius: Dp,

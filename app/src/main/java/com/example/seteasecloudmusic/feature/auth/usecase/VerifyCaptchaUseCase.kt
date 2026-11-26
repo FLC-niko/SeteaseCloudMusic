@@ -3,6 +3,9 @@ package com.example.seteasecloudmusic.feature.auth.usecase
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.feature.auth.domain.repository.AuthRepository
 
+/**
+ * 校验手机短信验证码并完成登录的用例。
+ */
 class VerifyCaptchaUseCase (
     private val authRepository: AuthRepository
 ) {

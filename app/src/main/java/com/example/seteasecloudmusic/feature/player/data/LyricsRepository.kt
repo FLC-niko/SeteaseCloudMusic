@@ -33,12 +33,17 @@ import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 
+/**
+ * 歌词解析仓库：按 TTML 逐字库 -> 网易云 YRC -> 网易云 LRC 优先级拉取并解析歌词，
+ * 内置内存 LRU 缓存与同曲目并发请求去重。
+ */
 @Singleton
 class LyricsRepository @Inject constructor(
     private val lyricService: LyricService,
     @param:Named("ttmlClient") private val ttmlClient: OkHttpClient
 ) : ParsedLyricsRepository {
 
+    // AMLL TTML 镜像源列表（并发竞速，首个有效响应胜出）
     private val ttmlMirrors = listOf(
         "https://amlldb.bikonoo.com/ncm-lyrics/",
         "https://cdn.jsdelivr.net/gh/amll-dev/amll-ttml-db@main/ncm-lyrics/",
@@ -47,6 +52,7 @@ class LyricsRepository @Inject constructor(
         "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/main/ncm-lyrics/"
     )
 
+    // 内存 LRU 缓存容量（最多保留 64 首歌曲的解析结果）
     private val cache = LruCache<Long, ParsedLyrics>(64)
     private val inFlightMutex = Mutex()
     private val inFlightRequests = mutableMapOf<Long, Deferred<Result<ParsedLyrics>>>()
@@ -89,13 +95,13 @@ class LyricsRepository @Inject constructor(
     }
 
     private suspend fun loadLyricsUncached(songId: Long): Result<ParsedLyrics> = withContext(Dispatchers.IO) {
-        // 1. 最高优先级：并发竞速请求 AMLL TTML 逐字歌词库（任一镜像率先命中即取消其余请求；全部 404 时立即秒回降级）
+        // 1. 优先并发竞速请求 AMLL TTML 逐字歌词库（任一镜像命中即取消其余请求；总超时 2400 ms）
         val ttmlLyrics = withTimeoutOrNull(2400L) {
             raceTtmlMirrors(songId)
         }
 
         if (ttmlLyrics != null && ttmlLyrics.lines.isNotEmpty()) {
-            // 若 TTML 未内嵌翻译，尝试轻量拉取网易云翻译（1.2s 超时）按时间戳补齐翻译与罗马音，绝不阻塞或影响原逐字轴
+            // 若 TTML 未内嵌翻译，在 1200 ms 超时内拉取网易云翻译/音译并按时间戳对齐补齐
             val enriched = if (ttmlLyrics.lines.none { it.translatedLyric.isNotBlank() }) {
                 enrichTtmlTranslationsIfAvailable(songId, ttmlLyrics)
             } else {
@@ -190,6 +196,7 @@ class LyricsRepository @Inject constructor(
         songId: Long,
         ttml: ParsedLyrics
     ): ParsedLyrics {
+        // 侧挂翻译/音译拉取超时（ms），超时直接返回原 TTML
         val sidecar = withTimeoutOrNull(1200L) {
             runCatchingCancellable { lyricService.getYrcLyrics(songId) }.getOrNull()
         } ?: return ttml
@@ -202,6 +209,7 @@ class LyricsRepository @Inject constructor(
             if (line.isBG) {
                 line
             } else {
+                // 侧挂文本时间轴匹配容差 900 ms（越大越宽松，兼容微弱时间偏移）
                 val trans = line.translatedLyric.ifBlank {
                     LrcParser.findNearestTimedText(transMap, line.startTime, toleranceMs = 900)
                 }

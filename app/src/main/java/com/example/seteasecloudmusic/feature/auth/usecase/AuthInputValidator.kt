@@ -1,5 +1,8 @@
 package com.example.seteasecloudmusic.feature.auth.usecase
 
+/**
+ * 登录输入标准化与格式校验工具。
+ */
 object AuthInputValidator {
     // 中国大陆手机号
     private val CN_PHONE_REGEX = Regex("^1[3-9]\\d{9}$")
@@ -20,7 +23,7 @@ object AuthInputValidator {
     }
 
     fun isValidEmail(email: String): Boolean {
-        if (email.length > 254) return false
+        if (email.length > 254) return false // RFC 5321 邮箱最大长度限制
         if (!EMAIL_REGEX.matches(email)) return false
         if (email.contains("..")) return false // 禁止连续点
         return true

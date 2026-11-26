@@ -95,14 +95,10 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * 120Hz 连续锁相环 (PLL) 亚毫秒平滑播放时钟：
- * - 彻底避免底层 500ms 轮询上报造成的帧重启或时间跳变；
- * - 正常播放时通过 0.90x~1.10x 连续微调速率平滑追赶真实硬件时钟，严格单调递增；
- * - 仅在用户拖动进度条 / 切歌 (>380ms 跳变) 时瞬时对齐。
- */
-/**
- * 返回 [FloatState] 本身而不解包读取，便于调用方把每帧时钟读取延迟到 Canvas/Draw 或 derivedStateOf 中，
- * 避免整个播放控制栏或歌词树在 60/120/144Hz 下逐帧重组。
+ * 120Hz 连续锁相环 (PLL) 亚毫秒平滑播放时钟，返回 [FloatState] 供绘制阶段按需读取：
+ * - 正常播放时通过 0.90x~1.10x 速率微调追赶底层进度上报，保持单调递增；
+ * - 拖动进度条或切歌（差值 >380ms）时瞬时对齐；
+ * - 避免高频时钟导致歌词树在 60/120/144Hz 下逐帧重组。
  */
 @Composable
 internal fun rememberSmoothPlaybackTimeState(
@@ -128,6 +124,7 @@ internal fun rememberSmoothPlaybackTimeState(
         if (!isPlaying) {
             smoothMsState.floatValue = positionMs.toFloat()
         } else if (abs(positionMs.toFloat() - smoothMsState.floatValue) > 380f) {
+            // 进度跳变超过 380ms 时直接对齐（切歌或 Seek）
             smoothMsState.floatValue = positionMs.toFloat()
             anchorPosRef[0] = positionMs
             anchorNanoRef[0] = System.nanoTime()
@@ -143,6 +140,7 @@ internal fun rememberSmoothPlaybackTimeState(
                     lastFrameNanos = frameNanos
                     return@withFrameNanos
                 }
+                // 单帧最大步长上限 64ms，防止切后台恢复后时间骤跳
                 val dtMs = ((frameNanos - lastFrameNanos) / 1_000_000.0).toFloat().coerceIn(0f, 64f)
                 lastFrameNanos = frameNanos
 
@@ -155,6 +153,7 @@ internal fun rememberSmoothPlaybackTimeState(
                 if (abs(errorMs) > 420f) {
                     smoothMsState.floatValue = targetMs
                 } else {
+                    // PLL 比例微调速率（0.90x ~ 1.10x）
                     val rate = (1f + errorMs * 0.0032f).coerceIn(0.90f, 1.10f)
                     val next = current + dtMs * rate
                     smoothMsState.floatValue = if (durationMs > 0) next.coerceAtMost(durationMs.toFloat()) else next
@@ -201,9 +200,9 @@ internal fun isLineEffectivelyWordTimed(line: LyricLine, songHasWordTiming: Bool
 }
 
 /**
- * AMLL 长音辉光判定算法：
+ * 长音辉光触发判定：
  * - 完整视觉词持续时长 >= 1000ms
- * - 中日韩词长 1..5，或英文完整单词长 1..7（如 "wife"、"away"）
+ * - 中日韩词长 1..5，或英文完整单词长 1..7
  */
 internal fun shouldEmphasizeWord(word: LyricWord): Boolean {
     val duration = word.endTime - word.startTime
@@ -224,7 +223,7 @@ internal data class EmphasizeParams(
 )
 
 /**
- * 计算柔和长音强调参数：行尾收音词适度增强并延长呼吸余韵，峰值克制淡雅不过曝
+ * 计算长音辉光与呼吸参数：行尾收音词适度增强并延长呼吸余韵，限制峰值上限防止过曝
  */
 internal fun calculateEmphasizeParams(word: LyricWord, isLastWordOfLine: Boolean): EmphasizeParams {
     val dur = max(1000f, (word.endTime - word.startTime).toFloat())
@@ -248,7 +247,7 @@ internal fun calculateEmphasizeParams(word: LyricWord, isLastWordOfLine: Boolean
 }
 
 /**
- * C∞ 无穷阶光滑钟形辉光包络曲线（起点 x=0、峰值 x=0.5、终点 x=1 处一阶导数均为 0，彻底消除亮灭折角突变）
+ * 钟形余弦辉光包络曲线（起点 x=0、峰值 x=0.5、终点 x=1 处一阶导数为 0，平滑亮灭过渡）
  */
 internal fun amllEmpEasing(x: Float): Float {
     val clamped = x.coerceIn(0f, 1f)
@@ -256,9 +255,9 @@ internal fun amllEmpEasing(x: Float): Float {
 }
 
 /**
- * C¹ 光滑 S 型上浮缓动曲线：
- * - t=0 处速度为 0（彻底消除起唱帧“直接位移跳变”感）
- * - 前段轻盈加速托起，后段长尾丝滑减速落位（t=1 处速度亦为 0）
+ * 单字上浮 S 型缓动曲线：
+ * - 起唱点与终点速度均为 0，避免起始帧位移突变
+ * - 前段加速托起，后段减速落位
  */
 internal fun amllWordFloatEasing(t: Float): Float {
     val clamped = t.coerceIn(0f, 1f)
@@ -267,9 +266,9 @@ internal fun amllWordFloatEasing(t: Float): Float {
 }
 
 /**
- * 完整视觉单词分组（参照 AMLL chunkAndSplitLyricWords）：
- * 将没有空白分隔的连续非中日韩音节（如 TTML 中被拆成 ["a", "way"] 的 "away"）合并为同一个完整视觉单词组，
- * 使其共享完整的辉光判定、整体柔和呼吸与连贯字距，同时保留内部各音节精确的逐音节扫光时间轴。
+ * 完整视觉单词分组：
+ * 将没有空白分隔的连续非中日韩音节（如 TTML 中拆分的 ["a", "way"]）合并为完整视觉单词组，
+ * 使其共享长音辉光判定与连贯字距，同时保留内部各音节的逐音节扫光时间轴。
  */
 internal data class VisualWordGroup(
     val mergedWord: LyricWord,
@@ -384,6 +383,7 @@ private fun buildLyricDisplayItems(lines: List<LyricLine>): List<LyricDisplayIte
         }
 
         val gap = line.startTime - prevEndTime
+        // 句间空白 >= 7000ms 时插入间奏呼吸圆点提示项
         if (gap >= 7000 && line.startTime > 0) {
             result.add(
                 LyricDisplayItem.Interlude(
@@ -421,10 +421,10 @@ private fun buildLyricDisplayItems(lines: List<LyricLine>): List<LyricDisplayIte
 }
 
 /**
- * 1:1 Apple Music / AMLL 歌词列表：
- * - 逐字流光染色 + C¹ 丝滑字体上浮 + 完整视觉词柔和长音辉光（非逐字的整行歌词不加任何辉光）
- * - 基于严格行内字符包围盒定位，彻底杜绝自动换行行尾字符跨行重叠
- * - 距离阶梯景深模糊 + 上下边缘 DstIn 渐隐遮罩
+ * 逐字歌词滚动列表：
+ * - 逐字横向扫光、字体上浮缓动与长音辉光（非逐字整行歌词不启用辉光）
+ * - 按行内字符包围盒切分跨行单词，防止自动换行时相邻行字符重叠
+ * - 支持随距离递增的景深模糊阶梯与上下边缘 DstIn 渐隐遮罩
  */
 @Composable
 fun LyricsColumn(
@@ -447,7 +447,7 @@ fun LyricsColumn(
 
     val displayItems = remember(lyrics) { buildLyricDisplayItems(lyrics.lines) }
 
-    // 仅在激活歌词行索引真正变化时驱动重组，消除原先每 16ms 整页重组
+    // 仅在激活歌词项索引变化时驱动列表滚动，避免每帧整页重组
     val activeItemIndex by remember(displayItems, activeLineIndex, smoothTimeState) {
         derivedStateOf {
             if (displayItems.isEmpty()) {
@@ -493,6 +493,7 @@ fun LyricsColumn(
                 trim = LineHeightStyle.Trim.None
             )
         }
+        // 主歌词与背景和声歌词排版样式
         val mainStyle = remember {
             TextStyle(
                 fontSize = 30.sp,
@@ -514,6 +515,7 @@ fun LyricsColumn(
             )
         }
 
+        // 当前高亮行锚定在视口顶部下方 58dp 处
         val anchorOffsetPx = with(density) { 58.dp.roundToPx() }
         val initialIndex = remember { activeItemIndex.coerceAtLeast(0) }
         val listState = rememberLazyListState(
@@ -531,6 +533,7 @@ fun LyricsColumn(
                 manualBrowseActive = true
                 onUserActivityUpdated?.invoke()
             } else if (manualBrowseActive) {
+                // 用户松手停止浏览 2400ms 后恢复自动跟随滚动
                 delay(2400)
                 manualBrowseActive = false
             }
@@ -582,6 +585,7 @@ fun LyricsColumn(
                 fallbackStep = fallbackStep
             ) + (targetScrollOffset - listState.firstVisibleItemScrollOffset)
 
+            // 跨行距离超过 420dp 时直接跳转定位，近距离切行执行带阻尼的残差平滑滚动
             if (abs(estimatedDelta) > with(density) { 420.dp.toPx() }) {
                 scrollResidual.snapTo(0f)
                 runCatchingCancellable {
@@ -602,6 +606,7 @@ fun LyricsColumn(
                 val startResidual = prevResidual + exactJump
                 if (abs(startResidual) > 0.5f) {
                     scrollResidual.snapTo(startResidual)
+                    // 切行滚动弹簧（高阻尼 0.92f 抑制过冲，低刚度 135f 保持柔和跟进）
                     scrollResidual.animateTo(
                         targetValue = 0f,
                         animationSpec = spring(dampingRatio = 0.92f, stiffness = 135f)
@@ -612,10 +617,12 @@ fun LyricsColumn(
             }
         }
 
+        // 顶部留白与底部 60% 视口留白（确保末尾歌词可滚至顶部锚点）
         val topPadding = 62.dp
         val bottomPadding = with(density) { (maxHeight.toPx() * 0.60f).toDp() }
         val contentWidthPx = with(density) { (maxWidth - 58.dp).coerceAtLeast(1.dp).roundToPx() }
 
+        // 上下边缘 DstIn 渐隐遮罩高度（控制栏显示时底部渐隐区略高）
         val topFadePx = with(density) { 54.dp.toPx() }
         val bottomFadePx = with(density) { (if (controlsVisible) 66.dp else 56.dp).toPx() }
 
@@ -660,6 +667,7 @@ fun LyricsColumn(
                             val showDots by remember(item, smoothTimeState) {
                                 derivedStateOf {
                                     val nowInt = smoothTimeState.floatValue.roundToInt()
+                                    // 间奏圆点提前 250ms 展开、延后 200ms 收起
                                     nowInt in (item.startTime - 250)..(item.endTime + 200)
                                 }
                             }
@@ -887,8 +895,8 @@ private fun prepareLyricLineLayout(
             val segStr = fullText.substring(segStart, segEnd)
             if (segStr.isBlank()) continue
 
-            // 核心防重叠定位：仅查询严格属于当前行 visLine 的首字符 segStart 与末字符 (segEnd - 1) 的字形包围盒，
-            // 绝不读取跨到下一行 (visLine + 1) 的 segEnd 光标位置！
+            // 定位防重叠：仅取当前物理行 visLine 内的首字符 segStart 与末字符 (segEnd - 1) 包围盒，
+            // 不读取跨到下一行 (visLine + 1) 的光标位置
             val firstGlyphBox = fullLayout.getBoundingBox(segStart)
             val lastGlyphBox = fullLayout.getBoundingBox(segEnd - 1)
             val xLeft = min(firstGlyphBox.left, lastGlyphBox.left)
@@ -902,7 +910,7 @@ private fun prepareLyricLineLayout(
                 softWrap = false
             )
 
-            // 使用基线严格对齐，确保单行 segLayout 与多行 fullLayout 垂直方向 0.00px 误差
+            // 按基线对齐单行 segLayout 与多行 fullLayout，消除垂直偏移
             val targetBaselineY = fullLayout.getLineBaseline(visLine)
             val yTop = targetBaselineY - segLayout.firstBaseline
 
@@ -1014,6 +1022,7 @@ private fun AmllVocalGroupItem(
     val rel = itemIndex - activeItemIndex
     val isActive = rel == 0
 
+    // 景深模糊半径阶梯（dp）：手动浏览时全清，自动跟随时按距当前行偏移量递增
     val targetBlurDp = if (manualBrowseActive) {
         0f
     } else {
@@ -1028,6 +1037,7 @@ private fun AmllVocalGroupItem(
         }
     }
 
+    // 行级透明度阶梯：当前行 1.0f，已唱行衰减更快，未唱后续行逐级淡出
     val targetLineAlpha = if (manualBrowseActive) {
         if (isActive) 1.0f else 0.54f
     } else {
@@ -1052,12 +1062,13 @@ private fun AmllVocalGroupItem(
         animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
         label = "lyricGroupAlpha"
     )
+    // 当前行 1.0x，非当前行轻微缩小至 0.975x
     val animatedScaleState = animateFloatAsState(
         targetValue = if (isActive) 1.0f else 0.975f,
         animationSpec = spring(dampingRatio = 0.88f, stiffness = 175f),
         label = "lyricGroupScale"
     )
-    // 激活态平滑混合系数：换行退出高亮时让行尾词的上浮与辉光在 520ms 内丝滑回落，绝不一帧生硬截断
+    // 激活态混合系数（520ms）：换行退出高亮时让行尾词的上浮与辉光渐进回落，避免瞬时截断
     val activeBlendState = animateFloatAsState(
         targetValue = if (isActive) 1f else 0f,
         animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
@@ -1076,6 +1087,7 @@ private fun AmllVocalGroupItem(
     }
 
     val density = LocalDensity.current
+    // 主歌词与背景和声歌词的最大单字上浮位移（dp）
     val mainFloatMaxPx = with(density) { 2.5.dp.toPx() }
     val bgFloatMaxPx = with(density) { 2.2.dp.toPx() }
     val reportedHeight = remember { intArrayOf(0) }
@@ -1204,8 +1216,7 @@ private fun AmllRenderedLyricLine(
             val w = seg.groupWord
             val wordDur = (w.endTime - w.startTime).coerceAtLeast(1).toFloat()
 
-            // 1. 丝滑字体上浮 (Word Float)：
-            // 起唱前保持 0f（激活瞬间零跳变），提前 110ms 启动 C¹ 光滑 S 曲线轻柔托起至 -floatMaxPx，退出激活时随 activeBlend 平滑回落
+            // 1. 字体上浮波浪：提前 110ms 启动（最小时长 1250ms，按词长 1.35x 延伸），退出高亮时随 activeBlend 收敛回落
             val floatStartMs = w.startTime.toFloat() - 110f
             val floatDurMs = max(1250f, wordDur * 1.35f)
             val floatT = ((smoothTimeMs - floatStartMs) / floatDurMs).coerceIn(0f, 1f)
@@ -1215,7 +1226,7 @@ private fun AmllRenderedLyricLine(
             // 2. 分音节精确横向扫光比例
             val localProgress = computeSegmentSweepFraction(seg.syllableSpans, smoothTimeMs)
 
-            // 3. 柔和长音辉光与微呼吸缩放（仅逐字模式完整达标词启用，强度清透克制，C∞ 余弦全程无折角平滑进出）
+            // 3. 长音辉光与微呼吸缩放（仅逐字模式达标长音启用）
             var empScale = 1f
             var glowAlpha = 0f
             val emp = seg.emphasizeParams
@@ -1224,10 +1235,10 @@ private fun AmllRenderedLyricLine(
                 val empT = (smoothTimeMs - empStartMs) / emp.durationMs
                 if (empT in 0f..1f) {
                     val e = amllEmpEasing(empT) * activeBlend
-                    // 轻微克制的呼吸膨胀（约 1.8%~4.0%），与柔和上浮自然叠加
+                    // 长音呼吸膨胀上限 4.0%，并叠加轻微上浮
                     empScale = 1f + 0.040f * emp.amount * e
                     yOffset -= floatMaxPx * 0.38f * emp.amount * e
-                    // 峰值透明度严格控制在清透柔和区间（<= 0.38f），依靠原生高斯阴影底层漫射，绝不过曝刺眼
+                    // 阴影透明度上限 0.38f，防止叠加过曝
                     glowAlpha = (emp.blur * e).coerceIn(0f, 0.38f)
                 }
             }
@@ -1273,6 +1284,7 @@ private fun AmllRenderedLyricLine(
                     }
 
                     else -> {
+                        // 横向扫光渐隐边缘半宽（至少 8px）
                         val fadeHalf = max(segH * 0.32f, 8f)
                         val sweepCenter = -fadeHalf + localProgress * (segW + fadeHalf * 2f)
                         val sweepBrush = Brush.horizontalGradient(

@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 /**
- * 宿主导航与全局应用级状态机 ViewModel。
+ * 宿主导航层 ViewModel：向界面透传全局网络状态与断网提示弹窗状态，并转发重试与关闭操作。
  */
 @HiltViewModel
 class MainViewModel @Inject constructor(

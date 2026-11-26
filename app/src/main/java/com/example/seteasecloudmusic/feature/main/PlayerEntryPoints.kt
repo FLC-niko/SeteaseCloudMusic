@@ -5,8 +5,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * 播放器控制器与底部导航显隐状态的进程内共享入口。
+ */
 object PlayerEntryPoints {
-    // 由应用启动处注入
+    // 由 MainActivity.onCreate 注入全局播放器实例
     private var controller: MusicPlayerController? = null
 
     private val _isBottomChromeHidden = MutableStateFlow(false)

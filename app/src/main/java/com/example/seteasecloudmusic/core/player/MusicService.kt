@@ -59,9 +59,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 /**
- * 基于 Coil 深度定制的 Media3 BitmapLoader：
- * 1. 命中 Coil 200MB 磁盘缓存与内存缓存，0ms 极速提取封面
- * 2. 强制使用 CPU 内存 ARGB_8888 软件位图（禁用 GPU HARDWARE 纹理），确保 Binder 跨进程安全传输至小米副屏与锁屏，杜绝崩溃
+ * 基于 Coil 的 Media3 [BitmapLoader]。
+ * 复用 Coil 内存/磁盘缓存加载封面，并强制转换为 CPU 内存 ARGB_8888 软件位图（禁用 GPU HARDWARE 纹理），
+ * 以支持通过 Binder 跨进程传递至通知栏、锁屏及副屏。
  */
 @OptIn(UnstableApi::class)
 class CoilBitmapLoader(private val context: Context) : BitmapLoader {
@@ -92,8 +92,8 @@ class CoilBitmapLoader(private val context: Context) : BitmapLoader {
         val future = SettableFuture.create<Bitmap>()
         val request = ImageRequest.Builder(context)
             .data(uri.toString())
-            .size(512, 512)
-            .allowHardware(false) // 关键：禁止硬件加速纹理位图，必须使用 CPU 内存位图以支持 Binder 跨进程传输至副屏与锁屏
+            .size(512, 512)        // 媒体会话封面最大采样尺寸（px，限制跨进程 Binder 传输体积）
+            .allowHardware(false)  // 禁用 HARDWARE 纹理位图，确保 Binder 跨进程安全传输至锁屏与副屏
             .bitmapConfig(Bitmap.Config.ARGB_8888)
             .target(
                 onSuccess = { drawable ->
@@ -125,10 +125,9 @@ class CoilBitmapLoader(private val context: Context) : BitmapLoader {
 }
 
 /**
- * 后台播放服务：
- * 1. 持有 ExoPlayer 实例
- * 2. 持有 MediaSession，用于通知栏、锁屏、耳机按键控制
- * 3. 接入 ForwardingPlayer 将上一曲、下一曲等系统媒体命令路由至 MusicPlayerController 播放队列
+ * 后台音乐播放服务，基于 Media3 [MediaSessionService] 实现。
+ * 持有 [ExoPlayer] 与 [MediaSession]，接管前台服务与通知生命周期，
+ * 并协调系统媒体按键路由、蓝牙歌词、SuperLyric 联动及平台媒体元数据同步。
  */
 @AndroidEntryPoint
 @OptIn(UnstableApi::class)
@@ -171,7 +170,7 @@ class MusicService : MediaSessionService() {
     private var lastObservedTitle: String? = null
     private var lastObservedCoverUrl: String? = null
 
-    // 服务级持久唤醒锁与网络锁：跨越单曲 STATE_ENDED 到下一首 URL 解析起播的空窗期，防止切歌瞬间被系统挂起或断网
+    // 跨切歌空窗期的唤醒锁与 Wi-Fi 锁，防止切歌等待期间系统休眠或断网
     private var serviceWakeLock: android.os.PowerManager.WakeLock? = null
     private var serviceWifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
@@ -372,7 +371,7 @@ class MusicService : MediaSessionService() {
                     subtitle = lyric
                 )
             } else {
-                // 默认/SuperLyric 协同模式：保持干净的歌曲名与歌手名，由 SuperLyric 单独推送歌词
+                // 标准模式：保持曲目标题与歌手名，歌词由 SuperLyric 或广播独立推送
                 DisplayedMediaText(
                     title = trackTitle,
                     artist = artist,
@@ -403,8 +402,8 @@ class MusicService : MediaSessionService() {
             rawState: Int,
             controllerStatus: PlayerStatus
         ): Int {
-            // 关键防护：切歌间隙底层 ExoPlayer 处于 STATE_ENDED/STATE_IDLE 时，若控制器正在拉取下一首直链或处于播放态，
-            // 强制向 MediaSession 暴露 STATE_BUFFERING，保证系统媒体状态连续。
+            // 切歌间隙底层 ExoPlayer 处于 STATE_ENDED/STATE_IDLE 且控制器处于 BUFFERING/PLAYING 时，
+            // 对外映射为 STATE_BUFFERING 以保持系统媒体状态连续
             if ((rawState == Player.STATE_ENDED || rawState == Player.STATE_IDLE) &&
                 (controllerStatus == PlayerStatus.BUFFERING || controllerStatus == PlayerStatus.PLAYING)
             ) {
@@ -488,21 +487,21 @@ class MusicService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
-        // 2. 创建 ExoPlayer 并配置快速起播缓冲与后台网络保活（WAKE_MODE_NETWORK）
+        // 2. 创建 ExoPlayer 并配置流媒体缓冲参数与网络唤醒锁
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 15_000,
-                /* maxBufferMs = */ 50_000,
-                /* bufferForPlaybackMs = */ 500,
-                /* bufferForPlaybackAfterRebufferMs = */ 1_500
+                /* minBufferMs = */ 15_000,                  // 最低维持缓冲时长（ms，低于此值触发继续拉流）
+                /* maxBufferMs = */ 50_000,                  // 最大缓冲上限（ms，达到后暂停拉流以控制内存与流量）
+                /* bufferForPlaybackMs = */ 500,             // 首次起播所需缓冲阈值（ms，越小起播越快，过小增加卡顿风险）
+                /* bufferForPlaybackAfterRebufferMs = */ 1_500 // 卡顿重缓冲后恢复播放所需缓冲阈值（ms）
             )
             .build()
 
         val exoPlayer = ExoPlayer.Builder(this)
             .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true)
-            .setHandleAudioBecomingNoisy(true) // 耳机拔出时自动暂停
-            .setWakeMode(C.WAKE_MODE_NETWORK)  // 保持 CPU 和网络锁，防止挂后台被系统挂起冻结
+            .setHandleAudioBecomingNoisy(true) // 音频输出切换（如拔出耳机）时自动暂停
+            .setWakeMode(C.WAKE_MODE_NETWORK)  // 播放期间持有 CPU 与网络锁，防止后台网络断流
             .build()
 
         // 注册 SuperLyric 歌词发行商
@@ -595,7 +594,7 @@ class MusicService : MediaSessionService() {
         mediaSession = session
         addSession(session)
 
-        // 7. 实时监听 MusicPlayerController 曲目与状态变化，按需同步歌词、元数据与前台通知（跳过 500ms 进度空转）
+        // 7. 监听曲目、状态与基础元数据变化，按需同步歌词、平台会话与前台通知（忽略纯进度变化）
         serviceScope.launch {
             musicPlayerController.playbackState.collect { state ->
                 if (shouldExitForegroundForIdleEmptyQueue(state, player?.isPlaying == true)) {
@@ -658,7 +657,7 @@ class MusicService : MediaSessionService() {
             }
         }
 
-        // 8. 即时响应歌词开关变更（蓝牙歌词 / SuperLyric）
+        // 8. 监听歌词输出开关变更（蓝牙歌词 / SuperLyric API）
         serviceScope.launch {
             playerSettingsManager.bluetoothLyricsEnabled.drop(1).collect {
                 val track = musicPlayerController.playbackState.value.currentTrack ?: return@collect
@@ -666,6 +665,7 @@ class MusicService : MediaSessionService() {
             }
         }
         serviceScope.launch {
+            // SuperLyric 开关热切换：关闭时立即发送停止信号，开启时注册发行商并补推当前行歌词
             playerSettingsManager.superLyricApiEnabled.drop(1).collect { enabled ->
                 if (!enabled) {
                     SuperLyricHelper.sendStop()
@@ -675,6 +675,7 @@ class MusicService : MediaSessionService() {
                     val track = musicPlayerController.playbackState.value.currentTrack
                     if (p != null && p.isPlaying && track != null && currentLyricLines.isNotEmpty()) {
                         val pos = p.currentPosition.toInt()
+                        // 歌词行末尾宽容窗口（ms，无下一行覆盖时在 endTime 后最多延续 1500ms）
                         val currentLine = currentLyricLines.lastOrNull { line ->
                             line.startTime <= pos && (line.endTime <= 0 || pos <= line.endTime + 1500)
                         }
@@ -692,9 +693,9 @@ class MusicService : MediaSessionService() {
         }
         val request = ImageRequest.Builder(this)
             .data(coverUrl)
-            .size(320, 320)
+            .size(320, 320) // 通知栏封面采样尺寸（px，平衡清晰度与 Binder 传输体积）
             .memoryCacheKey("$coverUrl#notif_320")
-            .allowHardware(false) // 禁用 GPU 硬件加速位图，确保通过 Binder 跨进程安全传输至背屏
+            .allowHardware(false) // 禁用 HARDWARE 位图，确保 Binder 跨进程安全传输至通知与副屏
             .bitmapConfig(Bitmap.Config.ARGB_8888)
             .target(
                 onSuccess = { drawable ->
@@ -827,6 +828,7 @@ class MusicService : MediaSessionService() {
         return sb.toString()
     }
 
+    /** 启动歌词轮询任务，按当前播放进度匹配歌词行并同步广播与 SuperLyric */
     private fun startLyricTicker() {
         if (lyricTickerJob?.isActive == true) return
         lyricTickerJob = serviceScope.launch {
@@ -835,6 +837,7 @@ class MusicService : MediaSessionService() {
                 val track = musicPlayerController.playbackState.value.currentTrack
                 if (p != null && p.isPlaying && track != null && currentLyricLines.isNotEmpty()) {
                     val pos = p.currentPosition.toInt()
+                    // 歌词行末尾宽容窗口（ms，无下一行覆盖时在 endTime 后最多延续 1500ms）
                     val currentLine = currentLyricLines.lastOrNull { line ->
                         line.startTime <= pos && (line.endTime <= 0 || pos <= line.endTime + 1500)
                     }
@@ -848,6 +851,7 @@ class MusicService : MediaSessionService() {
                         sendSuperLyric(track, currentLine)
                     }
                 }
+                // 歌词匹配轮询间隔（ms，越小行切换越及时但唤醒更频繁）
                 delay(250)
             }
         }
@@ -895,7 +899,7 @@ class MusicService : MediaSessionService() {
         musicForwardingPlayer?.updateDynamicMetadata(metadata)
         player?.playlistMetadata = metadata
 
-        // 2. 直接注入底层 Android MediaSessionCompat，立即触发系统 MediaController onMetadataChanged（小米副屏核心通道）
+        // 2. 更新底层 MediaSessionCompat 元数据，触发系统及外部设备（如副屏）刷新显示
         updatePlatformMediaSession(
             displayTitle = displayTitle,
             displayArtist = displayArtist,
@@ -908,7 +912,7 @@ class MusicService : MediaSessionService() {
             artworkUri = track.coverUrl
         )
 
-        // 3. 主动同步前台媒体通知，确保封面加载、歌词变化与状态切换实时且去重刷新
+        // 3. 按渲染去重键同步前台媒体通知
         val controllerStatus = musicPlayerController.playbackState.value.status
         val allowStartFgs = isForegroundServiceStarted ||
             player?.isPlaying == true ||
@@ -918,6 +922,7 @@ class MusicService : MediaSessionService() {
         mediaSession?.let { postOrUpdateForegroundNotification(it, allowStartForeground = allowStartFgs) }
     }
 
+    /** 向 SuperLyric 推送当前歌词行与逐字时间轴（受 superLyricApiEnabled 开关控制） */
     private fun sendSuperLyric(
         track: com.example.seteasecloudmusic.core.model.Track,
         line: LyricLine?
@@ -930,6 +935,7 @@ class MusicService : MediaSessionService() {
 
         val artist = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
         val startTimeMs = line.startTime.toLong().coerceAtLeast(0L)
+        // 未提供有效结束时间时，使用默认单行持续时长兜底（ms）
         val endTimeMs = if (line.endTime > line.startTime) line.endTime.toLong() else startTimeMs + 4000L
         val words = if (currentLyricsHasWordTiming && line.words.size > 1) {
             line.words.map {
@@ -1116,12 +1122,10 @@ class MusicService : MediaSessionService() {
     }
 
     /**
-     * 系统媒体通知与前台服务生命周期接管：
-     *
-     * Media3 内部的 MediaNotificationManager 只要在切歌/清空瞬间检测到 STATE_IDLE 或空 Timeline，
-     * 就会直接调用 stopForeground(STOP_FOREGROUND_REMOVE) 并取消通知，导致 Android 14+/16+ 后台再次拉起
-     * 前台服务触发 Background started FGS: Disallowed 并在随后被系统杀后台。
-     * 因此本方法不再转发给 super.onUpdateNotification，而是由 MusicService 全权管理 startForeground / notify / stopForeground。
+     * 接管系统媒体通知与前台服务生命周期：
+     * Media3 默认的 MediaNotificationManager 在切歌或清空瞬间的 STATE_IDLE / 空 Timeline 状态下
+     * 会调用 stopForeground(STOP_FOREGROUND_REMOVE)，导致 Android 14+ 后台拉起前台服务受限。
+     * 本方法由 MusicService 统一调度 startForeground / notify / stopForeground。
      */
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         val controllerStatus = musicPlayerController.playbackState.value.status
@@ -1163,9 +1167,7 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    /**
-     * 系统会通过这个方法拿到当前可用的 MediaSession。
-     */
+    /** 返回当前可用的 MediaSession 供系统及外部控制器连接 */
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }

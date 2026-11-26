@@ -4,6 +4,7 @@ import com.example.seteasecloudmusic.feature.artist.domain.model.ArtistFavoriteP
 import com.example.seteasecloudmusic.feature.artist.domain.repository.ArtistRepository
 import javax.inject.Inject
 
+/** 校验关联用户 ID 并获取歌手爱听歌单列表。 */
 class GetArtistFavoritePlaylistsUseCase @Inject constructor(
     private val artistRepository: ArtistRepository
 ) {

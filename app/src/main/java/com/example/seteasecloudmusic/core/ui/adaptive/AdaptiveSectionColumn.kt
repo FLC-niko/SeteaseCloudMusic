@@ -19,7 +19,7 @@ class AdaptiveSectionScope {
 
 internal class MusicSection(val key: Any, val fullSpan: Boolean, val content: @Composable () -> Unit)
 
-/** Reflows editorial sections, while their horizontal carousels keep a comfortable card size. */
+/** 按窗口宽度自动在单列、双列网格与折叠屏双栏之间重排的分区列表容器。 */
 @Composable
 fun AdaptiveSectionColumn(
     modifier: Modifier = Modifier,
@@ -37,6 +37,7 @@ fun AdaptiveSectionColumn(
     var secondaryWasActive by rememberSaveable { mutableStateOf(false) }
     BoxWithConstraints(modifier) {
         val split = !LocalPaneAlreadySplit.current && (window.isBook || window.isTabletop)
+        // 双列自适应断点：可用宽度 >= 720.dp 时切为双列排布
         val columns = if (maxWidth >= 720.dp) 2 else 1
         val first = scope.sections.filterIndexed { index, section -> section.fullSpan || index % 2 == 0 }
         val second = scope.sections.filterIndexed { index, section -> !section.fullSpan && index % 2 != 0 }
@@ -54,7 +55,7 @@ fun AdaptiveSectionColumn(
         }
         if (pending.isNotEmpty()) rows += pending.toList()
 
-        // Save a section identity rather than a row number: the number of rows changes on unfolding.
+        // 按区块 key 而非行号保存滚动锚点，避免展开/折叠后行数变化导致定位偏移
         LaunchedEffect(split, columns, scope.sections.map { it.key }) {
             restoring = true
             val saved = anchor
@@ -86,7 +87,7 @@ fun AdaptiveSectionColumn(
                         if (scrolling.second || (secondaryChanged && !primaryChanged)) secondaryWasActive = true
                         else if (scrolling.first || (primaryChanged && !secondaryChanged)) secondaryWasActive = false
                     }
-                    // Keep the last interacted pane after scrolling ends; an idle pane must not replace its anchor.
+                    // 滚动结束后保留最后交互窗格的锚点，避免空闲窗格覆盖定位
                     val active = if (split && secondaryWasActive) secondary else primary
                     if (active.first != null && (anchor == null || primaryChanged || secondaryChanged || scrolling.first || scrolling.second)) {
                         anchor = active.first

@@ -31,6 +31,9 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * [RadioRepository] 的网络实现，聚合电台页 9 个分区数据，并处理未登录降级、榜单补全与 DTO 映射。
+ */
 @Singleton
 class RadioRepositoryImpl @Inject constructor(
     private val radioService: RadioService,
@@ -49,33 +52,31 @@ class RadioRepositoryImpl @Inject constructor(
             .hasValidLoginCookie(context)
     }
 
-    // ==========================================
-    // 1. 排行榜 (严格按 热歌榜、飙升榜、新歌榜 顺序，全真实歌曲补齐)
-    // ==========================================
+    // 1. 排行榜（固定前三位为热歌榜、飙升榜、新歌榜，并并发补齐缺失曲目名）
     override suspend fun getToplists(): Result<List<RadioToplistItem>> = withContext(Dispatchers.IO) {
         try {
             val response = radioService.getToplistDetail()
             if (response.code == 200 && response.list.isNotEmpty()) {
                 val allList = response.list
 
-                // 严格确定前三位榜单：1. 热歌榜 2. 飙升榜 3. 新歌榜
-                val rege = allList.firstOrNull { it.id == 3778678L }
+                // 固定前三位榜单，ID 未命中时按名称关键字兜底
+                val rege = allList.firstOrNull { it.id == 3778678L } // 热歌榜官方 ID
                     ?: allList.firstOrNull { (it.name ?: "").contains("热歌") && !(it.name ?: "").contains("网络") && !(it.name ?: "").contains("欧美") && !(it.name ?: "").contains("黑胶") }
-                val biaosheng = allList.firstOrNull { it.id == 19723756L }
+                val biaosheng = allList.firstOrNull { it.id == 19723756L } // 飙升榜官方 ID
                     ?: allList.firstOrNull { (it.name ?: "").contains("飙升") }
-                val xinge = allList.firstOrNull { it.id == 3779629L }
+                val xinge = allList.firstOrNull { it.id == 3779629L } // 新歌榜官方 ID
                     ?: allList.firstOrNull { (it.name ?: "").contains("新歌") && !(it.name ?: "").contains("高分") && !(it.name ?: "").contains("黑胶") && !(it.name ?: "").contains("欧美") }
 
                 val topThree = listOfNotNull(rege, biaosheng, xinge)
                 val topThreeIds = topThree.map { it.id }.toSet()
 
-                // 其他精选热门榜单（如原创榜、民谣榜、国风榜、摇滚榜、古典榜等）
+                // 其余精选热门榜单（如原创榜、民谣榜、国风榜、摇滚榜、古典榜等）
                 val remaining = allList.filter { it.id !in topThreeIds }
 
-                // 组合榜单列表：前三名严格保证为 [热歌榜, 飙升榜, 新歌榜]
+                // 榜单列表最多截取 12 个卡片，前三位依次为 [热歌榜, 飙升榜, 新歌榜]
                 val orderedList = (topThree + remaining).take(12)
 
-                // 并行补齐歌曲名：解决部分分类榜单 /toplist/detail 中 tracks 字段为空的问题
+                // 并发补齐歌曲名（批大小即 orderedList 上限 12）：部分分类榜 /toplist/detail 返回的 tracks 为空
                 val toplistItems = coroutineScope {
                     orderedList.map { item ->
                         async {
@@ -85,6 +86,7 @@ class RadioRepositoryImpl @Inject constructor(
                             if (songs.isEmpty()) {
                                 try {
                                     val detail = radioService.getPlaylistDetail(item.id)
+                                    // 每个榜单卡片最多提取前 3 首曲目名用于下方预览
                                     val fetchedSongs = detail.playlist?.tracks?.take(3)?.mapNotNull {
                                         it.name?.takeIf { n -> n.isNotBlank() }
                                     } ?: emptyList()
@@ -115,6 +117,7 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
+    // 根据榜单名称关键字分配封面渐变双色
     private fun pickToplistGradient(name: String): List<Color> {
         return when {
             name.contains("热歌") -> listOf(Color(0xFFFF5E62), Color(0xFFFF9966))
@@ -132,14 +135,12 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 2. 雷达歌单 (从 homepage/block/page 的 HOMEPAGE_BLOCK_MGC_PLAYLIST 获取 100% 真实雷达歌单及真实封面)
-    // ==========================================
+    // 2. 雷达歌单（优先从 homepage/block/page 的 HOMEPAGE_BLOCK_MGC_PLAYLIST 块提取，空时回退官方雷达歌单 ID）
     override suspend fun getRadarPlaylists(): Result<List<RadioRadarItem>> = withContext(Dispatchers.IO) {
         try {
             val radarList = mutableListOf<RadioRadarItem>()
 
-            // 1. 优先从 homepage/block/page 获取真实的雷达歌单块
+            // 1. 优先从 homepage/block/page 提取雷达歌单块
             try {
                 val blockResp = radioService.getHomepageBlockPage(refresh = false)
                 if (blockResp.code == 200 && blockResp.data != null) {
@@ -175,14 +176,14 @@ class RadioRepositoryImpl @Inject constructor(
                 }
             } catch (_: Exception) {}
 
-            // 2. 若雷达块未返回，从 recommend/resource 或 playlist/detail 获取官方真实雷达信息
+            // 2. 首页块未返回时，依次请求官方雷达歌单详情作为兜底
             if (radarList.isEmpty()) {
                 val officialRadarIds = listOf(
-                    3136952023L, // 私人雷达
-                    5320167908L, // 时光雷达
-                    5362359247L, // 宝藏雷达
-                    5327906368L, // 乐迷雷达
-                    5300458264L  // 新歌雷达
+                    3136952023L, // 私人雷达 ID
+                    5320167908L, // 时光雷达 ID
+                    5362359247L, // 宝藏雷达 ID
+                    5327906368L, // 乐迷雷达 ID
+                    5300458264L  // 新歌雷达 ID
                 )
                 for (id in officialRadarIds) {
                     try {
@@ -193,7 +194,7 @@ class RadioRepositoryImpl @Inject constructor(
                                 RadioRadarItem(
                                     id = pl.id ?: id,
                                     title = pl.name ?: "雷达歌单",
-                                    subtitle = pl.description?.take(30) ?: "",
+                                    subtitle = pl.description?.take(30) ?: "", // 副标题截取歌单简介前 30 字
                                     coverUrl = pl.coverImgUrl,
                                     playCount = pl.playCount
                                 )
@@ -211,9 +212,7 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 3. 从你喜欢的歌曲开始漫游 (真实歌曲，真实封面取色，上下文字均为真实歌名)
-    // ==========================================
+    // 3. 从你喜欢的歌曲开始漫游（按登录态选取种子曲目并并发生成关联漫游列表）
     override suspend fun getRoamItems(): Result<List<RadioRoamItem>> = withContext(Dispatchers.IO) {
         try {
             val isLoggedIn = hasLoginCookie()
@@ -222,7 +221,7 @@ class RadioRepositoryImpl @Inject constructor(
             val seedPool = mutableListOf<Track>()
             var fromLikedPlaylist = false
 
-            // 1. 优先从用户“我喜欢的音乐”歌单获取真实喜欢曲目作为漫游起点
+            // 1. 优先读取用户“我喜欢的音乐”歌单曲目作为漫游起点
             if (isLoggedIn && userId > 0L) {
                 try {
                     val likedPlaylist = mineRepository.getUserPlaylists(userId).getOrNull()?.likedPlaylist
@@ -252,7 +251,7 @@ class RadioRepositoryImpl @Inject constructor(
                 } catch (_: Exception) {}
             }
 
-            // 2. 兜底：若无法获取我喜欢的歌曲（如未创建/无权限），尝试每日推荐歌曲（afresh=true 强制刷新）
+            // 2. 已登录但喜欢歌单为空时，回退到每日推荐歌曲（afresh=true 强制刷新当日列表）
             if (isLoggedIn && seedPool.isEmpty()) {
                 try {
                     val recSongs = dailyRecommendService.getDailyRecommendSongs(true)
@@ -284,7 +283,7 @@ class RadioRepositoryImpl @Inject constructor(
             // 3. 未登录或前两步皆空时，使用推荐新歌兜底
             if (seedPool.isEmpty()) {
                 try {
-                    val newsongResp = radioService.getPersonalizedNewsong(limit = 12)
+                    val newsongResp = radioService.getPersonalizedNewsong(limit = 12) // 兜底推荐新歌单次拉取上限
                     seedPool.addAll(
                         newsongResp.result
                             .map { mapNewsongItemToTrack(it) }
@@ -295,7 +294,7 @@ class RadioRepositoryImpl @Inject constructor(
                 } catch (_: Exception) {}
             }
 
-            // 4. 每次刷新兼顾近期新喜欢的歌与其余收藏随机轮换，避免固定不变
+            // 4. 抽取最多 6 首种子歌曲：来自喜欢歌单时从最近 5 首抽 2 首 + 其余随机抽 4 首，保证近期偏好与随机轮换
             val distinctPool = seedPool.distinctBy { it.id }
             val seedTracks = if (fromLikedPlaylist && distinctPool.size > 6) {
                 val recentPicks = distinctPool.take(5).shuffled().take(2)
@@ -306,7 +305,7 @@ class RadioRepositoryImpl @Inject constructor(
                 distinctPool.shuffled().take(6)
             }
 
-            // 5. 并发为每首起点歌曲拉取心动智能漫游 (/playmode/intelligence/list)，失败或未登录时降级 /simi/song
+            // 5. 并发为每首种子歌曲拉取心动智能漫游 (/playmode/intelligence/list，批大小上限 6)，失败或未登录时降级 /simi/song
             val roamList = coroutineScope {
                 seedTracks.map { seed ->
                     async {
@@ -352,7 +351,7 @@ class RadioRepositoryImpl @Inject constructor(
                             .drop(1)
                             .map { it.title }
                             .filter { it.isNotBlank() }
-                            .take(4)
+                            .take(4) // 卡片底部副标题最多拼接前 4 首伴随曲目名
                         val subtitleText = if (companionNames.isNotEmpty()) {
                             "${seed.title}、${companionNames.joinToString("、")}"
                         } else {
@@ -379,12 +378,10 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 4. 歌手推荐（排在推荐歌单上面一行，真实 /top/artists）
-    // ==========================================
+    // 4. 歌手推荐（调用 /top/artists）
     override suspend fun getRecommendedSingers(): Result<List<RadioArtistItem>> = withContext(Dispatchers.IO) {
         try {
-            val response = radioService.getTopArtists(limit = 30)
+            val response = radioService.getTopArtists(limit = 30) // 推荐歌手单次拉取条数上限
             if (response.code == 200 && response.artists.isNotEmpty()) {
                 val list = response.artists.map { item ->
                     RadioArtistItem(
@@ -403,12 +400,10 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 5. 推荐歌单 (真实 /personalized 推荐歌单)
-    // ==========================================
+    // 5. 推荐歌单（调用 /personalized）
     override suspend fun getRecommendedPlaylists(): Result<List<RadioPlaylistItem>> = withContext(Dispatchers.IO) {
         try {
-            val response = radioService.getPersonalized(limit = 10)
+            val response = radioService.getPersonalized(limit = 10) // 推荐歌单单次拉取条数上限
             if (response.code == 200 && response.result.isNotEmpty()) {
                 val list = response.result.map { item ->
                     RadioPlaylistItem(
@@ -429,12 +424,10 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 6. 艺人热门金曲 (真实热门艺人写真与单曲)
-    // ==========================================
+    // 6. 艺人热门金曲（拉取热门艺人列表构建卡片，点击时再按艺人 ID 加载热门曲目）
     override suspend fun getArtistHotSection(): Result<ArtistHotSectionData> = withContext(Dispatchers.IO) {
         try {
-            val artistsResp = radioService.getTopArtists(limit = 8)
+            val artistsResp = radioService.getTopArtists(limit = 8) // 艺人热门金曲展示歌手数上限
             if (artistsResp.code == 200 && artistsResp.artists.isNotEmpty()) {
                 val leadArtist = artistsResp.artists.first()
                 val items = artistsResp.artists.map { artist ->
@@ -462,12 +455,10 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 7. 每周新热趋势 (真实 /top/playlist?cat=流行 趋势歌单与封面)
-    // ==========================================
+    // 7. 每周新热趋势（调用 /top/playlist?cat=流行）
     override suspend fun getTrends(): Result<List<RadioTrendItem>> = withContext(Dispatchers.IO) {
         try {
-            val response = radioService.getTopPlaylist(cat = "流行", limit = 10)
+            val response = radioService.getTopPlaylist(cat = "流行", limit = 10) // 趋势歌单单次拉取条数上限
             if (response.code == 200 && response.playlists.isNotEmpty()) {
                 val list = response.playlists.map { pl ->
                     val badge = when {
@@ -496,14 +487,12 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 8. 心情氛围 (真实场景/氛围歌单与封面)
-    // ==========================================
+    // 8. 心情氛围（优先读取首页场景歌单块 HOMEPAGE_BLOCK_OFFICIAL_PLAYLIST，缺失时回退治愈分类歌单）
     override suspend fun getMoodPlaylists(): Result<List<RadioMoodItem>> = withContext(Dispatchers.IO) {
         try {
             val moodList = mutableListOf<RadioMoodItem>()
 
-            // 优先检查 homepage/block/page 中的专属场景歌单 (HOMEPAGE_BLOCK_OFFICIAL_PLAYLIST)
+            // 优先检查 homepage/block/page 第二页中的场景歌单块 (HOMEPAGE_BLOCK_OFFICIAL_PLAYLIST)
             try {
                 val cursorResp = radioService.getHomepageBlockPage(refresh = false)
                 val cursor = cursorResp.data?.cursor
@@ -532,9 +521,9 @@ class RadioRepositoryImpl @Inject constructor(
                 }
             } catch (_: Exception) {}
 
-            // 若场景歌单块未返回，调用 /top/playlist?cat=治愈 作为真实歌单数据源
+            // 首页场景歌单块未返回时，回退至治愈分类歌单
             if (moodList.isEmpty()) {
-                val response = radioService.getTopPlaylist(cat = "治愈", limit = 8)
+                val response = radioService.getTopPlaylist(cat = "治愈", limit = 8) // 心情氛围兜底歌单拉取条数上限
                 if (response.code == 200 && response.playlists.isNotEmpty()) {
                     val list = response.playlists.map { pl ->
                         val tag = if (pl.name.contains("|")) pl.name.substringBefore("|").trim() else "治愈氛围"
@@ -558,42 +547,40 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 9. 你关注的艺人新动向 (严格仅展示用户真正关注的歌手及其新动向)
-    // ==========================================
+    // 9. 你关注的艺人新动向（仅在已登录且存在关注歌手时展示）
     override suspend fun getFollowedArtistSection(): Result<FollowedArtistSectionData> = withContext(Dispatchers.IO) {
         try {
             if (!hasLoginCookie()) {
-                // 用户未登录，不展示「你关注的艺人新动向」
+                // 未登录时不展示关注艺人区块
                 return@withContext Result.success(FollowedArtistSectionData())
             }
 
-            // 1. 获取用户真正关注的歌手列表 (/artist/sublist)
+            // 1. 拉取用户关注歌手列表 (/artist/sublist)
             val sublistResp = try {
-                radioService.getArtistSublist(limit = 20)
+                radioService.getArtistSublist(limit = 20) // 单次拉取关注歌手数量上限
             } catch (_: Exception) {
                 null
             }
 
             val followedArtists = sublistResp?.data ?: emptyList()
             if (followedArtists.isEmpty()) {
-                // 用户未关注任何歌手，绝不伪造或推荐未关注歌手
+                // 未关注任何歌手时返回空数据，不回退到未关注艺人
                 return@withContext Result.success(FollowedArtistSectionData())
             }
 
-            // 提取关注歌手头像（取前3位已关注艺人头像）
+            // 提取前 3 位关注歌手头像用于区块标题左侧叠放展示
             val avatars = followedArtists.take(3).mapNotNull { it.picUrl ?: it.img1v1Url }
             val followedArtistIds = followedArtists.map { it.id }.toSet()
 
             val items = mutableListOf<RadioFollowedArtistNewSongItem>()
 
-            // 2. 尝试从关注歌手新歌接口获取 (/artist/new/song)
+            // 2. 优先从关注歌手新歌接口获取 (/artist/new/song)
             try {
-                val newSongResp = radioService.getArtistNewSong(limit = 10)
+                val newSongResp = radioService.getArtistNewSong(limit = 10) // 单次拉取关注歌手新歌条数上限
                 if (newSongResp.code == 200 && newSongResp.data.isNotEmpty()) {
                     for (item in newSongResp.data) {
                         val song = item.song ?: continue
-                        // 严格校验：必须是用户实际关注的歌手！
+                        // 仅保留属于已关注歌手的新歌条目
                         val matchedArtist = song.artists.firstOrNull { it.id != null && it.id in followedArtistIds }
                         if (matchedArtist != null) {
                             val artistName = matchedArtist.name ?: (song.artists.firstOrNull()?.name ?: "艺人")
@@ -615,7 +602,7 @@ class RadioRepositoryImpl @Inject constructor(
                 }
             } catch (_: Exception) {}
 
-            // 3. 若关注歌手近期没有新单曲，直接获取关注歌手本人的最新精选单曲，绝不向用户展示未关注的歌手！
+            // 3. 新单曲不足 3 条时，并发拉取前 5 位关注歌手的代表热歌补齐（批大小上限 5）
             if (items.size < 3) {
                 coroutineScope {
                     val deferredSongs = followedArtists.take(5).map { artist ->
@@ -657,9 +644,7 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 获取歌单歌曲列表
-    // ==========================================
+    // 获取歌单曲目列表（tracks 未返回全量时回退 mineRepository 补全）
     override suspend fun getPlaylistTracks(playlistId: Long): Result<List<Track>> = withContext(Dispatchers.IO) {
         try {
             val response = radioService.getPlaylistDetail(playlistId)
@@ -702,9 +687,7 @@ class RadioRepositoryImpl @Inject constructor(
         }
     }
 
-    // ==========================================
-    // 映射辅助
-    // ==========================================
+    // DTO 到领域模型 Track 映射辅助
     private fun mapPlaylistTrackToTrack(item: PlaylistTrackItemResponse, fallbackCover: String?): Track {
         val artists = (item.ar ?: emptyList()).map {
             Artist(id = it.id ?: 0L, name = it.name?.takeIf { n -> n.isNotBlank() } ?: "未知歌手")

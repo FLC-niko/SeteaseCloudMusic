@@ -47,6 +47,7 @@ internal class LocalNeteaseClient(
             wnmcidOverride = tokenStore.getOrCreateWnmcid(nowMs)
         )
 
+        // 无登录态且无游客令牌时，先加锁懒注册匿名游客令牌 MUSIC_A
         if (cookieMap["MUSIC_U"].isNullOrBlank() &&
             cookieMap["MUSIC_A"].isNullOrBlank() &&
             upstreamPath != REGISTER_ANONYMOUS_PATH
@@ -141,6 +142,9 @@ internal class LocalNeteaseClient(
         val encryptedResponse: Boolean
     )
 
+    /**
+     * 按 [crypto] 模式组装上游请求 URL、Header 与加密表单字段（WEAPI / LINUXAPI / EAPI / API）。
+     */
     private fun buildEncryptedRequest(
         upstreamPath: String,
         data: JsonObject,
@@ -299,8 +303,11 @@ internal class LocalNeteaseClient(
     }
 
     companion object {
+        // 匿名游客令牌注册上游接口路径
         private const val REGISTER_ANONYMOUS_PATH = "/api/register/anonimous"
+        // 剥离 Set-Cookie 中的 Domain 属性，避免本地构造响应时域受限
         private val DOMAIN_ATTR_REGEX = Regex("\\s*Domain=[^(;|$)]+;*", RegexOption.IGNORE_CASE)
+        // 网易云业务层特殊状态码：命中时对外 HTTP 状态仍映射为 200，交由上层解析 body.code（如二维码扫码状态 800..803）
         private val SPECIAL_STATUS_CODES = setOf(201, 302, 400, 502, 800, 801, 802, 803)
     }
 }

@@ -6,11 +6,12 @@ import com.example.seteasecloudmusic.feature.player.domain.model.LyricSource
 import com.example.seteasecloudmusic.feature.player.domain.model.LyricWord
 import com.example.seteasecloudmusic.feature.player.domain.model.ParsedLyrics
 
+/** 轻量歌词解析工具，用于从 [Lyrics] 领域模型直接解析 YRC 或 LRC 歌词及翻译。 */
 object LyricParser {
-    // Regex for basic LRC format, e.g. [00:16.21]text or [01:23.456]text
+    // 标准 LRC 行正则，如 [00:16.21]text 或 [01:23.456]text
     private val lrcLineRegex = Regex("\\[(\\d{1,2}):(\\d{2})(?:[.:](\\d{1,3}))?\\](.*)")
 
-    // Regex for YRC format line, e.g. [16210,3460](16210,670,0)还(16880,410,0)没...
+    // YRC 行与词正则，如 [16210,3460](16210,670,0)还(16880,410,0)没...
     private val yrcLineRegex = Regex("\\[(\\d+),(\\d+)\\](.*)")
     private val yrcWordRegex = Regex("\\((\\d+),(\\d+),\\d+\\)([^(]*)")
 
@@ -101,6 +102,7 @@ object LyricParser {
 
         val sorted = rawLines.sortedBy { it.first }
         val lines = sorted.mapIndexed { index, (timeMs, content) ->
+            // 末行缺少下句时间戳时默认持续 5000 ms
             val nextTimeMs = sorted.getOrNull(index + 1)?.first ?: (timeMs + 5000)
             val translated = findTranslation(transMap, timeMs)
             LyricLine(
@@ -139,6 +141,7 @@ object LyricParser {
 
     private fun findTranslation(transMap: Map<Int, String>, timeMs: Int): String {
         if (transMap.isEmpty()) return ""
+        // 翻译时间戳匹配容差（ms，越小匹配越严格）
         return transMap.entries.firstOrNull { Math.abs(it.key - timeMs) <= 500 }?.value.orEmpty()
     }
 }

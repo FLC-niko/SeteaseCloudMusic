@@ -132,6 +132,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.math.roundToInt
 
+// 歌手页主题适配颜色与卡片基础尺寸
 private val ArtistPrimaryText: Color
     @Composable
     get() = if (AppTheme.isDark) Color.White else Color(0xFF111111)
@@ -156,6 +157,7 @@ private val ArtistPillSurface: Color
 private val ArtistAccentRed: Color
     @Composable
     get() = AppTheme.colors.accent
+/** 横向专辑与歌单卡片固定宽度（dp） */
 private val ArtistHorizontalCardWidth = 156.dp
 
 private data class ArtistNavTarget(
@@ -164,6 +166,9 @@ private data class ArtistNavTarget(
     val coverUrl: String?
 )
 
+/**
+ * 歌手详情页路由入口，维护页面内相似歌手跳转返回栈并绑定 ViewModel。
+ */
 @Composable
 fun ArtistDetailRoute(
     artistId: Long,
@@ -240,6 +245,10 @@ fun ArtistDetailRoute(
     )
 }
 
+/**
+ * 歌手详情页主界面。
+ * 支持单栏大图 Hero + 顶栏标题吸附动效，以及平板/折叠屏分栏布局，并支持内嵌打开歌单与专辑详情页。
+ */
 @Composable
 fun ArtistDetailScreen(
     uiState: ArtistDetailUiState,
@@ -286,12 +295,14 @@ fun ArtistDetailScreen(
         drawContent()
     }
 
-    // 连续一体式艺人标题动效指标（1:1 复刻歌单详情页动效）
+    // 顶部艺人标题连续吸附动效指标（随列表上滑从 Hero 区缩放并停靠至顶栏中央）
     var heroTitleOffsetFromTopPx by remember(uiState.artistId) { mutableFloatStateOf(0f) }
     var heroTitleLineCount by remember(uiState.artistId) { mutableIntStateOf(1) }
+    // 标题停靠至顶栏时的目标中心 Y 坐标（与返回按钮垂直中心对齐）
     val dockCenterY = remember(density, statusBarHeight) {
         with(density) { (statusBarHeight + 27.dp).toPx() }
     }
+    // 标题从 Hero 区向顶栏过渡的滑动行程高度（越大过渡越缓）
     val morphBandPx = remember(density) {
         with(density) { 54.dp.toPx() }
     }
@@ -308,6 +319,7 @@ fun ArtistDetailScreen(
         }
     }
     val topBlurAlpha by remember(listState, density) {
+        // 顶部渐进模糊从 0 到 1 淡入所需的滚动距离（dp，越小越早出现）
         val fadeDistancePx = with(density) { 44.dp.toPx().coerceAtLeast(1f) }
         derivedStateOf {
             if (listState.firstVisibleItemIndex > 0) 1f
@@ -338,6 +350,7 @@ fun ArtistDetailScreen(
             .fillMaxSize()
             .background(ambientDarkColor)
     ) {
+        // 宽屏或折叠屏展开/桌面形态下切换为双栏布局（宽度 >= 720dp 且高度 >= 360dp）
         val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
         val works: @Composable () -> Unit = {
             LazyColumn(
@@ -368,6 +381,7 @@ fun ArtistDetailScreen(
                                     0f
                                 } else {
                                     val p = ((startY - currentY) / morphBandPx).coerceIn(0f, 1f)
+                                    // 多行标题在过渡行程前 25% 快速淡出，避免与顶栏单行标题重影
                                     (1f - p / 0.25f).coerceIn(0f, 1f)
                                 }
                             },
@@ -487,7 +501,7 @@ fun ArtistDetailScreen(
                     }
                 }
 
-                // 4. 艺人（参考图二）
+                // 4. 相似艺人
                 item(key = "similar_artists") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         ArtistSectionHeader(
@@ -514,6 +528,7 @@ fun ArtistDetailScreen(
 
         if (split) {
             val primaryScrollState = rememberScrollState()
+            // 分栏模式下顶部渐进模糊显隐的滚动阈值（dp）
             val splitBlurThresholdPx = remember(density) { with(density) { 28.dp.toPx() }.coerceAtLeast(1f) }
             val splitBlurAlpha by remember(listState, primaryScrollState, splitBlurThresholdPx) {
                 derivedStateOf {
@@ -530,6 +545,7 @@ fun ArtistDetailScreen(
             ) {
                 AdaptiveTwoPane(
                     modifier = Modifier.fillMaxSize(),
+                    // 左栏（封面与百科）占总宽比例
                     primaryFraction = 0.38f,
                     primary = {
                         Column(
@@ -567,6 +583,7 @@ fun ArtistDetailScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            // 左栏封面卡片使用 24dp 超椭圆裁切
                             Box(Modifier.squircleClip(24.dp)) {
                                 ArtistHeroSection(
                                     artistName = uiState.artistName,
@@ -588,6 +605,7 @@ fun ArtistDetailScreen(
             if (splitBlurAlpha > 0.005f) {
                 ProgressiveTopBlur(
                     backdrop = artistBackdrop,
+                    // 分栏顶栏模糊总高度及三段模糊半径（dp）
                     totalHeight = statusBarHeight + 28.dp,
                     statusBarHeight = statusBarHeight,
                     alphaProvider = { splitBlurAlpha },
@@ -606,7 +624,7 @@ fun ArtistDetailScreen(
                 works()
             }
 
-            // 顶部渐进高斯模糊 + 连续一体式艺人标题动效 + 左侧液态玻璃返回按钮
+            // 顶部渐进高斯模糊 + 艺人标题吸附动效 + 左侧液态玻璃返回按钮
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -614,13 +632,14 @@ fun ArtistDetailScreen(
             ) {
                 ProgressiveTopBlur(
                     backdrop = artistBackdrop,
+                    // 单栏顶栏模糊覆盖总高度（状态栏 + 82dp）
                     totalHeight = statusBarHeight + 82.dp,
                     statusBarHeight = statusBarHeight,
                     modifier = Modifier.align(Alignment.TopCenter),
                     alphaProvider = { topBlurAlpha }
                 )
 
-                // 连续一体式艺人名：随手指上滑从 Hero 位置缩放并平稳停靠至顶栏中央
+                // 顶栏浮动艺人名：随列表上滑从 Hero 位置缩放并停靠至顶栏中央
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -638,7 +657,9 @@ fun ArtistDetailScreen(
                         },
                     contentAlignment = Alignment.Center
                 ) {
+                    // 停靠态与 Hero 态字号缩放比（18sp / 32sp）
                     val scaleFactor = 18f / 32f
+                    // 为左右顶栏按钮预留 124dp 水平边距后反算未缩放布局最大宽度
                     val dockedMaxTextWidth = ((maxWidth - 124.dp) / scaleFactor).coerceAtLeast(120.dp)
                     val layoutMaxWidth = minOf(maxWidth - 48.dp, dockedMaxTextWidth)
                     Text(
@@ -707,11 +728,13 @@ fun ArtistDetailScreen(
             visible = uiState.activePlaylistDetail != null,
             enter = slideInHorizontally(
                 initialOffsetX = { fullWidth -> fullWidth },
+                // 滑入弹簧：高阻尼低回弹（0.92），中等刚度（260）
                 animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
             ),
             exit = if (backHandlerEnabled) {
                 slideOutHorizontally(
                     targetOffsetX = { fullWidth -> fullWidth },
+                    // 滑出弹簧：刚度略高于滑入（300），收尾更利落
                     animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
                 )
             } else {
@@ -810,6 +833,7 @@ private fun ArtistHeroSection(
     onHeroTitleMetricsChanged: ((centerOffsetFromTopPx: Float) -> Unit)? = null,
     onTitleLineCount: ((Int) -> Unit)? = null
 ) {
+    // Hero 封面区高度：分栏模式固定 320dp；单栏按屏高 50% 限制在 320~440dp 之间
     val heroHeight = if (compactHeight) {
         320.dp
     } else {
@@ -828,6 +852,7 @@ private fun ArtistHeroSection(
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    // 播放按钮按压缩放动画（按压缩至 0.92，使用无回弹高刚度弹簧）
     val playScale by animateFloatAsState(
         targetValue = if (isPressed) 0.92f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 650f),
@@ -864,7 +889,7 @@ private fun ArtistHeroSection(
                 .clipToBounds()
         )
 
-        // 顶部轻保护渐变保障返回按钮与状态栏可读性
+        // 顶部保护渐变（高度 110dp），保障返回按钮与状态栏图标可读性
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -878,14 +903,14 @@ private fun ArtistHeroSection(
                 )
         )
 
-        // 底部 S 曲线平滑垂直渐变，避免在文字和按钮处产生色阶断层，并在底边完全融入氛围底色
+        // 底部 Smoothstep 曲线垂直遮罩，避免文字与按钮区域出现色阶断层并过渡至氛围底色
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(brush = smoothBottomScrimBrush)
         )
 
-        // 歌手名居中 + 下方仅保留一个白色圆形播放键（播放热门 50 首）
+        // 居中歌手名 + 圆形播放按钮（点击播放热门 50 首）
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -953,10 +978,13 @@ private fun ArtistHeroSection(
     }
 }
 
+/**
+ * 构建基于 Smoothstep 三次缓动的底部垂直渐变遮罩，消除渐变起止处色带断层。
+ */
 private fun buildSmoothHeroScrimBrush(ambientColor: Color): Brush {
-    val startPos = 0.34f
-    val endPos = 0.94f
-    val steps = 12
+    val startPos = 0.34f // 遮罩起始位置（占 Hero 高度比例，越小遮罩越靠上）
+    val endPos = 0.94f   // 遮罩完全不透明位置（占 Hero 高度比例）
+    val steps = 12       // 渐变采样分段数（越多过渡越均匀）
     val stops = Array(steps + 2) { index ->
         when (index) {
             0 -> 0.00f to Color.Transparent
@@ -1073,6 +1101,7 @@ private fun ArtistTrackRow(
         Box(
             modifier = Modifier
                 .size(48.dp)
+                // 歌曲封面超椭圆圆角（10dp）
                 .squircleClip(10.dp)
                 .background(ArtistCardSurface)
         ) {
@@ -1159,6 +1188,7 @@ private fun AlbumCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
+                // 专辑封面超椭圆圆角（12dp）与细描边
                 .squircleClip(12.dp)
                 .background(ArtistCardSurface)
                 .squircleBorder(0.5.dp, ArtistCardBorder, 12.dp)
@@ -1309,7 +1339,7 @@ private fun ArtistFavoritesSection(
 }
 
 /**
- * 艺人推荐横向卡片列表（参考图二“更多艺人”卡片式结构：圆形头像 + 名字 + 副标 + 底部胶囊按钮，融入图一暗色玻璃质感）。
+ * 相似艺人横向卡片列表（圆形头像 + 艺人名 + 副标 + 底部胶囊入口）。
  */
 @Composable
 private fun SimilarArtistsCardSection(
@@ -1329,6 +1359,7 @@ private fun SimilarArtistsCardSection(
             Column(
                 modifier = Modifier
                     .width(142.dp)
+                    // 相似艺人卡片超椭圆圆角（18dp）
                     .squircleClip(18.dp)
                     .background(ArtistCardSurface)
                     .squircleBorder(0.5.dp, ArtistCardBorder, 18.dp)
@@ -1470,6 +1501,7 @@ private fun DescriptionSection(
             text = wikiText,
             fontSize = 14.sp,
             lineHeight = 22.sp,
+            // 折叠态最多展示 10 行文本
             maxLines = if (expanded) Int.MAX_VALUE else 10,
             overflow = TextOverflow.Ellipsis,
             onTextLayout = { result ->
@@ -1512,6 +1544,7 @@ private fun ArtistAllAlbumsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // 全部专辑底部弹窗最大高度限制（dp）
                 .heightIn(max = 580.dp)
                 .navigationBarsPadding()
         ) {
