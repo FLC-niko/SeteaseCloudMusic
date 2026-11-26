@@ -114,6 +114,7 @@ import com.example.seteasecloudmusic.core.model.Album
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
+import com.example.seteasecloudmusic.core.ui.components.AmbientTopPinkBackground
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.LocalPageVisible
@@ -273,6 +274,7 @@ internal fun HomeScreenContent(
             }
             Box(modifier = Modifier.fillMaxSize()) {
                 Box(modifier = Modifier.fillMaxSize().layerBackdrop(homeBackdrop)) {
+                    AmbientTopPinkBackground(baseColor = HomeBackground)
                 AdaptiveContent {
                 AdaptiveSectionColumn(
                     state = lazyListState,

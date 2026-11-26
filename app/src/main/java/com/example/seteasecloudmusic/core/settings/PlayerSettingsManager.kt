@@ -71,9 +71,25 @@ class PlayerSettingsManager @Inject constructor(
     private val _themeMode = MutableStateFlow(loadSavedThemeMode())
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
 
+    private val _topAmbientEnabled = MutableStateFlow(loadSavedTopAmbientEnabled())
+    val topAmbientEnabled: StateFlow<Boolean> = _topAmbientEnabled.asStateFlow()
+
+    private val _topAmbientColorArgb = MutableStateFlow(loadSavedTopAmbientColorArgb())
+    val topAmbientColorArgb: StateFlow<Int> = _topAmbientColorArgb.asStateFlow()
+
     fun setThemeMode(mode: AppThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+    }
+
+    fun setTopAmbientEnabled(enabled: Boolean) {
+        _topAmbientEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_TOP_AMBIENT_ENABLED, enabled).apply()
+    }
+
+    fun setTopAmbientColorArgb(argb: Int) {
+        _topAmbientColorArgb.value = argb
+        prefs.edit().putInt(KEY_TOP_AMBIENT_COLOR_ARGB, argb).apply()
     }
 
     fun setAudioQuality(quality: OnlineAudioQuality) {
@@ -144,6 +160,14 @@ class PlayerSettingsManager @Inject constructor(
         }
     }
 
+    private fun loadSavedTopAmbientEnabled(): Boolean {
+        return prefs.getBoolean(KEY_TOP_AMBIENT_ENABLED, true)
+    }
+
+    private fun loadSavedTopAmbientColorArgb(): Int {
+        return prefs.getInt(KEY_TOP_AMBIENT_COLOR_ARGB, DEFAULT_TOP_AMBIENT_COLOR_ARGB)
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"
@@ -153,6 +177,10 @@ class PlayerSettingsManager @Inject constructor(
         private const val KEY_PREDICTIVE_BACK = "predictive_back_enabled"
         private const val KEY_LOCAL_DIRECT_API = "local_direct_api_enabled"
         private const val KEY_THEME_MODE = "app_theme_mode"
+        private const val KEY_TOP_AMBIENT_ENABLED = "top_ambient_enabled"
+        private const val KEY_TOP_AMBIENT_COLOR_ARGB = "top_ambient_color_argb"
+
+        const val DEFAULT_TOP_AMBIENT_COLOR_ARGB: Int = 0xFFFFE8ED.toInt()
 
         @Volatile
         private var INSTANCE: PlayerSettingsManager? = null

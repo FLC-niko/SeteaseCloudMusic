@@ -19,6 +19,7 @@ import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.components.ProvideDeviceTilt
 import com.example.seteasecloudmusic.core.ui.theme.SeteaseCloudMusicTheme
+import com.example.seteasecloudmusic.core.ui.theme.TopAmbientAppearance
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
 
 /**
@@ -83,7 +84,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeMode by playerSettingsManager.themeMode.collectAsStateWithLifecycle()
-            SeteaseCloudMusicTheme(themeMode = themeMode) {
+            val topAmbientEnabled by playerSettingsManager.topAmbientEnabled.collectAsStateWithLifecycle()
+            val topAmbientColorArgb by playerSettingsManager.topAmbientColorArgb.collectAsStateWithLifecycle()
+            SeteaseCloudMusicTheme(
+                themeMode = themeMode,
+                topAmbientAppearance = TopAmbientAppearance(
+                    enabled = topAmbientEnabled,
+                    colorArgb = topAmbientColorArgb
+                )
+            ) {
                 ProvideDeviceTilt {
                     com.example.seteasecloudmusic.core.ui.adaptive.ProvideAdaptiveWindow(this) {
                         AppNavigation()

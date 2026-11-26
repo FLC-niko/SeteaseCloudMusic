@@ -92,6 +92,7 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.AmbientTopPinkBackground
 import com.example.seteasecloudmusic.core.ui.components.GlassSliderDefaults
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassSegmentedBar
 import com.example.seteasecloudmusic.core.ui.components.LocalGlassBackdrop
@@ -309,6 +310,7 @@ fun SearchScreenContent(
                         .fillMaxSize()
                         .layerBackdrop(searchBackdrop)
                 ) {
+                    AmbientTopPinkBackground(baseColor = PageBackground)
                     when {
                         // 1. 用户尚未输入：展示空白状态（顶部搜索历史 + 底部热搜列表）
                         uiState.query.isEmpty() -> {

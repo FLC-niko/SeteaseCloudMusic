@@ -81,10 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
@@ -102,6 +99,7 @@ import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.AmbientTopPinkBackground
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.GlassSurface
@@ -614,48 +612,9 @@ private fun MineCollapsedTopBar(
 
 @Composable
 private fun MineAmbientBackground() {
-    val isDark = AppTheme.isDark
-    val baseColor = MinePageBase
-    val warmTopStart = if (isDark) Color(0xFF5A1828).copy(alpha = 0.42f) else Color(0xFFFFE8ED).copy(alpha = 0.82f)
-    val warmTopMid = if (isDark) Color(0xFF241B4B).copy(alpha = 0.28f) else Color(0xFFF2EEFF).copy(alpha = 0.32f)
-    val leftGlow = if (isDark) Color(0xFF10243C).copy(alpha = 0.26f) else Color(0xFFE9F5FF).copy(alpha = 0.30f)
-    val rightGlow = if (isDark) Color(0xFF3B1E18).copy(alpha = 0.20f) else Color(0xFFFFF1E8).copy(alpha = 0.24f)
-
-    // 三层氛围背景合并到同一个节点的 drawBehind 里：
-    // 原先三个各自带 .background(brush) 的 Box 会产生三个布局节点 + 三份绘制指令，
-    // 而这段内容既要在屏幕上画一遍、又要在 mineBackdrop 图层里录一遍。
-    // 合并后绘制顺序与像素结果完全一致，但节点数从 3 降到 1。
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                drawRect(baseColor)
-                // 顶部暖色渐晕：原先是 height(420.dp) 的 Box，
-                // 因此渐变必须显式限定在 0..420dp，否则会按整个画布高度拉伸。
-                val warmBandHeight = 420.dp.toPx()
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            warmTopStart,
-                            warmTopMid,
-                            Color.Transparent
-                        ),
-                        startY = 0f,
-                        endY = warmBandHeight
-                    ),
-                    size = Size(size.width, warmBandHeight)
-                )
-                // 左右冷/暖对冲微光，铺满整屏
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            leftGlow,
-                            Color.Transparent,
-                            rightGlow
-                        )
-                    )
-                )
-            }
+    AmbientTopPinkBackground(
+        baseColor = MinePageBase,
+        includeSideGlows = true
     )
 }
 

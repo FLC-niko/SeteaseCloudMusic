@@ -83,6 +83,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.seteasecloudmusic.core.ui.components.BloomStrokeDefaults
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.ui.components.bloomStroke
+import com.example.seteasecloudmusic.core.ui.components.formatTopAmbientColorLabel
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -104,8 +105,11 @@ fun AccountLoginSheetContent(
     val contentScrollState = rememberScrollState()
     var showAudioQualityDialog by remember { mutableStateOf(false) }
     var showThemeModeDialog by remember { mutableStateOf(false) }
+    var showTopAmbientColorDialog by remember { mutableStateOf(false) }
     val audioQuality by viewModel.playerSettingsManager.audioQuality.collectAsStateWithLifecycle()
     val themeMode by viewModel.playerSettingsManager.themeMode.collectAsStateWithLifecycle()
+    val topAmbientEnabled by viewModel.playerSettingsManager.topAmbientEnabled.collectAsStateWithLifecycle()
+    val topAmbientColorArgb by viewModel.playerSettingsManager.topAmbientColorArgb.collectAsStateWithLifecycle()
     val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
     val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
     val predictiveBackEnabled by viewModel.playerSettingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
@@ -162,6 +166,10 @@ fun AccountLoginSheetContent(
                             onAudioQualityClick = { showAudioQualityDialog = true },
                             themeMode = themeMode,
                             onThemeModeClick = { showThemeModeDialog = true },
+                            topAmbientEnabled = topAmbientEnabled,
+                            onTopAmbientEnabledChange = { viewModel.playerSettingsManager.setTopAmbientEnabled(it) },
+                            topAmbientColorArgb = topAmbientColorArgb,
+                            onTopAmbientColorClick = { showTopAmbientColorDialog = true },
                             bluetoothLyricsEnabled = bluetoothLyricsEnabled,
                             onBluetoothLyricsChange = { viewModel.playerSettingsManager.setBluetoothLyricsEnabled(it) },
                             superLyricApiEnabled = superLyricApiEnabled,
@@ -242,6 +250,21 @@ fun AccountLoginSheetContent(
             )
         }
 
+        if (showTopAmbientColorDialog) {
+            TopAmbientColorPickerDialog(
+                currentColorArgb = topAmbientColorArgb,
+                isAmbientEnabled = topAmbientEnabled,
+                onApply = { argb ->
+                    viewModel.playerSettingsManager.setTopAmbientColorArgb(argb)
+                    if (!topAmbientEnabled) {
+                        viewModel.playerSettingsManager.setTopAmbientEnabled(true)
+                    }
+                    showTopAmbientColorDialog = false
+                },
+                onDismiss = { showTopAmbientColorDialog = false }
+            )
+        }
+
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -314,6 +337,10 @@ private fun MethodSelectionPanel(
     onAudioQualityClick: () -> Unit,
     themeMode: AppThemeMode,
     onThemeModeClick: () -> Unit,
+    topAmbientEnabled: Boolean,
+    onTopAmbientEnabledChange: (Boolean) -> Unit,
+    topAmbientColorArgb: Int,
+    onTopAmbientColorClick: () -> Unit,
     bluetoothLyricsEnabled: Boolean,
     onBluetoothLyricsChange: (Boolean) -> Unit,
     superLyricApiEnabled: Boolean,
@@ -397,6 +424,36 @@ private fun MethodSelectionPanel(
                 title = "外观模式",
                 trailingText = themeMode.title,
                 onClick = onThemeModeClick
+            )
+            SettingsDivider(dividerColor)
+            SettingsToggleRow(
+                title = "顶部氛围颜色",
+                checked = topAmbientEnabled,
+                onCheckedChange = onTopAmbientEnabledChange,
+                backdrop = backdrop
+            )
+            SettingsDivider(dividerColor)
+            SettingsNavigationRow(
+                title = "氛围调色盘",
+                trailingText = if (topAmbientEnabled) {
+                    formatTopAmbientColorLabel(topAmbientColorArgb)
+                } else {
+                    "已关闭"
+                },
+                trailingBadge = {
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Color(topAmbientColorArgb).copy(
+                                    alpha = if (topAmbientEnabled) 1f else 0.35f
+                                )
+                            )
+                            .border(1.dp, colors.coverBorder, CircleShape)
+                    )
+                },
+                onClick = onTopAmbientColorClick
             )
         }
 
@@ -542,6 +599,7 @@ private fun SettingsDivider(color: Color) {
 private fun SettingsNavigationRow(
     title: String,
     trailingText: String? = null,
+    trailingBadge: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val colors = AppTheme.colors
@@ -559,6 +617,10 @@ private fun SettingsNavigationRow(
             color = colors.textPrimary,
             modifier = Modifier.weight(1f)
         )
+        if (trailingBadge != null) {
+            trailingBadge()
+            Spacer(modifier = Modifier.size(8.dp))
+        }
         if (!trailingText.isNullOrBlank()) {
             Text(
                 text = trailingText,

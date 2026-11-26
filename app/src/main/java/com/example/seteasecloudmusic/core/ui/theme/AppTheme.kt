@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.core.view.WindowCompat
 import com.example.seteasecloudmusic.core.settings.AppThemeMode
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 
 /**
  * 根据浅色/深色主题调校封面取色 HSL：
@@ -150,7 +151,14 @@ val DarkAppColors = AppColorPalette(
     handleBar = Color(0xFF48484A)
 )
 
+@Immutable
+data class TopAmbientAppearance(
+    val enabled: Boolean = true,
+    val colorArgb: Int = PlayerSettingsManager.DEFAULT_TOP_AMBIENT_COLOR_ARGB
+)
+
 val LocalAppColors = staticCompositionLocalOf { LightAppColors }
+val LocalTopAmbientAppearance = staticCompositionLocalOf { TopAmbientAppearance() }
 
 object AppTheme {
     val colors: AppColorPalette
@@ -162,6 +170,11 @@ object AppTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalAppColors.current.isDark
+
+    val topAmbient: TopAmbientAppearance
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalTopAmbientAppearance.current
 }
 
 private val LightMaterialColorScheme = lightColorScheme(
@@ -203,6 +216,7 @@ private val DarkMaterialColorScheme = darkColorScheme(
 @Composable
 fun SeteaseCloudMusicTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    topAmbientAppearance: TopAmbientAppearance = TopAmbientAppearance(),
     content: @Composable () -> Unit
 ) {
     val darkTheme = resolveDarkTheme(themeMode, isSystemInDarkTheme())
@@ -225,7 +239,10 @@ fun SeteaseCloudMusicTheme(
         }
     }
 
-    CompositionLocalProvider(LocalAppColors provides appColors) {
+    CompositionLocalProvider(
+        LocalAppColors provides appColors,
+        LocalTopAmbientAppearance provides topAmbientAppearance
+    ) {
         MaterialTheme(
             colorScheme = materialColorScheme
         ) {

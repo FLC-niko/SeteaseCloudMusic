@@ -85,6 +85,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.AmbientTopPinkBackground
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicMorphingTopBar
 import com.example.seteasecloudmusic.core.ui.components.AppleMusicTopBarDefaults
 import com.example.seteasecloudmusic.core.ui.components.RoamStaggeredCoverStack
@@ -254,6 +255,7 @@ internal fun RadioScreenContent(
                 .fillMaxSize()
                 .layerBackdrop(radioBackdrop)
         ) {
+            AmbientTopPinkBackground(baseColor = RadioBackground)
         val sectionTopPadding = if (LocalAdaptiveWindow.current.width >= 800.dp) 16.dp else 26.dp
         AdaptiveSectionColumn(
             state = lazyListState,
