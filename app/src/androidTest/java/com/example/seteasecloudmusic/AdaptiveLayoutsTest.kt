@@ -888,7 +888,8 @@ private fun FixturePage(page: String, tracks: List<Track>, playlistCount: Int = 
                 similarArtists = userPlaylists.map { ArtistSummary(it.id, it.name, it.coverUrl) },
                 description = ArtistDescription("用音乐记录日常，让每一个平凡的时刻拥有自己的旋律。", emptyList())), {}, {}, {}, {}, {}, {})
             "search" -> SearchScreenContent(SearchUiState(query = "Luna", tracks = tracks,
-                suggestions = SearchSuggestions(artists = userPlaylists.map { ArtistSuggestion(it.id, it.name, it.coverUrl) })), 0.dp, bottom, {}, { _, _, _ -> }, {}, {})
+                suggestions = SearchSuggestions(artists = userPlaylists.map { ArtistSuggestion(it.id, it.name, it.coverUrl) })),
+                0.dp, bottom, onSuggestionClick = {}, onArtistClick = { _, _, _ -> }, onTrackClick = {}, onRetryClick = {})
             "discover" -> DiscoverScreen(DiscoverUiState(newsongs = tracks,
                 personalizedPlaylists = userPlaylists.map { DiscoverPlaylist(it.id, it.name, it.coverUrl) },
                 hotPlaylists = userPlaylists.map { DiscoverPlaylist(it.id, it.name, it.coverUrl) },

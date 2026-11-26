@@ -139,6 +139,6 @@ class AudioFormatResolutionTest {
 
         assertEquals("FLAC", details.formatTag)
         assertEquals("FLAC (预设)", details.formatText)
-        assertEquals("Hi-Res Lossless", details.summaryBadge)
+        assertEquals("Hi-Res", details.summaryBadge)
     }
 }
