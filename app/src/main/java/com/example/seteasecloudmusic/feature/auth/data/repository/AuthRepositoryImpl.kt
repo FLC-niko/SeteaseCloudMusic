@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.feature.auth.data.repository
 
 import android.content.Context
+import com.example.seteasecloudmusic.core.auth.AuthCookieStore
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.core.auth.LoginMethod
 import com.example.seteasecloudmusic.core.common.runCatchingCancellable
@@ -286,11 +287,10 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     private fun loadSessionFromPrefs(): AuthSession? {
-        val cookie = prefs.getString(KEY_COOKIE, null)
-            ?: context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE).getString(COOKIE_KEY, null)
-        if (cookie.isNullOrBlank()) return null
+        val cookie = AuthCookieStore.getCookie(context)
+        if (!AuthCookieStore.hasValidLoginCookie(cookie)) return null
 
-        // 确保冷启动时网络拦截器的 Cookie 存储即刻同步有效
+        // 确保冷启动时双存储中的 Cookie 清洗并同步一致
         saveNetworkCookie(cookie)
 
         val userId = prefs.getLong(KEY_USER_ID, -1L).takeIf { it != -1L }
@@ -313,29 +313,16 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     private fun clearSession() {
-        prefs.edit().clear().apply()
+        AuthCookieStore.clearAllSessionAndCookies(context)
         _authState.value = null
     }
 
     private fun clearNetworkCookie() {
-        context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(COOKIE_KEY)
-            .apply()
+        AuthCookieStore.clearCookies(context)
     }
 
     private fun saveNetworkCookie(cookie: String?) {
-        if (cookie.isNullOrBlank()) {
-            return
-        }
-        val cleanCookie = com.example.seteasecloudmusic.core.network.CookieSanitizer
-            .sanitize(cookie)
-            .ifBlank { cookie }
-
-        context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(COOKIE_KEY, cleanCookie)
-            .apply()
+        AuthCookieStore.saveSanitizedCookie(context, cookie)
     }
 
     private data class ProfileSnapshot(
@@ -350,8 +337,6 @@ class AuthRepositoryImpl @Inject constructor(
 
     companion object {
         private const val PREF_NAME = "auth_prefs"
-        private const val COOKIE_PREF_NAME = "auth_cookies"
-        private const val COOKIE_KEY = "cookie_string"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_NICKNAME = "nickname"
         private const val KEY_AVATAR_URL = "avatar_url"

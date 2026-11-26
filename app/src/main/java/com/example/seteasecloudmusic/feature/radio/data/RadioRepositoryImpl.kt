@@ -40,20 +40,13 @@ class RadioRepositoryImpl @Inject constructor(
 ) : RadioRepository {
 
     private fun getLoggedInUserId(): Long {
-        return context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            .getLong("user_id", -1L)
+        return com.example.seteasecloudmusic.core.auth.AuthCookieStore
+            .getLoggedInUserId(context) ?: -1L
     }
 
     private fun hasLoginCookie(): Boolean {
-        val authCookies = context.getSharedPreferences("auth_cookies", Context.MODE_PRIVATE)
-            .getString("cookie_string", null)
-        if (!authCookies.isNullOrBlank() && (authCookies.contains("MUSIC_U") || authCookies.contains("__csrf"))) {
-            return true
-        }
-        val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-        val cookie = prefs.getString("cookie", null)
-        val musicU = prefs.getString("music_u", null)
-        return (!cookie.isNullOrBlank() && cookie.contains("MUSIC_U")) || !musicU.isNullOrBlank()
+        return com.example.seteasecloudmusic.core.auth.AuthCookieStore
+            .hasValidLoginCookie(context)
     }
 
     // ==========================================

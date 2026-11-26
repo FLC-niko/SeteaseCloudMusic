@@ -1,6 +1,7 @@
 package com.example.seteasecloudmusic.core.network.interceptor
 
 import android.content.Context
+import com.example.seteasecloudmusic.core.auth.AuthCookieStore
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
@@ -24,11 +25,12 @@ class AuthInterceptor(private val context: Context) : Interceptor {
 
     // ==================== 常量定义 ====================
 
-    /** SharedPreferences 的文件名，用来存储 Cookie */
-    private val COOKIE_PREF_NAME = "auth_cookies"
-
-    /** Cookie 在 SharedPreferences 中的 key 名称 */
-    private val COOKIE_KEY = "cookie_string"
+    /**
+     * 仅驻留内存的预登录临时会话 Cookie（如 /captcha/sent 下发的 NMTID / __csrf 等），
+     * 用于保证发验证码与提交登录处于同一会话上下文，同时不污染已登录态存储。
+     */
+    private val preLoginCookieLock = Any()
+    private val preLoginCookies = LinkedHashMap<String, String>()
 
     // ==================== 核心拦截方法 ====================
 
@@ -85,11 +87,16 @@ class AuthInterceptor(private val context: Context) : Interceptor {
      * 每次请求都带上这个 Cookie，服务器就知道你是谁了。
      */
     private fun addCookiesToRequest(request: Request): Request {
-        // 从 SharedPreferences 读取存储的 Cookie
+        // 从 SharedPreferences 读取存储的 Cookie；若未登录则回退内存中的预登录会话 Cookie
         val savedCookie = getSavedCookie()
+        val effectiveCookie = if (!savedCookie.isNullOrEmpty()) {
+            savedCookie
+        } else {
+            getPreLoginCookieString()
+        }
 
-        // 如果没有 Cookie（用户未登录），直接返回原始请求
-        if (savedCookie.isNullOrEmpty()) {
+        // 如果没有任何可用 Cookie，直接返回原始请求
+        if (effectiveCookie.isNullOrEmpty()) {
             return request
         }
 
@@ -99,14 +106,14 @@ class AuthInterceptor(private val context: Context) : Interceptor {
         // 官方网易云接口（如 clientlog3.music.163.com）只接受标准 Cookie 请求头，不能附加 ?cookie= 查询参数
         if (host.contains("163.com") || host.contains("netease.com")) {
             return request.newBuilder()
-                .header("Cookie", savedCookie)
+                .header("Cookie", effectiveCookie)
                 .build()
         }
 
         // Node.js API 代理服务：仅附带清洗去重后的有效会话 Cookie，避免约 4KB Set-Cookie 属性冗余拖慢每个请求 URL
         val cleanCookie = com.example.seteasecloudmusic.core.network.CookieSanitizer
-            .sanitize(savedCookie)
-            .ifBlank { savedCookie }
+            .sanitize(effectiveCookie)
+            .ifBlank { effectiveCookie }
         val updatedUrl = if (originalUrl.queryParameter("cookie") == null) {
             originalUrl.newBuilder()
                 .addQueryParameter("cookie", cleanCookie)
@@ -117,7 +124,7 @@ class AuthInterceptor(private val context: Context) : Interceptor {
 
         return request.newBuilder()
             .url(updatedUrl)
-            .header("Cookie", savedCookie)
+            .header("Cookie", effectiveCookie)
             .build()
     }
 
@@ -134,16 +141,26 @@ class AuthInterceptor(private val context: Context) : Interceptor {
     private fun saveCookiesFromResponse(response: Response) {
         val path = response.request.url.encodedPath
 
-        // 仅在登录/认证接口或响应头明确包含 MUSIC_U 时更新 Cookie，避免普通请求冲刷掉核心登录态
+        // 仅在登录/认证接口或响应头明确包含 MUSIC_U 时更新持久化登录态 Cookie，避免普通请求冲刷掉核心登录态
         val headerCookie = extractCookieFromHeaders(response)
-        if (!headerCookie.isNullOrBlank() && (path.contains("login") || headerCookie.contains("MUSIC_U"))) {
-            saveCookie(headerCookie)
+        if (!headerCookie.isNullOrBlank()) {
+            if (path.contains("login") || headerCookie.contains("MUSIC_U")) {
+                saveCookie(headerCookie)
+                if (headerCookie.contains("MUSIC_U")) {
+                    clearPreLoginCookies()
+                }
+            } else if (getSavedCookie().isNullOrBlank() && path.contains("captcha")) {
+                savePreLoginCookies(headerCookie)
+            }
         }
 
         // 某些登录接口（例如二维码登录）会把更完整的 cookie 放在响应体里。
         val bodyCookie = extractCookieFromBody(response)
         if (!bodyCookie.isNullOrBlank()) {
             saveCookie(bodyCookie)
+            if (bodyCookie.contains("MUSIC_U")) {
+                clearPreLoginCookies()
+            }
         }
     }
 
@@ -191,86 +208,53 @@ class AuthInterceptor(private val context: Context) : Interceptor {
      * Cookie 需要持久化保存，用户关闭 App 后下次还能用。
      */
     private fun getSavedCookie(): String? {
-        // 优先从 auth_cookies 读取
-        val prefs = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-        val cookie = prefs.getString(COOKIE_KEY, null)
-        if (!cookie.isNullOrBlank()) {
-            return cookie
-        }
-
-        // 兜底：从 auth_prefs 读取用户登录时保存的完整 cookie
-        val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-        return authPrefs.getString("cookie", null)
+        return AuthCookieStore.getCookie(context)
     }
 
     /**
-     * saveCookie - 将 Cookie 保存到本地存储
-     *
-     * 【SharedPreferences.Editor】
-     * SharedPreferences 本身只能读，要写入需要先获取 Editor。
-     * apply() 会异步保存（不会阻塞线程），推荐使用。
+     * saveCookie - 将 Cookie 合并并同步保存到统一存储中
      */
     private fun saveCookie(cookie: String) {
-        val mergedCookie = mergeCookies(getSavedCookie(), cookie)
-
-        // 存入 auth_cookies
-        context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(COOKIE_KEY, mergedCookie)
-            .apply()
-
-        // 同步存入 auth_prefs 保持多模块一致
-        context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            .edit()
-            .putString("cookie", mergedCookie)
-            .apply()
-    }
-
-    private fun mergeCookies(existingCookie: String?, newCookie: String): String {
-        val cookiePairs = linkedMapOf<String, String>()
-
-        fun append(cookie: String?) {
-            cookie
-                ?.split(";")
-                ?.map { it.trim() }
-                ?.filter { it.contains("=") }
-                ?.forEach { pair ->
-                    val key = pair.substringBefore("=").trim()
-                    val value = pair.substringAfter("=").trim()
-                    // 只有当键值对非空时才记录，避免空值覆盖有效的 MUSIC_U 登录 Cookie
-                    if (key.isNotBlank() && value.isNotBlank()) {
-                        cookiePairs[key] = pair
-                    }
-                }
-        }
-
-        append(existingCookie)
-        append(newCookie)
-
-        return cookiePairs.values.joinToString("; ")
+        AuthCookieStore.mergeAndSaveCookie(context, cookie)
     }
 
     // ==================== 公开的辅助方法 ====================
 
     /**
-     * clearCookie - 清除保存的 Cookie
-     *
-     * 【什么时候调用？】
-     * 用户退出登录时，需要清除身份信息。
-     * 可以在 AuthRepository 的 logout 方法中调用。
+     * clearCookie - 清除全部登录 Cookie 与内存中的预登录临时 Cookie
      */
+    private fun getPreLoginCookieString(): String? = synchronized(preLoginCookieLock) {
+        if (preLoginCookies.isEmpty()) return null
+        preLoginCookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
+    private fun savePreLoginCookies(rawCookie: String) {
+        val pairs = com.example.seteasecloudmusic.core.network.CookieSanitizer.parsePairs(rawCookie)
+        if (pairs.isEmpty()) return
+        synchronized(preLoginCookieLock) {
+            for ((k, v) in pairs) {
+                if (k != "MUSIC_U" && v.isNotBlank()) {
+                    preLoginCookies[k] = v
+                }
+            }
+        }
+    }
+
+    private fun clearPreLoginCookies() {
+        synchronized(preLoginCookieLock) {
+            preLoginCookies.clear()
+        }
+    }
+
     fun clearCookie() {
-        val prefs = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit().remove(COOKIE_KEY).apply()
+        clearPreLoginCookies()
+        AuthCookieStore.clearCookies(context)
     }
 
     /**
-     * hasCookie - 检查是否有保存的 Cookie
-     *
-     * 【用途】
-     * 判断用户是否已登录（有 Cookie ≈ 已登录）。
+     * hasCookie - 统一判断是否持有有效的登录 Cookie（必须包含 `MUSIC_U`）。
      */
     fun hasCookie(): Boolean {
-        return !getSavedCookie().isNullOrEmpty()
+        return AuthCookieStore.hasValidLoginCookie(context)
     }
 }

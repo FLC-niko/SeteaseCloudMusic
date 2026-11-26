@@ -1,7 +1,14 @@
 package com.example.seteasecloudmusic.core.network.ncbl
 
 import android.content.Context
+import com.example.seteasecloudmusic.core.auth.AuthCookieStore
+import com.example.seteasecloudmusic.core.network.CookieSanitizer
 import com.example.seteasecloudmusic.core.network.SmartDns
+import com.example.seteasecloudmusic.core.network.local.NeteaseCryptoMode
+import com.example.seteasecloudmusic.core.network.local.NeteaseRequestContextBuilder
+import com.example.seteasecloudmusic.core.network.local.NeteaseTokenStore
+import com.example.seteasecloudmusic.core.network.local.SharedPreferencesNeteaseTokenStore
+import com.google.gson.JsonObject
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -228,94 +235,30 @@ class NcblReporter @Inject constructor(
         return result.toByteArray()
     }
 
-    private fun getSavedCookie(): String {
-        val sp = context.getSharedPreferences("auth_cookies", Context.MODE_PRIVATE)
-        return sp.getString("cookie_string", "") ?: ""
+    private val tokenStore: NeteaseTokenStore by lazy {
+        SharedPreferencesNeteaseTokenStore.getInstance(context)
     }
 
-    private data class NcblContext(
+    private fun getSavedCookie(): String {
+        return AuthCookieStore.getCookie(context).orEmpty()
+    }
+
+    internal data class NcblContext(
         val token: String,
         val cleanCookieStr: String,
+        val metaJson: String,
         val metaBytes: ByteArray,
         val now: Long,
         val ts: Int,
-        val appVersion: String,
-        val appVersionCode: String
+        val appver: String,
+        val userAgent: String
     )
 
     private fun createNcblContext(): NcblContext? {
-        val rawCookie = getSavedCookie()
-        if (rawCookie.isBlank()) return null
-
-        val cookieMap = com.example.seteasecloudmusic.core.network.CookieSanitizer.parsePairs(rawCookie)
-
-        val token = cookieMap["MUSIC_U"] ?: ""
-        if (token.isBlank()) return null
-
-        val now = System.currentTimeMillis()
-        val ts = (now / 1000L).toInt()
-        val sessionId = cookieMap["JSESSIONID-WYYY"] ?: ""
-        val nmtid = cookieMap["NMTID"] ?: ""
-        val csrf = cookieMap["__csrf"] ?: ""
-        val appVersion = "3.1.37"
-        val appVersionCode = "205354"
-        val clientSign = "18:C0:4D:B9:8F:FE@@@453832335F384641365F424635335F303030315F303031425F343434415F343643365F333638332@@@@@@6ff673ef74955b38bce2fa8562d95c976ed4758b1227c4e9ee345987cee17bc9"
-
-        val randCid = ByteArray(3)
-        random.nextBytes(randCid)
-        val cidHex = randCid.joinToString("") { "%02x".format(it) }
-        val wnmcid = "$cidHex.$now.01.0"
-
-        val cookieParts = listOf(
-            "JSESSIONID-WYYY=$sessionId",
-            "MUSIC_U=$token",
-            "NMTID=$nmtid",
-            "WEVNSM=1.0.0",
-            "WNMCID=$wnmcid",
-            "__csrf=$csrf",
-            "__remember_me=true",
-            "_iuqxldmzr_=33",
-            "_ntes_nnid=,",
-            "_ntes_nuid=",
-            "appver=$appVersion.$appVersionCode",
-            "channel=netease",
-            "clientSign=$clientSign",
-            "deviceId=",
-            "mode=",
-            "ntes_kaola_ad=1",
-            "os=pc",
-            "osver=Microsoft-Windows-10-Professional-build-19045-64bit"
-        )
-        val cleanCookieStr = cookieParts.joinToString("; ")
-
-        val meta = JSONObject().apply {
-            put("JSESSIONID-WYYY", sessionId)
-            put("MUSIC_U", token)
-            put("NMTID", nmtid)
-            put("WEVNSM", "1.0.0")
-            put("WNMCID", wnmcid)
-            put("__csrf", csrf)
-            put("_iuqxldmzr_", "33")
-            put("_ntes_nnid", ",")
-            put("_ntes_nuid", "")
-            put("appver", "$appVersion.$appVersionCode")
-            put("channel", "netease")
-            put("clientSign", clientSign)
-            put("deviceId", "")
-            put("mode", "")
-            put("ntes_kaola_ad", "1")
-            put("os", "pc")
-            put("osver", "Microsoft-Windows-10-Professional-build-19045-64bit")
-        }
-
-        return NcblContext(
-            token = token,
-            cleanCookieStr = cleanCookieStr,
-            metaBytes = meta.toString().toByteArray(Charsets.UTF_8),
-            now = now,
-            ts = ts,
-            appVersion = appVersion,
-            appVersionCode = appVersionCode
+        return buildNcblContext(
+            rawCookie = getSavedCookie(),
+            tokenStore = tokenStore,
+            now = System.currentTimeMillis()
         )
     }
 
@@ -334,7 +277,7 @@ class NcblReporter @Inject constructor(
             .url(uploadUrl)
             .post(body)
             .header("Referer", "https://music.163.com/di")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/${ctx.appVersion}")
+            .header("User-Agent", ctx.userAgent)
             .header("Cookie", ctx.cleanCookieStr)
             .build()
 
@@ -459,5 +402,92 @@ class NcblReporter @Inject constructor(
         val totalSec = if (totalDurationSeconds > 0) totalDurationSeconds else playDurationSeconds
         reportPlv(songId, totalSec, sourceId)
         reportPld(songId, playDurationSeconds, totalSec, sourceId, endReason = "interrupt")
+    }
+
+    companion object {
+        /**
+         * 构造与主网络栈（[NeteaseRequestContextBuilder] + [NeteaseTokenStore]）完全一致的 NCBL 上报上下文：
+         * 复用本机持久化的 deviceId、_ntes_nuid、_ntes_nnid、WNMCID、clientSign，以及统一的 PC 版本号与 UA。
+         */
+        internal fun buildNcblContext(
+            rawCookie: String?,
+            tokenStore: NeteaseTokenStore,
+            now: Long = System.currentTimeMillis()
+        ): NcblContext? {
+            if (rawCookie.isNullOrBlank()) return null
+            val cookieMap = CookieSanitizer.parsePairs(rawCookie)
+            val token = cookieMap["MUSIC_U"].orEmpty()
+            if (token.isBlank()) return null
+
+            val pcProfile = NeteaseRequestContextBuilder.OS_MAP.getValue("pc")
+            val ts = (now / 1000L).toInt()
+            val sessionId = cookieMap["JSESSIONID-WYYY"].orEmpty()
+            val nmtid = cookieMap["NMTID"].orEmpty()
+            val csrf = cookieMap["__csrf"].orEmpty()
+            val deviceId = cookieMap["deviceId"]?.takeIf { it.isNotBlank() } ?: tokenStore.getOrCreateDeviceId()
+            val ntesNuid = cookieMap["_ntes_nuid"]?.takeIf { it.isNotBlank() } ?: tokenStore.getOrCreateNtesNuid()
+            val ntesNnid = cookieMap["_ntes_nnid"]?.takeIf { it.isNotBlank() } ?: tokenStore.getOrCreateNtesNnid(now)
+            val wnmcid = cookieMap["WNMCID"]?.takeIf { it.isNotBlank() } ?: tokenStore.getOrCreateWnmcid(now)
+            val clientSign = tokenStore.getOrCreateClientSign()
+            val appver = pcProfile.appver
+            val os = pcProfile.os
+            val osver = pcProfile.osver
+            val channel = pcProfile.channel
+            val userAgent = NeteaseRequestContextBuilder.chooseUserAgent(NeteaseCryptoMode.API, "pc")
+
+            val cookieParts = listOf(
+                "JSESSIONID-WYYY=$sessionId",
+                "MUSIC_U=$token",
+                "NMTID=$nmtid",
+                "WEVNSM=1.0.0",
+                "WNMCID=$wnmcid",
+                "__csrf=$csrf",
+                "__remember_me=true",
+                "_iuqxldmzr_=33",
+                "_ntes_nnid=$ntesNnid",
+                "_ntes_nuid=$ntesNuid",
+                "appver=$appver",
+                "channel=$channel",
+                "clientSign=$clientSign",
+                "deviceId=$deviceId",
+                "mode=",
+                "ntes_kaola_ad=1",
+                "os=$os",
+                "osver=$osver"
+            )
+            val cleanCookieStr = cookieParts.joinToString("; ")
+
+            val meta = JsonObject().apply {
+                addProperty("JSESSIONID-WYYY", sessionId)
+                addProperty("MUSIC_U", token)
+                addProperty("NMTID", nmtid)
+                addProperty("WEVNSM", "1.0.0")
+                addProperty("WNMCID", wnmcid)
+                addProperty("__csrf", csrf)
+                addProperty("_iuqxldmzr_", "33")
+                addProperty("_ntes_nnid", ntesNnid)
+                addProperty("_ntes_nuid", ntesNuid)
+                addProperty("appver", appver)
+                addProperty("channel", channel)
+                addProperty("clientSign", clientSign)
+                addProperty("deviceId", deviceId)
+                addProperty("mode", "")
+                addProperty("ntes_kaola_ad", "1")
+                addProperty("os", os)
+                addProperty("osver", osver)
+            }
+            val metaJson = meta.toString()
+
+            return NcblContext(
+                token = token,
+                cleanCookieStr = cleanCookieStr,
+                metaJson = metaJson,
+                metaBytes = metaJson.toByteArray(Charsets.UTF_8),
+                now = now,
+                ts = ts,
+                appver = appver,
+                userAgent = userAgent
+            )
+        }
     }
 }

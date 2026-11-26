@@ -350,9 +350,8 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     }
 
     private suspend fun loadLikedPlaylistSeedPool(): Pair<Long?, List<Track>> {
-        val userId = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            .getLong("user_id", -1L)
-        if (userId <= 0L || !hasLoginCookie()) return null to emptyList()
+        val userId = com.example.seteasecloudmusic.core.auth.AuthCookieStore
+            .getLoggedInUserId(context) ?: return null to emptyList()
 
         val likedId = mineCacheManager.getUserPlaylists(userId)?.likedPlaylist?.id
             ?: runCatching {
@@ -848,8 +847,8 @@ class HomeRecommendRepositoryImpl @Inject constructor(
 
     override suspend fun getUserLikedMusicCover(): String? = withContext(Dispatchers.IO) {
         try {
-            val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            val userId = prefs.getLong("user_id", -1L).takeIf { it > 0 } ?: return@withContext null
+            val userId = com.example.seteasecloudmusic.core.auth.AuthCookieStore
+                .getLoggedInUserId(context) ?: return@withContext null
 
             // 1. 优先从我的页面缓存中提取“我喜欢的音乐”封面
             val cachedGroup = mineCacheManager.getUserPlaylists(userId)
@@ -997,16 +996,10 @@ class HomeRecommendRepositoryImpl @Inject constructor(
     }
 
     private fun hasLoginCookie(): Boolean {
-        val cookie = context.getSharedPreferences(COOKIE_PREF_NAME, Context.MODE_PRIVATE)
-            .getString(COOKIE_KEY, null)
-        if (!cookie.isNullOrBlank()) return true
-        return !context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            .getString("cookie", null).isNullOrBlank()
+        return com.example.seteasecloudmusic.core.auth.AuthCookieStore.hasValidLoginCookie(context)
     }
 
     companion object {
-        private const val COOKIE_PREF_NAME = "auth_cookies"
-        private const val COOKIE_KEY = "cookie_string"
         private const val NEW_SONG_RADAR_PLAYLIST_ID = 5300458264L
     }
 }
