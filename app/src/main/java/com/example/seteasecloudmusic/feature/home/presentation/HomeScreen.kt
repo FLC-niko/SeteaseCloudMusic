@@ -61,17 +61,15 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import com.example.seteasecloudmusic.feature.home.domain.repository.RadarPlaylistData
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.WarningAmber
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -302,10 +300,10 @@ internal fun HomeScreenContent(
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
+                        AppLoadingIndicator(
                             color = HomeAccent,
                             strokeWidth = 2.dp,
-                            modifier = Modifier.size(24.dp)
+                            size = 24.dp
                         )
                     }
                 }
@@ -314,8 +312,8 @@ internal fun HomeScreenContent(
             if (!uiState.errorMessage.isNullOrBlank()) {
                 item(key = "home_error_message", fullSpan = true) {
                     Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
+                        cornerRadius = 16.dp,
+                        colors = CardDefaults.defaultColors(color = colors.errorContainer),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 8.dp)
@@ -325,7 +323,7 @@ internal fun HomeScreenContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.WarningAmber,
+                                painter = painterResource(R.drawable.ic_warning),
                                 contentDescription = null,
                                 tint = colors.errorIcon,
                                 modifier = Modifier.size(20.dp)
@@ -814,7 +812,7 @@ private fun HomeErrorState(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.WarningAmber,
+                painter = painterResource(R.drawable.ic_warning),
                 contentDescription = null,
                 tint = colors.errorIcon,
                 modifier = Modifier.size(28.dp)
@@ -824,7 +822,10 @@ private fun HomeErrorState(
                 color = colors.errorContent,
                 fontSize = 13.sp
             )
-            Button(onClick = onRetryClick) {
+            Button(
+                onClick = onRetryClick,
+                colors = ButtonDefaults.buttonColorsPrimary()
+            ) {
                 Text(text = "重试")
             }
         }
@@ -852,7 +853,10 @@ private fun HomeEmptyState(
                 color = HomeSecondary,
                 fontSize = 12.sp
             )
-            Button(onClick = onRefreshClick) {
+            Button(
+                onClick = onRefreshClick,
+                colors = ButtonDefaults.buttonColorsPrimary()
+            ) {
                 Text(text = "刷新")
             }
         }
@@ -1143,7 +1147,7 @@ private fun SongTagBadge(tag: String) {
         ) {
             if (hasHeart) {
                 Icon(
-                    imageVector = Icons.Filled.Favorite,
+                    painter = painterResource(R.drawable.ic_heart_filled),
                     contentDescription = null,
                     tint = textColor,
                     modifier = Modifier.size(9.dp)

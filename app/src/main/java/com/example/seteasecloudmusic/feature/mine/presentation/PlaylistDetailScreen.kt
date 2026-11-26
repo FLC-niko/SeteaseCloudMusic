@@ -63,20 +63,18 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.MusicNote
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -598,7 +596,7 @@ fun PlaylistDetailScreen(
                                 if (isLoading && currentDetail.tracks.isEmpty()) {
                                     item {
                                         Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator(color = if (paneDark) Color.White else PlaylistAccentColor)
+                                            AppLoadingIndicator(color = if (paneDark) Color.White else PlaylistAccentColor)
                                         }
                                     }
                                 }
@@ -933,7 +931,7 @@ private fun ExpandedPlaylistToolbar(
                 contentDescription = if (back) "返回" else "更多操作"
             ) {
                 if (back) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(20.dp), tint = tint)
+                    Icon(MiuixIcons.Back, null, Modifier.size(20.dp), tint = tint)
                 } else {
                     AppleMusicMoreIcon(tint = tint, size = 20.dp)
                 }
@@ -1406,10 +1404,10 @@ private fun CompactPlaylistDetailScreen(
                             .padding(vertical = 48.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(32.dp),
+                        AppLoadingIndicator(
                             color = if (isDark) Color.White else PlaylistAccentColor,
-                            strokeWidth = 2.5.dp
+                            strokeWidth = 2.5.dp,
+                            size = 32.dp
                         )
                     }
                 }
@@ -1522,7 +1520,7 @@ private fun CompactPlaylistDetailScreen(
                     val layoutMaxWidth = minOf(maxWidth - 48.dp, dockedMaxTextWidth)
                     Text(
                         text = detail.displayTitle,
-                        style = MaterialTheme.typography.titleLarge.copy(
+                        style = MiuixTheme.textStyles.title2.copy(
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Color.White else PlaylistTextPrimary
@@ -1573,7 +1571,7 @@ private fun CompactPlaylistDetailScreen(
                         modifier = Modifier.align(Alignment.CenterStart)
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = MiuixIcons.Back,
                             contentDescription = null,
                             tint = buttonTint,
                             modifier = Modifier.size(20.dp)
@@ -1642,7 +1640,7 @@ private fun CompactPlaylistDetailScreen(
                         contentDescription = "返回"
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = MiuixIcons.Back,
                             contentDescription = null,
                             tint = editTint,
                             modifier = Modifier.size(20.dp)
@@ -1653,7 +1651,7 @@ private fun CompactPlaylistDetailScreen(
 
                     Text(
                         text = detail.displayTitle,
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = MiuixTheme.textStyles.headline1.copy(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = editTint
@@ -1718,7 +1716,7 @@ private fun CompactPlaylistDetailScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "全选",
-                            style = MaterialTheme.typography.bodyLarge.copy(
+                            style = MiuixTheme.textStyles.body1.copy(
                                 fontSize = 15.sp,
                                 color = if (isDark) Color.White else PlaylistTextPrimary
                             )
@@ -1727,7 +1725,7 @@ private fun CompactPlaylistDetailScreen(
 
                     Text(
                         text = "完成",
-                        style = MaterialTheme.typography.bodyLarge.copy(
+                        style = MiuixTheme.textStyles.body1.copy(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = PlaylistAccentColor
@@ -1942,7 +1940,7 @@ private fun PlaylistDetailTrackRow(
             } else {
                 Text(
                     text = index.toString(),
-                    style = MaterialTheme.typography.bodyMedium.copy(
+                    style = MiuixTheme.textStyles.body2.copy(
                         color = if (isDark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.48f),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
@@ -1971,7 +1969,7 @@ private fun PlaylistDetailTrackRow(
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Filled.MusicNote,
+                        imageVector = MiuixIcons.Music,
                         contentDescription = null,
                         tint = if (isDark) Color.White.copy(alpha = 0.8f) else PlaylistAccentColor,
                         modifier = Modifier.size(22.dp)
@@ -1991,7 +1989,7 @@ private fun PlaylistDetailTrackRow(
         ) {
             Text(
                 text = track.title,
-                style = MaterialTheme.typography.bodyLarge.copy(
+                style = MiuixTheme.textStyles.body1.copy(
                     color = if (isDark) Color.White else PlaylistTextPrimary,
                     fontWeight = FontWeight.Medium,
                     fontSize = 16.sp
@@ -2010,7 +2008,7 @@ private fun PlaylistDetailTrackRow(
 
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
+                style = MiuixTheme.textStyles.footnote1.copy(
                     color = if (isDark) Color(0x9EFFFFFF) else Color.Black.copy(alpha = 0.56f),
                     fontSize = 13.sp
                 ),
@@ -2033,7 +2031,7 @@ private fun PlaylistDetailTrackRow(
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.MoreVert,
+                    painter = painterResource(R.drawable.ic_more_vert),
                     contentDescription = "更多操作",
                     tint = if (isDark) Color(0x9EFFFFFF) else Color.Black.copy(alpha = 0.54f),
                     modifier = Modifier.size(18.dp)
@@ -2071,7 +2069,7 @@ private fun SelectionCheckbox(
     ) {
         if (isSelected) {
             Icon(
-                imageVector = Icons.Default.Check,
+                imageVector = MiuixIcons.Basic.Check,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(14.dp)

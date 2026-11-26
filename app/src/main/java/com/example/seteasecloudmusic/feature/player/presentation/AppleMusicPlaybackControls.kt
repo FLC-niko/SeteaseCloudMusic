@@ -33,8 +33,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.FloatState
@@ -497,10 +497,10 @@ fun AppleMusicMainTransportButtons(
             contentAlignment = Alignment.Center
         ) {
             if (isBuffering) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(32.dp),
+                AppLoadingIndicator(
                     color = if (hasTrack) Color.White else Color.White.copy(alpha = 0.35f),
-                    strokeWidth = 3.dp
+                    strokeWidth = 3.dp,
+                    size = 32.dp
                 )
             } else {
                 AppleMusicPlayPauseAnimatedIcon(

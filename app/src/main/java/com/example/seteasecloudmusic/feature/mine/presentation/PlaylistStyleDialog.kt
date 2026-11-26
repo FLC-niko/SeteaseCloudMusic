@@ -25,19 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Wallpaper
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,12 +35,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.Backdrop
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.SwitchDefaults
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.Sort
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 更多操作弹窗层级定义
@@ -144,7 +145,7 @@ fun PlaylistMoreActionSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Wallpaper,
+                                        painter = painterResource(R.drawable.ic_wallpaper),
                                         contentDescription = "歌单壁纸",
                                         tint = colors.accent,
                                         modifier = Modifier.size(20.dp)
@@ -155,7 +156,7 @@ fun PlaylistMoreActionSheet(
 
                                 Text(
                                     text = "歌单壁纸",
-                                    style = MaterialTheme.typography.titleMedium.copy(
+                                    style = MiuixTheme.textStyles.headline1.copy(
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.textPrimary
@@ -165,7 +166,7 @@ fun PlaylistMoreActionSheet(
 
                                 Text(
                                     text = currentStyle.title,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                    style = MiuixTheme.textStyles.body2.copy(
                                         fontSize = 14.sp,
                                         color = colors.textSecondary
                                     )
@@ -174,7 +175,7 @@ fun PlaylistMoreActionSheet(
                                 Spacer(modifier = Modifier.width(6.dp))
 
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    imageVector = MiuixIcons.ChevronForward,
                                     contentDescription = null,
                                     tint = colors.textTertiary,
                                     modifier = Modifier.size(20.dp)
@@ -211,7 +212,7 @@ fun PlaylistMoreActionSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                                        imageVector = MiuixIcons.Sort,
                                         contentDescription = "歌曲排序",
                                         tint = colors.accentBlue,
                                         modifier = Modifier.size(20.dp)
@@ -222,7 +223,7 @@ fun PlaylistMoreActionSheet(
 
                                 Text(
                                     text = "歌曲排序",
-                                    style = MaterialTheme.typography.titleMedium.copy(
+                                    style = MiuixTheme.textStyles.headline1.copy(
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.textPrimary
@@ -232,7 +233,7 @@ fun PlaylistMoreActionSheet(
 
                                 Text(
                                     text = "默认",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                    style = MiuixTheme.textStyles.body2.copy(
                                         fontSize = 14.sp,
                                         color = colors.textSecondary
                                     )
@@ -241,7 +242,7 @@ fun PlaylistMoreActionSheet(
                                 Spacer(modifier = Modifier.width(6.dp))
 
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    imageVector = MiuixIcons.ChevronForward,
                                     contentDescription = null,
                                     tint = colors.textTertiary,
                                     modifier = Modifier.size(20.dp)
@@ -253,12 +254,11 @@ fun PlaylistMoreActionSheet(
                             // 底部主题红关闭按钮
                             Button(
                                 onClick = onDismiss,
-                                shape = RoundedCornerShape(24.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = colors.accent,
+                                cornerRadius = 24.dp,
+                                colors = ButtonDefaults.buttonColorsPrimary(
+                                    color = colors.accent,
                                     contentColor = Color.White
                                 ),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(48.dp)
@@ -306,7 +306,7 @@ fun PlaylistMoreActionSheet(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "取色背景",
-                                        style = MaterialTheme.typography.titleMedium.copy(
+                                        style = MiuixTheme.textStyles.headline1.copy(
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.textPrimary
@@ -315,7 +315,7 @@ fun PlaylistMoreActionSheet(
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = if (useColorBackground) "根据封面智能取色沉浸背景" else "已恢复默认纯色背景与遮罩",
-                                        style = MaterialTheme.typography.bodySmall.copy(
+                                        style = MiuixTheme.textStyles.footnote1.copy(
                                             fontSize = 12.sp,
                                             color = colors.textSecondary
                                         )
@@ -325,12 +325,11 @@ fun PlaylistMoreActionSheet(
                                 Switch(
                                     checked = useColorBackground,
                                     onCheckedChange = onToggleColorBackground,
-                                    colors = SwitchDefaults.colors(
+                                    colors = SwitchDefaults.switchColors(
                                         checkedThumbColor = Color.White,
                                         checkedTrackColor = colors.accent,
                                         uncheckedThumbColor = Color.White,
-                                        uncheckedTrackColor = colors.divider,
-                                        uncheckedBorderColor = Color.Transparent
+                                        uncheckedTrackColor = colors.divider
                                     )
                                 )
                             }
@@ -360,7 +359,7 @@ fun PlaylistMoreActionSheet(
                                 ) {
                                     Text(
                                         text = style.title,
-                                        style = MaterialTheme.typography.titleMedium.copy(
+                                        style = MiuixTheme.textStyles.headline1.copy(
                                             fontSize = 16.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                             color = if (isSelected) colors.accent else colors.textPrimary
@@ -377,7 +376,7 @@ fun PlaylistMoreActionSheet(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Filled.Check,
+                                                imageVector = MiuixIcons.Basic.Check,
                                                 contentDescription = "已选中",
                                                 tint = Color.White,
                                                 modifier = Modifier.size(16.dp)
@@ -418,12 +417,11 @@ fun PlaylistMoreActionSheet(
 
                                 Button(
                                     onClick = onDismiss,
-                                    shape = RoundedCornerShape(24.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = colors.accent,
+                                    cornerRadius = 24.dp,
+                                    colors = ButtonDefaults.buttonColorsPrimary(
+                                        color = colors.accent,
                                         contentColor = Color.White
                                     ),
-                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(48.dp)

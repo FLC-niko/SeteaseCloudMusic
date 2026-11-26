@@ -17,12 +17,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -451,7 +451,7 @@ private fun PlaylistHeroTitleAndPlayButton(
     ) {
         Text(
             text = detail.displayTitle,
-            style = MaterialTheme.typography.titleLarge.copy(
+            style = MiuixTheme.textStyles.title2.copy(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isDark) Color.White else Color(0xFF111111)
@@ -557,7 +557,7 @@ private fun CoverPlaceholderBox() {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = Icons.Filled.MusicNote,
+            imageVector = MiuixIcons.Music,
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.85f),
             modifier = Modifier.size(68.dp)

@@ -43,29 +43,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.CloudOff
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -83,16 +65,33 @@ import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextFieldDefaults
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.Folder
+import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -428,10 +427,10 @@ fun MineScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(26.dp),
+                        AppLoadingIndicator(
                             color = MineAccentRed,
-                            strokeWidth = 2.5.dp
+                            strokeWidth = 2.5.dp,
+                            size = 26.dp
                         )
                     }
                 }
@@ -644,7 +643,7 @@ private fun LocalMusicDirectoryBar(
                 modifier = Modifier.weight(1f)
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Folder,
+                    imageVector = MiuixIcons.Folder,
                     contentDescription = null,
                     tint = MineAccentRed,
                     modifier = Modifier.size(17.dp)
@@ -652,7 +651,7 @@ private fun LocalMusicDirectoryBar(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = directoryPath?.ifBlank { "全部系统音频 / 默认目录" } ?: "全部系统音频 / 默认目录",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, color = MineTextSecondary),
+                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 12.sp, color = MineTextSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -664,34 +663,42 @@ private fun LocalMusicDirectoryBar(
             ) {
                 if (!hasPermission) {
                     TextButton(
+                        text = "授权权限",
                         onClick = onRequestPermission,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            color = Color.Transparent,
+                            textColor = MineAccentRed
+                        ),
+                        insideMargin = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold),
                         modifier = Modifier.height(28.dp)
-                    ) {
-                        Text("授权权限", fontSize = 12.sp, color = MineAccentRed, fontWeight = FontWeight.Bold)
-                    }
+                    )
                 } else {
                     TextButton(
+                        text = "指定目录",
                         onClick = onChangeDirectory,
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            color = Color.Transparent,
+                            textColor = MineTextPrimary
+                        ),
+                        insideMargin = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        textStyle = TextStyle(fontSize = 12.sp),
                         modifier = Modifier.height(28.dp)
-                    ) {
-                        Text("指定目录", fontSize = 12.sp, color = MineTextPrimary)
-                    }
+                    )
                     IconButton(
                         onClick = onRescan,
                         enabled = !isScanning,
                         modifier = Modifier.size(28.dp)
                     ) {
                         if (isScanning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
+                            AppLoadingIndicator(
                                 color = MineAccentRed,
-                                strokeWidth = 2.dp
+                                strokeWidth = 2.dp,
+                                size = 14.dp
                             )
                         } else {
                             Icon(
-                                imageVector = Icons.Filled.Refresh,
+                                painter = painterResource(R.drawable.ic_refresh),
                                 contentDescription = "重新扫描",
                                 tint = MineTextSecondary,
                                 modifier = Modifier.size(16.dp)
@@ -740,7 +747,7 @@ private fun UserProfileCenterpiece(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = nickname,
-                        style = MaterialTheme.typography.titleLarge.copy(
+                        style = MiuixTheme.textStyles.title2.copy(
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = MineTextPrimary
@@ -751,7 +758,7 @@ private fun UserProfileCenterpiece(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "UID $userId",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, color = MineTextSecondary)
+                        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 12.sp, color = MineTextSecondary)
                     )
                 }
                 GlassIconButton(
@@ -763,10 +770,10 @@ private fun UserProfileCenterpiece(
                     enabled = !isLoading
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(17.dp),
+                        AppLoadingIndicator(
                             color = MineAccentRed,
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.dp,
+                            size = 17.dp
                         )
                     }
                 }
@@ -837,7 +844,7 @@ private fun ProfileStatItem(title: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
-            style = MaterialTheme.typography.titleMedium.copy(
+            style = MiuixTheme.textStyles.headline1.copy(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = MineTextPrimary
@@ -846,7 +853,7 @@ private fun ProfileStatItem(title: String, value: String) {
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = MineTextSecondary)
+            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp, color = MineTextSecondary)
         )
     }
 }
@@ -892,7 +899,7 @@ private fun MineLoggedOutView(
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
                     text = "登录网易云音乐",
-                    style = MaterialTheme.typography.titleLarge.copy(
+                    style = MiuixTheme.textStyles.title2.copy(
                         fontSize = 23.sp,
                         fontWeight = FontWeight.Bold,
                         color = MineTextPrimary
@@ -901,18 +908,17 @@ private fun MineLoggedOutView(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "同步红心歌单、自建歌单与收藏资产",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = MineTextSecondary)
+                    style = MiuixTheme.textStyles.body2.copy(color = MineTextSecondary)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = onLoginClick,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MineAccentRed,
+                    cornerRadius = 24.dp,
+                    colors = ButtonDefaults.buttonColorsPrimary(
+                        color = MineAccentRed,
                         contentColor = Color.White
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                    )
                 ) {
                     Text("立即登录 / 扫码登录", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
@@ -954,7 +960,7 @@ private fun LikedSongsHeroCard(
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Filled.Favorite,
+                        painter = painterResource(R.drawable.ic_heart_filled),
                         contentDescription = null,
                         tint = MineAccentRed,
                         modifier = Modifier.size(34.dp)
@@ -968,7 +974,7 @@ private fun LikedSongsHeroCard(
             ) {
                 Text(
                     text = "我喜欢的音乐",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = MiuixTheme.textStyles.headline1.copy(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = MineTextPrimary
@@ -1049,7 +1055,7 @@ private fun MinePlaylistTabs(
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.bodySmall.copy(
+                        style = MiuixTheme.textStyles.footnote1.copy(
                             fontSize = 13.sp,
                             fontWeight = if (isInsideSlider) FontWeight.Bold else FontWeight.Medium,
                             color = if (isInsideSlider) MineAccentRed else MineTextPrimary
@@ -1063,7 +1069,6 @@ private fun MinePlaylistTabs(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChangeLocalDirectoryDialog(
     currentPath: String,
@@ -1090,32 +1095,46 @@ private fun ChangeLocalDirectoryDialog(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = "请输入存放音频文件的完整目录路径（支持递归扫描子目录）：",
-                style = MaterialTheme.typography.bodySmall.copy(color = MineTextSecondary)
+                style = MiuixTheme.textStyles.footnote1.copy(color = MineTextSecondary)
             )
-            OutlinedTextField(
+            @Suppress("DEPRECATION")
+            TextField(
                 value = inputPath,
                 onValueChange = { inputPath = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                placeholder = { Text("/storage/emulated/0/Music") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MineAccentRed,
-                    cursorColor = MineAccentRed
-                )
+                label = "/storage/emulated/0/Music",
+                useLabelAsPlaceholder = true,
+                textStyle = MiuixTheme.textStyles.body1.copy(color = MineTextPrimary),
+                colors = TextFieldDefaults.textFieldColors(
+                    backgroundColor = AppTheme.colors.surfaceVariant,
+                    labelColor = MineTextSecondary,
+                    borderColor = MineAccentRed
+                ),
+                cursorBrush = SolidColor(MineAccentRed)
             )
             Text(
                 text = "常用快捷目录：",
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+                style = MiuixTheme.textStyles.footnote1.copy(fontWeight = FontWeight.SemiBold)
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 quickPaths.take(3).forEach { path ->
-                    SuggestionChip(
+                    Surface(
                         onClick = { inputPath = path },
-                        label = { Text(path.substringAfterLast("/"), fontSize = 11.sp) }
-                    )
+                        shape = RoundedCornerShape(8.dp),
+                        color = AppTheme.colors.surfaceVariant,
+                        border = BorderStroke(0.5.dp, AppTheme.colors.divider)
+                    ) {
+                        Text(
+                            text = path.substringAfterLast("/"),
+                            fontSize = 11.sp,
+                            color = MineTextPrimary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1150,7 +1169,7 @@ private fun PlaylistRowItem(
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Filled.MusicNote,
+                    imageVector = MiuixIcons.Music,
                     contentDescription = null,
                     tint = MineAccentRed,
                     modifier = Modifier.size(27.dp)
@@ -1161,7 +1180,7 @@ private fun PlaylistRowItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = playlist.name,
-                style = MaterialTheme.typography.bodyLarge.copy(
+                style = MiuixTheme.textStyles.body1.copy(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MineTextPrimary
@@ -1172,13 +1191,13 @@ private fun PlaylistRowItem(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "${playlist.trackCount} 首" + if (!playlist.creatorName.isNullOrBlank()) " · ${playlist.creatorName}" else "",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, color = MineTextSecondary),
+                style = MiuixTheme.textStyles.footnote1.copy(fontSize = 12.sp, color = MineTextSecondary),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = MiuixIcons.ChevronForward,
             contentDescription = null,
             tint = AppTheme.colors.textTertiary,
             modifier = Modifier.size(20.dp)
@@ -1194,7 +1213,7 @@ private fun EmptyPlaylistNotice(message: String) {
     ) {
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyMedium.copy(color = MineTextSecondary)
+            style = MiuixTheme.textStyles.body2.copy(color = MineTextSecondary)
         )
     }
 }
@@ -1213,28 +1232,31 @@ private fun MineErrorNotice(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Icon(
-            imageVector = Icons.Outlined.CloudOff,
+            painter = painterResource(R.drawable.ic_cloud_off),
             contentDescription = null,
             tint = colors.textTertiary,
             modifier = Modifier.size(44.dp)
         )
         Text(
             text = "加载歌单受阻",
-            style = MaterialTheme.typography.titleSmall.copy(color = MineTextPrimary, fontWeight = FontWeight.SemiBold)
+            style = MiuixTheme.textStyles.headline2.copy(color = MineTextPrimary, fontWeight = FontWeight.SemiBold)
         )
         Text(
             text = message,
-            style = MaterialTheme.typography.bodySmall.copy(color = MineTextSecondary),
+            style = MiuixTheme.textStyles.footnote1.copy(color = MineTextSecondary),
             textAlign = TextAlign.Center,
             lineHeight = 18.sp
         )
         Text(
             text = "提示：请检查网络设置后重试",
-            style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary, fontSize = 11.sp)
+            style = MiuixTheme.textStyles.footnote1.copy(color = colors.textSecondary, fontSize = 11.sp)
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Button(onClick = onRetry) {
-            Icon(imageVector = Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+        Button(
+            onClick = onRetry,
+            colors = ButtonDefaults.buttonColorsPrimary(color = colors.accent, contentColor = Color.White)
+        ) {
+            Icon(painter = painterResource(R.drawable.ic_refresh), contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("重新加载")
         }

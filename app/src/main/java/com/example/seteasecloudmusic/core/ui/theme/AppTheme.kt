@@ -4,10 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -16,10 +12,10 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.TextStyle
 import androidx.core.view.WindowCompat
 import com.example.seteasecloudmusic.core.settings.AppThemeMode
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
+import com.example.seteasecloudmusic.core.ui.components.MiuixThemeHost
 
 /**
  * 根据浅色/深色主题调校封面取色 HSL：
@@ -177,42 +173,6 @@ object AppTheme {
         get() = LocalTopAmbientAppearance.current
 }
 
-private val LightMaterialColorScheme = lightColorScheme(
-    primary = LightAppColors.accent,
-    onPrimary = Color.White,
-    background = LightAppColors.background,
-    onBackground = LightAppColors.textPrimary,
-    surface = LightAppColors.surface,
-    onSurface = LightAppColors.textPrimary,
-    surfaceVariant = LightAppColors.surfaceVariant,
-    onSurfaceVariant = LightAppColors.textSecondary,
-    surfaceContainer = LightAppColors.groupedBackground,
-    surfaceContainerHigh = LightAppColors.surfaceVariant,
-    outline = LightAppColors.divider,
-    outlineVariant = LightAppColors.dividerSubtle,
-    error = LightAppColors.destructive,
-    errorContainer = LightAppColors.errorContainer,
-    onErrorContainer = LightAppColors.errorContent
-)
-
-private val DarkMaterialColorScheme = darkColorScheme(
-    primary = DarkAppColors.accent,
-    onPrimary = Color.White,
-    background = DarkAppColors.background,
-    onBackground = DarkAppColors.textPrimary,
-    surface = DarkAppColors.surface,
-    onSurface = DarkAppColors.textPrimary,
-    surfaceVariant = DarkAppColors.surfaceVariant,
-    onSurfaceVariant = DarkAppColors.textSecondary,
-    surfaceContainer = DarkAppColors.groupedBackground,
-    surfaceContainerHigh = DarkAppColors.surfaceElevated,
-    outline = DarkAppColors.divider,
-    outlineVariant = DarkAppColors.dividerSubtle,
-    error = DarkAppColors.destructive,
-    errorContainer = DarkAppColors.errorContainer,
-    onErrorContainer = DarkAppColors.errorContent
-)
-
 @Composable
 fun SeteaseCloudMusicTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
@@ -221,7 +181,6 @@ fun SeteaseCloudMusicTheme(
 ) {
     val darkTheme = resolveDarkTheme(themeMode, isSystemInDarkTheme())
     val appColors = if (darkTheme) DarkAppColors else LightAppColors
-    val materialColorScheme = if (darkTheme) DarkMaterialColorScheme else LightMaterialColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -243,14 +202,10 @@ fun SeteaseCloudMusicTheme(
         LocalAppColors provides appColors,
         LocalTopAmbientAppearance provides topAmbientAppearance
     ) {
-        MaterialTheme(
-            colorScheme = materialColorScheme
-        ) {
-            CompositionLocalProvider(
-                LocalTextStyle provides TextStyle.Default,
-                content = content
-            )
-        }
+        MiuixThemeHost(
+            darkTheme = darkTheme,
+            content = content
+        )
     }
 }
 

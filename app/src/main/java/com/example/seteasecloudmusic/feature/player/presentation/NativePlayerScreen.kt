@@ -47,12 +47,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Music
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -593,10 +592,10 @@ internal fun NativePlayerContent(
                                     .graphicsLayer { translationY = lyricEntryOffsetY() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(
+                                AppLoadingIndicator(
                                     color = Color.White.copy(alpha = 0.78f),
                                     strokeWidth = 2.8.dp,
-                                    modifier = Modifier.size(32.dp)
+                                    size = 32.dp
                                 )
                             }
                         }
@@ -1095,7 +1094,7 @@ internal fun NativePlayerContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.MusicNote,
+                        imageVector = MiuixIcons.Music,
                         contentDescription = "未在播放",
                         tint = Color.White.copy(alpha = 0.36f),
                         modifier = Modifier.size(64.dp)

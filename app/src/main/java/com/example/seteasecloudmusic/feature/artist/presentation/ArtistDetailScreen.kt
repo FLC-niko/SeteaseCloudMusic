@@ -51,18 +51,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import com.example.seteasecloudmusic.R
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.Music
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -409,10 +409,10 @@ fun ArtistDetailScreen(
                                 .padding(vertical = 20.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
+                            AppLoadingIndicator(
                                 color = ArtistPrimaryText,
                                 strokeWidth = 2.5.dp,
-                                modifier = Modifier.size(28.dp)
+                                size = 28.dp
                             )
                         }
                     }
@@ -551,7 +551,7 @@ fun ArtistDetailScreen(
                                     contentDescription = "返回"
                                 ) {
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        imageVector = MiuixIcons.Back,
                                         contentDescription = null,
                                         tint = ArtistPrimaryText,
                                         modifier = Modifier.size(19.dp)
@@ -690,7 +690,7 @@ fun ArtistDetailScreen(
                         modifier = Modifier.align(Alignment.CenterStart)
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = MiuixIcons.Back,
                             contentDescription = null,
                             tint = ArtistPrimaryText,
                             modifier = Modifier.size(20.dp)
@@ -995,7 +995,7 @@ private fun ArtistSectionHeader(
         if (showChevron) {
             Spacer(modifier = Modifier.width(2.dp))
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                imageVector = MiuixIcons.ChevronForward,
                 contentDescription = "查看更多",
                 tint = ArtistSecondaryText,
                 modifier = Modifier.size(22.dp)
@@ -1003,10 +1003,10 @@ private fun ArtistSectionHeader(
         }
         if (isLoadingMore) {
             Spacer(modifier = Modifier.width(8.dp))
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
+            AppLoadingIndicator(
                 color = ArtistPrimaryText,
-                strokeWidth = 1.8.dp
+                strokeWidth = 1.8.dp,
+                size = 14.dp
             )
         }
     }
@@ -1107,7 +1107,7 @@ private fun ArtistTrackRow(
 
         IconButton(onClick = onMoreClick) {
             Icon(
-                imageVector = Icons.Default.MoreVert,
+                painter = painterResource(R.drawable.ic_more_vert),
                 contentDescription = "更多操作",
                 tint = ArtistSecondaryText,
                 modifier = Modifier.size(18.dp)
@@ -1214,7 +1214,7 @@ private fun ArtistFavoritesSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.MusicNote,
+                        imageVector = MiuixIcons.Music,
                         contentDescription = null,
                         tint = ArtistSecondaryText,
                         modifier = Modifier.size(20.dp)
@@ -1271,7 +1271,7 @@ private fun ArtistFavoritesSection(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Favorite,
+                                painter = painterResource(R.drawable.ic_heart_filled),
                                 contentDescription = null,
                                 tint = ArtistAccentRed,
                                 modifier = Modifier.size(12.dp)

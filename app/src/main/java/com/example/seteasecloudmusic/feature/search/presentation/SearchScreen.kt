@@ -36,25 +36,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -539,7 +536,7 @@ private fun SearchTabsRow(
                 ) {
                     Text(
                         text = tab.title,
-                        style = MaterialTheme.typography.bodySmall.copy(
+                        style = MiuixTheme.textStyles.footnote1.copy(
                             fontSize = 13.sp,
                             fontWeight = if (isInsideSlider) FontWeight.Bold else FontWeight.Medium,
                             color = if (isInsideSlider) TabActiveBg else PrimaryText
@@ -753,7 +750,7 @@ private fun SongRow(
         }
 
         Icon(
-            imageVector = Icons.Filled.MoreHoriz,
+            imageVector = MiuixIcons.More,
             contentDescription = null,
             tint = PrimaryText,
             modifier = Modifier.size(22.dp)
@@ -802,7 +799,7 @@ private fun AlbumRow(
         }
 
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = MiuixIcons.ChevronForward,
             contentDescription = null,
             tint = SecondaryText,
             modifier = Modifier.size(24.dp)
@@ -848,7 +845,7 @@ private fun ArtistRow(
         }
 
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = MiuixIcons.ChevronForward,
             contentDescription = null,
             tint = SecondaryText,
             modifier = Modifier.size(24.dp)
@@ -895,7 +892,7 @@ private fun PlaylistRow(
         }
 
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = MiuixIcons.ChevronForward,
             contentDescription = null,
             tint = SecondaryText,
             modifier = Modifier.size(24.dp)
@@ -976,7 +973,7 @@ fun ResultLoadingSection(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator(color = SecondaryText, strokeWidth = 2.dp)
+        AppLoadingIndicator(color = SecondaryText, strokeWidth = 2.dp)
     }
 }
 
@@ -995,7 +992,7 @@ fun ResultErrorSection(
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Outlined.CloudOff,
+            painter = painterResource(R.drawable.ic_cloud_off),
             contentDescription = null,
             tint = colors.textTertiary,
             modifier = Modifier.size(52.dp)
@@ -1017,8 +1014,11 @@ fun ResultErrorSection(
             color = colors.textSecondary
         )
         Spacer(modifier = Modifier.height(18.dp))
-        Button(onClick = onRetryClick) {
-            Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
+        Button(
+            onClick = onRetryClick,
+            colors = ButtonDefaults.buttonColorsPrimary()
+        ) {
+            Icon(painter = painterResource(R.drawable.ic_refresh), contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("重新搜索")
         }
@@ -1180,10 +1180,10 @@ private fun HotSearchSection(
                     .height(120.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
+                AppLoadingIndicator(
                     color = SecondaryText,
                     strokeWidth = 2.dp,
-                    modifier = Modifier.size(24.dp)
+                    size = 24.dp
                 )
             }
         } else {

@@ -7,11 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +28,12 @@ import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.shapes.RoundedRectangle
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.icon.extended.Music
 
 /** 保留返回时的列表位置；详情覆盖后，底页退出绘制、触控和无障碍树。 */
 @Composable
@@ -58,7 +59,7 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
                 size = 44.dp,
                 contentDescription = "返回"
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = colors.iconPrimary, modifier = Modifier.size(22.dp))
+                Icon(MiuixIcons.Back, "返回", tint = colors.iconPrimary, modifier = Modifier.size(22.dp))
             }
         }
         if (onClose != null && !sideControls) { back(); Spacer(Modifier.width(8.dp)) }
@@ -77,7 +78,7 @@ fun MusicPaneHeader(title: String, subtitle: String? = null, onClose: (() -> Uni
                 size = 44.dp,
                 contentDescription = "更多操作"
             ) {
-                Icon(Icons.Filled.MoreHoriz, "更多操作", Modifier.size(22.dp), tint = colors.iconPrimary)
+                Icon(MiuixIcons.More, "更多操作", Modifier.size(22.dp), tint = colors.iconPrimary)
             }
         }
         if (onClose != null && sideControls) { Spacer(Modifier.width(8.dp)); back() }
@@ -104,7 +105,7 @@ fun MusicDetailPlaceholder(title: String = "你的音乐，尽在这里", descri
             .heightIn(max = (maxHeight - 40.dp).coerceAtLeast(0.dp)), backdrop = background) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.MusicNote, null, Modifier.size(if (compact) 40.dp else 56.dp),
+                Icon(MiuixIcons.Music, null, Modifier.size(if (compact) 40.dp else 56.dp),
                     tint = colors.accent.copy(alpha = 0.85f))
                 Spacer(Modifier.height(16.dp))
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp,

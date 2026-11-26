@@ -13,6 +13,7 @@ dependencyResolutionManagement {
     repositories {
         maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/google/") }
         maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }
+        mavenCentral()
     }
 }
 

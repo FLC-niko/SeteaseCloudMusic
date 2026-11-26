@@ -9,8 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -88,7 +88,7 @@ class AdaptiveLayoutsTest {
                     val info = LocalAdaptiveWindow.current
                     val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
                     SideEffect { windowInfo = info; currentFontScale = fontScale }
-                    MaterialTheme {
+                    MiuixTheme {
                         val background = rememberLayerBackdrop { drawContent() }
                         Box(Modifier.fillMaxSize().background(Color.White).testTag("fixture")) {
                             Canvas(Modifier.fillMaxSize().layerBackdrop(background)) {
@@ -294,7 +294,7 @@ class AdaptiveLayoutsTest {
                 activity.setContent {
                     val info = AdaptiveWindowInfo(851.dp, 883.dp, isFoldable = true)
                     SideEffect { windowInfo = info }
-                    MaterialTheme {
+                    MiuixTheme {
                         val background = rememberLayerBackdrop { drawContent() }
                         CompositionLocalProvider(LocalAdaptiveWindow provides info, LocalGlassBackdrop provides background) {
                             Box(Modifier.fillMaxSize().testTag("expanded_background_fixture")) {
@@ -350,7 +350,7 @@ class AdaptiveLayoutsTest {
             activity.setContent {
                 val info = AdaptiveWindowInfo(width, 740.dp, isFoldable = true)
                 SideEffect { windowInfo = info }
-                MaterialTheme {
+                MiuixTheme {
                     val background = rememberLayerBackdrop { drawContent() }
                     Box(Modifier.fillMaxSize()) {
                         Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color.White) }
@@ -394,7 +394,7 @@ class AdaptiveLayoutsTest {
                 ProvideAdaptiveWindow(activity) {
                     val info = LocalAdaptiveWindow.current
                     SideEffect { windowInfo = info }
-                    MaterialTheme {
+                    MiuixTheme {
                         val background = rememberLayerBackdrop { drawContent() }
                         Box(Modifier.fillMaxSize().testTag("header_fixture")) {
                             Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color.White) }
@@ -448,7 +448,7 @@ class AdaptiveLayoutsTest {
             activity.setContent {
                 val info = AdaptiveWindowInfo(width, 740.dp, isFoldable = true)
                 SideEffect { windowInfo = info }
-                MaterialTheme {
+                MiuixTheme {
                     val background = rememberLayerBackdrop { drawContent() }
                     Box(Modifier.fillMaxSize()) {
                         Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color.White) }
@@ -504,17 +504,17 @@ class AdaptiveLayoutsTest {
                     val original = androidx.compose.ui.platform.LocalDensity.current
                     SideEffect { currentFontScale = original.fontScale }
                     CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(original.density, scale)) {
-                        MaterialTheme {
+                        MiuixTheme {
                             val background = rememberLayerBackdrop { drawContent() }
                             Box(Modifier.fillMaxSize().background(Color(0xFFF2F2F7)), contentAlignment = androidx.compose.ui.Alignment.Center) {
                                 Canvas(Modifier.fillMaxSize().layerBackdrop(background)) { drawRect(Color(0xFFF2F2F7)) }
                                 Box(Modifier.requiredWidth(width).height(160.dp)) {
                                     Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).horizontalChromeFrame().height(54.dp).testTag("sizing_nav_frame")) {
                                         Box(Modifier.align(androidx.compose.ui.Alignment.CenterStart).size(54.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape).testTag("sizing_left_button")) {
-                                            androidx.compose.material3.Text("首页", Modifier.align(androidx.compose.ui.Alignment.Center))
+                                            top.yukonga.miuix.kmp.basic.Text("首页", Modifier.align(androidx.compose.ui.Alignment.Center))
                                         }
                                         Box(Modifier.align(androidx.compose.ui.Alignment.CenterEnd).size(54.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape).testTag("sizing_right_button")) {
-                                            androidx.compose.material3.Text("搜索", Modifier.align(androidx.compose.ui.Alignment.Center))
+                                            top.yukonga.miuix.kmp.basic.Text("搜索", Modifier.align(androidx.compose.ui.Alignment.Center))
                                         }
                                     }
                                     val progress = if (compact) 1f else 0f
@@ -574,7 +574,7 @@ class AdaptiveLayoutsTest {
             activity.setContent {
                 val density = androidx.compose.ui.platform.LocalDensity.current
                 CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
-                    MaterialTheme {
+                    MiuixTheme {
                         Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                             Box(Modifier.width(width).height(250.dp).testTag("player_controls_fixture")) {
                                 AppleMusicPlaybackControls(
@@ -705,7 +705,7 @@ class AdaptiveLayoutsTest {
                         AdaptiveSectionColumn(Modifier.fillMaxSize()) {
                             repeat(30) { index ->
                                 item(key = "section_$index") {
-                                    androidx.compose.material3.Text("Section $index", Modifier.fillMaxWidth().height(180.dp))
+                                    top.yukonga.miuix.kmp.basic.Text("Section $index", Modifier.fillMaxWidth().height(180.dp))
                                 }
                             }
                         }
@@ -730,7 +730,7 @@ class AdaptiveLayoutsTest {
                     AdaptiveSectionColumn(Modifier.fillMaxSize()) {
                         repeat(30) { index ->
                             item(key = "section_$index") {
-                                androidx.compose.material3.Text("Section $index", Modifier.fillMaxWidth().height(180.dp))
+                                top.yukonga.miuix.kmp.basic.Text("Section $index", Modifier.fillMaxWidth().height(180.dp))
                             }
                         }
                     }

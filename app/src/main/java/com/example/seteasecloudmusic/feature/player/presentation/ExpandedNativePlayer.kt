@@ -32,11 +32,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Music
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -258,7 +258,7 @@ internal fun ExpandedNativePlayerContent(
                                     }
                                 } else {
                                     Icon(
-                                        Icons.Filled.MusicNote,
+                                        MiuixIcons.Music,
                                         null,
                                         Modifier.size(64.dp),
                                         tint = Color.White.copy(alpha = 0.3f)
@@ -303,7 +303,7 @@ internal fun ExpandedNativePlayerContent(
                                         .fillMaxWidth(),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(color = Color.White.copy(alpha = 0.78f))
+                                    AppLoadingIndicator(color = Color.White.copy(alpha = 0.78f))
                                 }
                             }
                             else -> {

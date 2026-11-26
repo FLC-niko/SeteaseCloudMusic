@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -23,11 +22,16 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassPanel
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -69,7 +73,6 @@ fun AdaptiveOverlayPane(modifier: Modifier = Modifier, content: @Composable BoxS
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdaptiveModalSheet(
     onDismissRequest: () -> Unit,
@@ -81,13 +84,15 @@ fun AdaptiveModalSheet(
     val scrimColor = AppTheme.colors.scrim
     val handleColor = AppTheme.colors.handleBar
     if (window.width < 600.dp && window.separatingFold == null) {
-        ModalBottomSheet(
-            onDismissRequest = onDismissRequest,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = containerColor,
-            scrimColor = scrimColor,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = handleColor) },
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        var sheetVisible by remember { mutableStateOf(true) }
+        WindowBottomSheet(
+            show = sheetVisible,
+            onDismissRequest = { sheetVisible = false },
+            onDismissFinished = onDismissRequest,
+            backgroundColor = containerColor,
+            cornerRadius = 28.dp,
+            insideMargin = DpSize.Zero,
+            dragHandleColor = handleColor,
             modifier = modifier
         ) { content() }
     } else {
@@ -386,10 +391,11 @@ private fun FloatingDialogPillButton(
         contentAlignment = Alignment.Center
     ) {
         if (isLoading) {
-            CircularProgressIndicator(
+            AppLoadingIndicator(
                 modifier = Modifier.size(18.dp),
                 color = textColor,
-                strokeWidth = 2.dp
+                strokeWidth = 2.dp,
+                size = 18.dp
             )
         } else {
             Text(

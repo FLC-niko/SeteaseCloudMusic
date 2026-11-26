@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Icon
 import androidx.compose.foundation.LocalIndication
-import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Contacts
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import androidx.compose.runtime.Composable
@@ -61,7 +61,7 @@ fun UserAvatar(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.Person,
+                imageVector = MiuixIcons.Contacts,
                 contentDescription = null,
                 tint = appleMusicRed,
                 modifier = Modifier.size(size * 0.58f)
@@ -107,7 +107,7 @@ fun UserAvatar(
             )
         } else {
             Icon(
-                imageVector = Icons.Filled.Person,
+                imageVector = MiuixIcons.Contacts,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(size * 0.43f)

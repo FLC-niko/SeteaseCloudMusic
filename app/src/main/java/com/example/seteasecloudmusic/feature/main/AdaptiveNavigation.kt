@@ -9,12 +9,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
@@ -34,8 +28,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import coil.compose.AsyncImage
 import com.kyant.shapes.RoundedRectangle
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.window.WindowListPopup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -143,13 +140,42 @@ internal fun MusicNavigationRail(
                         .testTag("glass_dock_overflow")) {
                         Icon(painterResource(items[activeTabIndex].selectedIconRes), "更多导航", tint = colors.accent)
                     }
-                    DropdownMenu(overflow, { overflow = false }) {
-                        items.forEachIndexed { index, item ->
-                            DropdownMenuItem(text = { Text(item.title) }, onClick = { onSelect(index); overflow = false },
-                                modifier = Modifier.testTag("glass_dock_$index"),
-                                leadingIcon = { Icon(painterResource(item.iconRes), null) })
+                    WindowListPopup(
+                        show = overflow,
+                        onDismissRequest = { overflow = false }
+                    ) {
+                        ListPopupColumn {
+                            items.forEachIndexed { index, item ->
+                                val selected = index == selectedIndex
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelect(index); overflow = false }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                        .testTag("glass_dock_$index"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(item.iconRes),
+                                        contentDescription = null,
+                                        tint = if (selected) colors.accent else colors.iconPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = item.title,
+                                        color = if (selected) colors.accent else colors.textPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                            if (controlsInOverflow) {
+                                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                                    miniPlayer(true) { overflow = false }
+                                }
+                            }
                         }
-                        if (controlsInOverflow) Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) { miniPlayer(true) { overflow = false } }
                     }
                 }
             } else {
@@ -346,10 +372,11 @@ internal fun SideMiniPlayer(
         }
         IconButton(onPlayPause, Modifier.size(44.dp), enabled = track != null) {
             if (status == PlayerStatus.BUFFERING) {
-                CircularProgressIndicator(
+                AppLoadingIndicator(
                     modifier = Modifier.size(18.dp),
                     color = colors.iconSecondary,
-                    strokeWidth = 2.dp
+                    strokeWidth = 2.dp,
+                    size = 18.dp
                 )
             } else {
                 Icon(
@@ -362,6 +389,13 @@ internal fun SideMiniPlayer(
                 )
             }
         }
-        IconButton(onQueue, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Filled.QueueMusic, "播放列表", tint = colors.iconSecondary) }
+        IconButton(onQueue, Modifier.size(44.dp)) {
+            Icon(
+                painter = painterResource(R.drawable.ic_mini_playlist),
+                contentDescription = "播放列表",
+                tint = colors.iconSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }

@@ -40,13 +40,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.WarningAmber
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -284,10 +282,10 @@ internal fun RadioScreenContent(
                             .padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
+                        AppLoadingIndicator(
                             color = RadioAccent,
                             strokeWidth = 2.dp,
-                            modifier = Modifier.size(24.dp)
+                            size = 24.dp
                         )
                     }
                 }
@@ -296,8 +294,8 @@ internal fun RadioScreenContent(
             if (!uiState.errorMessage.isNullOrBlank()) {
                 item(key = "radio_error", fullSpan = true) {
                     Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
+                        cornerRadius = 16.dp,
+                        colors = CardDefaults.defaultColors(color = colors.errorContainer),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 8.dp)
@@ -308,7 +306,7 @@ internal fun RadioScreenContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.WarningAmber,
+                                painter = painterResource(R.drawable.ic_warning),
                                 contentDescription = null,
                                 tint = colors.errorIcon,
                                 modifier = Modifier.size(20.dp)

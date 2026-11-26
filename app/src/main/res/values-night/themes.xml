@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Base.Theme.SeteaseCloudMusic" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.SeteaseCloudMusic" parent="android:Theme.Material.NoActionBar">
         <!-- Customize your dark theme here. -->
         <item name="android:windowBackground">@color/black</item>
         <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->

@@ -21,19 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -62,7 +50,20 @@ import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextFieldDefaults
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Close
+import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.example.seteasecloudmusic.feature.mine.domain.model.UserPlaylist
 import com.example.seteasecloudmusic.feature.mine.domain.repository.PlaylistTrackAlreadyExistsException
 import kotlinx.coroutines.launch
@@ -144,7 +145,7 @@ fun AddToPlaylistContent(
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = MiuixIcons.Back,
                         contentDescription = "返回",
                         tint = colors.textPrimary,
                         modifier = Modifier.size(20.dp)
@@ -155,7 +156,7 @@ fun AddToPlaylistContent(
 
             Text(
                 text = "收藏到歌单",
-                style = MaterialTheme.typography.titleMedium.copy(
+                style = MiuixTheme.textStyles.headline1.copy(
                     color = colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp
@@ -169,7 +170,7 @@ fun AddToPlaylistContent(
                 modifier = Modifier.size(36.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Close,
+                    imageVector = MiuixIcons.Basic.Close,
                     contentDescription = "关闭",
                     tint = colors.textSecondary,
                     modifier = Modifier.size(20.dp)
@@ -194,7 +195,7 @@ fun AddToPlaylistContent(
             ) {
                 Text(
                     text = "登录网易云音乐账号后即可收藏到自建歌单",
-                    style = MaterialTheme.typography.bodyMedium.copy(
+                    style = MiuixTheme.textStyles.body2.copy(
                         color = colors.textSecondary,
                         fontSize = 14.sp
                     )
@@ -208,10 +209,10 @@ fun AddToPlaylistContent(
                     .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
+                AppLoadingIndicator(
                     color = colors.accent,
-                    modifier = Modifier.size(28.dp),
-                    strokeWidth = 2.5.dp
+                    strokeWidth = 2.5.dp,
+                    size = 28.dp
                 )
             }
         } else {
@@ -369,14 +370,23 @@ fun AddToPlaylistContent(
             Column {
                 Text(
                     text = "输入歌单标题后将自动创建并收录本首单曲",
-                    style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
+                    style = MiuixTheme.textStyles.footnote1.copy(color = colors.textSecondary)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
+                @Suppress("DEPRECATION")
+                TextField(
                     value = newPlaylistTitle,
                     onValueChange = { newPlaylistTitle = it },
-                    placeholder = { Text("请输入歌单标题") },
+                    label = "请输入歌单标题",
+                    useLabelAsPlaceholder = true,
                     singleLine = true,
+                    textStyle = MiuixTheme.textStyles.body1.copy(color = colors.textPrimary),
+                    colors = TextFieldDefaults.textFieldColors(
+                        backgroundColor = colors.surfaceVariant,
+                        labelColor = colors.textSecondary,
+                        borderColor = colors.accent
+                    ),
+                    cursorBrush = SolidColor(colors.accent),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -425,7 +435,7 @@ private fun PlaylistPickerItem(
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Default.MusicNote,
+                    imageVector = MiuixIcons.Music,
                     contentDescription = null,
                     tint = colors.textSecondary,
                     modifier = Modifier.size(24.dp)
@@ -442,7 +452,7 @@ private fun PlaylistPickerItem(
         ) {
             Text(
                 text = playlist.name,
-                style = MaterialTheme.typography.bodyMedium.copy(
+                style = MiuixTheme.textStyles.body2.copy(
                     fontWeight = FontWeight.Bold,
                     color = if (isAlreadyAdded) colors.textSecondary else colors.textPrimary,
                     fontSize = 15.sp
@@ -453,7 +463,7 @@ private fun PlaylistPickerItem(
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "${playlist.trackCount} 首",
-                style = MaterialTheme.typography.bodySmall.copy(
+                style = MiuixTheme.textStyles.footnote1.copy(
                     color = colors.textSecondary,
                     fontSize = 12.sp
                 )
@@ -463,7 +473,7 @@ private fun PlaylistPickerItem(
         if (isAlreadyAdded) {
             Text(
                 text = "已添加",
-                style = MaterialTheme.typography.bodySmall.copy(
+                style = MiuixTheme.textStyles.footnote1.copy(
                     color = colors.textSecondary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
@@ -496,7 +506,7 @@ private fun NewPlaylistPickerItem(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Add,
+                imageVector = MiuixIcons.Add,
                 contentDescription = "新建歌单",
                 tint = colors.iconSecondary,
                 modifier = Modifier.size(24.dp)
@@ -508,7 +518,7 @@ private fun NewPlaylistPickerItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "新建歌单",
-                style = MaterialTheme.typography.bodyMedium.copy(
+                style = MiuixTheme.textStyles.body2.copy(
                     color = colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
@@ -519,7 +529,7 @@ private fun NewPlaylistPickerItem(
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "创建新歌单并加入此歌曲",
-                style = MaterialTheme.typography.bodySmall.copy(
+                style = MiuixTheme.textStyles.footnote1.copy(
                     color = colors.textSecondary,
                     fontSize = 12.sp
                 ),
@@ -569,7 +579,7 @@ fun AddToPlaylistBatchSheet(
             ) {
                 Text(
                     text = "收藏到歌单（已选 ${tracks.size} 首）",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = MiuixTheme.textStyles.headline1.copy(
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp
@@ -583,7 +593,7 @@ fun AddToPlaylistBatchSheet(
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = MiuixIcons.Basic.Close,
                         contentDescription = "关闭",
                         tint = colors.textSecondary,
                         modifier = Modifier.size(20.dp)
@@ -745,14 +755,23 @@ fun AddToPlaylistBatchSheet(
                 Column {
                     Text(
                         text = "输入歌单标题后将自动创建并收录所选歌曲",
-                        style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary)
+                        style = MiuixTheme.textStyles.footnote1.copy(color = colors.textSecondary)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
+                    @Suppress("DEPRECATION")
+                    TextField(
                         value = newPlaylistTitle,
                         onValueChange = { newPlaylistTitle = it },
-                        placeholder = { Text("请输入歌单标题") },
+                        label = "请输入歌单标题",
+                        useLabelAsPlaceholder = true,
                         singleLine = true,
+                        textStyle = MiuixTheme.textStyles.body1.copy(color = colors.textPrimary),
+                        colors = TextFieldDefaults.textFieldColors(
+                            backgroundColor = colors.surfaceVariant,
+                            labelColor = colors.textSecondary,
+                            borderColor = colors.accent
+                        ),
+                        cursorBrush = SolidColor(colors.accent),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

@@ -43,8 +43,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -67,7 +65,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import android.widget.Toast
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -402,7 +403,7 @@ private fun BottomBarTabsLayer(
                 Text(
                     text = item.title,
                     color = if (isSelectedLayer) accentRed else darkTint,
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    style = MiuixTheme.textStyles.footnote2.copy(
                         fontSize = 10.5.sp,
                         lineHeight = 14.sp,
                         fontWeight = if (isSelectedLayer) FontWeight.SemiBold else FontWeight.Medium
@@ -1965,7 +1966,7 @@ private fun SearchQueryInputContent(
     val focusManager = LocalFocusManager.current
     val colors = AppTheme.colors
 
-    val searchTextStyle = MaterialTheme.typography.bodyLarge.copy(
+    val searchTextStyle = MiuixTheme.textStyles.body1.copy(
         color = colors.textPrimary,
         fontSize = 15.sp,
         platformStyle = PlatformTextStyle(includeFontPadding = false),
@@ -2619,7 +2620,7 @@ internal fun SearchMiniPlayerBar(
                         Text(
                             text = title,
                             color = colors.textPrimary,
-                            style = MaterialTheme.typography.bodyMedium.copy(
+                            style = MiuixTheme.textStyles.body2.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.5.sp,
                                 lineHeight = 17.sp,
@@ -2633,7 +2634,7 @@ internal fun SearchMiniPlayerBar(
                             Text(
                                 text = artistText,
                                 color = colors.textSecondary,
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp,
+                                style = MiuixTheme.textStyles.footnote2.copy(fontSize = 10.5.sp, lineHeight = 14.sp,
                                     platformStyle = PlatformTextStyle(includeFontPadding = false),
                                     lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)),
                                 maxLines = 1,
@@ -2831,10 +2832,11 @@ private fun MiniPlayerProgressPlayButton(
 
         // 3. 居中播放/暂停/缓冲图标
         if (isBuffering) {
-            CircularProgressIndicator(
+            AppLoadingIndicator(
                 modifier = Modifier.size(14.dp),
                 color = ringColor,
-                strokeWidth = 1.8.dp
+                strokeWidth = 1.8.dp,
+                size = 14.dp
             )
         } else {
             Icon(

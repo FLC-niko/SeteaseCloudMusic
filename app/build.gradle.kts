@@ -10,7 +10,7 @@ android {
     namespace = "com.example.seteasecloudmusic"
     compileSdk {
         version = release(37) {
-            minorApiLevel = 1
+            minorApiLevel = 2
         }
     }
 
@@ -72,11 +72,8 @@ dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.foundation.layout)
     implementation("androidx.window:window:1.5.0")
     testImplementation(libs.junit)
@@ -105,10 +102,9 @@ dependencies {
     // Compose 核心依赖
     implementation("androidx.compose.runtime:runtime")
     implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.icons)
     
     // Navigation
     implementation(libs.androidx.navigation.compose)

@@ -5,8 +5,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,10 +107,10 @@ internal fun ExpandedPlaybackBar(
                         onPlayPause
                     ) {
                         if (buffering) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
+                            AppLoadingIndicator(
                                 color = Color.White,
-                                strokeWidth = 2.2.dp
+                                strokeWidth = 2.2.dp,
+                                size = 22.dp
                             )
                         } else {
                             AppleMusicPlayPauseAnimatedIcon(playing, size = 30.dp, tint = Color.White)

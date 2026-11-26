@@ -1,7 +1,7 @@
 package com.example.seteasecloudmusic.feature.discover.presentation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.foundation.layout.Arrangement
@@ -25,19 +25,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.WarningAmber
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -50,14 +37,28 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.More
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.discover.domain.model.DiscoverPlaylist
@@ -204,7 +205,7 @@ private fun DiscoverSectionHeader(
                 modifier = Modifier.weight(1f)
             )
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                imageVector = MiuixIcons.ChevronForward,
                 contentDescription = null,
                 tint = DiscoverSecondary,
                 modifier = Modifier.size(20.dp)
@@ -259,13 +260,12 @@ private fun DiscoverChipCard(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Card(
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = DiscoverCardSurface),
-            border = BorderStroke(1.dp, DiscoverDivider),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            cornerRadius = 28.dp,
+            colors = CardDefaults.defaultColors(color = DiscoverCardSurface),
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
+                .border(1.dp, DiscoverDivider, RoundedCornerShape(28.dp))
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
@@ -335,11 +335,11 @@ private fun DiscoverToplistCard(
     toplist: DiscoverToplist
 ) {
     Card(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = DiscoverCardSurface),
-        border = BorderStroke(1.dp, DiscoverDivider),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.width(320.dp)
+        cornerRadius = 28.dp,
+        colors = CardDefaults.defaultColors(color = DiscoverCardSurface),
+        modifier = Modifier
+            .width(320.dp)
+            .border(1.dp, DiscoverDivider, RoundedCornerShape(28.dp))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -473,8 +473,8 @@ private fun DiscoverSongRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = DiscoverSurface),
+            cornerRadius = 14.dp,
+            colors = CardDefaults.defaultColors(color = DiscoverSurface),
             modifier = Modifier.size(56.dp)
         ) {
             AsyncImage(
@@ -503,7 +503,7 @@ private fun DiscoverSongRow(
         }
         IconButton(onClick = { }) {
             Icon(
-                imageVector = Icons.Filled.MoreHoriz,
+                imageVector = MiuixIcons.More,
                 contentDescription = "更多",
                 tint = DiscoverSecondary
             )
@@ -550,8 +550,8 @@ private fun DiscoverPlaylistRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = DiscoverSurface),
+            cornerRadius = 16.dp,
+            colors = CardDefaults.defaultColors(color = DiscoverSurface),
             modifier = Modifier.size(72.dp)
         ) {
             AsyncImage(
@@ -589,7 +589,7 @@ private fun DiscoverPlaylistRow(
             )
         }
         Icon(
-            imageVector = Icons.Filled.WarningAmber,
+            painter = painterResource(R.drawable.ic_warning),
             contentDescription = null,
             tint = DiscoverSecondary
         )
@@ -613,10 +613,10 @@ private fun DiscoverLoadingRow(
                     .background(DiscoverCardSurface),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
+                AppLoadingIndicator(
                     color = DiscoverAccent,
                     strokeWidth = 2.dp,
-                    modifier = Modifier.size(20.dp)
+                    size = 20.dp
                 )
             }
         }
@@ -648,7 +648,7 @@ private fun DiscoverLoadingColumn(
                         .background(DiscoverSurface),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = DiscoverAccent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    AppLoadingIndicator(color = DiscoverAccent, strokeWidth = 2.dp, size = 18.dp)
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(modifier = Modifier.height(14.dp).fillMaxWidth(0.68f).background(DiscoverSurface))
@@ -682,7 +682,7 @@ private fun DiscoverErrorPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.WarningAmber,
+                painter = painterResource(R.drawable.ic_warning),
                 contentDescription = null,
                 tint = colors.errorIcon,
                 modifier = Modifier.size(20.dp)
@@ -705,8 +705,11 @@ private fun DiscoverErrorPanel(
             color = DiscoverSecondary,
             fontSize = 12.sp
         )
-        Button(onClick = onRetry) {
-            Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
+        Button(
+            onClick = onRetry,
+            colors = ButtonDefaults.buttonColorsPrimary()
+        ) {
+            Icon(painter = painterResource(R.drawable.ic_refresh), contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text(text = "重新加载")
         }

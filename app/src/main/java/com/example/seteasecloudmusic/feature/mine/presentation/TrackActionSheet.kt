@@ -29,13 +29,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ExpandMore
+import top.yukonga.miuix.kmp.icon.extended.Music
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -150,7 +150,7 @@ fun TrackActionSheet(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Filled.MusicNote,
+                            imageVector = MiuixIcons.Music,
                             contentDescription = null,
                             tint = colors.textSecondary,
                             modifier = Modifier.size(28.dp)
@@ -168,7 +168,7 @@ fun TrackActionSheet(
                     // 歌名（无“歌曲：”前缀）
                     Text(
                         text = track.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = MiuixTheme.textStyles.headline1.copy(
                             color = colors.textPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -183,7 +183,7 @@ fun TrackActionSheet(
                     val artistNames = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
                     Text(
                         text = artistNames,
-                        style = MaterialTheme.typography.bodySmall.copy(
+                        style = MiuixTheme.textStyles.footnote1.copy(
                             color = colors.textSecondary,
                             fontSize = 13.sp
                         ),
@@ -372,7 +372,7 @@ private fun TrackAudioDetailsItem(
 
             Text(
                 text = "音频详细信息",
-                style = MaterialTheme.typography.bodyLarge.copy(
+                style = MiuixTheme.textStyles.body1.copy(
                     color = colors.textPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Normal
@@ -395,7 +395,7 @@ private fun TrackAudioDetailsItem(
             Spacer(modifier = Modifier.width(6.dp))
 
             Icon(
-                imageVector = Icons.Filled.KeyboardArrowDown,
+                imageVector = MiuixIcons.ExpandMore,
                 contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
                 tint = colors.textSecondary,
                 modifier = Modifier
@@ -554,7 +554,7 @@ private fun TrackActionItem(
 
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyLarge.copy(
+            style = MiuixTheme.textStyles.body1.copy(
                 color = AppTheme.colors.textPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal

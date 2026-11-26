@@ -33,33 +33,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sms
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.ErrorOutline
+import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.settings.AppThemeMode
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
+import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,8 +52,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextFieldDefaults
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
+import top.yukonga.miuix.kmp.icon.basic.Close
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -266,7 +265,7 @@ fun AccountLoginSheetContent(
         }
 
         SnackbarHost(
-            hostState = snackbarHostState,
+            state = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -292,7 +291,7 @@ private fun Header(onDismiss: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Sms,
+                    painter = painterResource(R.drawable.ic_sms),
                     contentDescription = null,
                     tint = colors.accent,
                     modifier = Modifier.size(16.dp)
@@ -314,7 +313,7 @@ private fun Header(onDismiss: () -> Unit) {
                 .background(colors.surfaceVariant, CircleShape)
         ) {
             Icon(
-                imageVector = Icons.Filled.Close,
+                imageVector = MiuixIcons.Basic.Close,
                 contentDescription = "关闭",
                 tint = colors.iconPrimary
             )
@@ -362,9 +361,8 @@ private fun MethodSelectionPanel(
             )
         } else {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                cornerRadius = 24.dp,
+                colors = CardDefaults.defaultColors(color = colors.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 LoginMethodRow(
@@ -493,9 +491,8 @@ private fun MethodSelectionPanel(
             Spacer(modifier = Modifier.height(16.dp))
 
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                cornerRadius = 24.dp,
+                colors = CardDefaults.defaultColors(color = colors.surface),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(
@@ -510,10 +507,10 @@ private fun MethodSelectionPanel(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isProcessingLogout) {
-                        CircularProgressIndicator(
+                        AppLoadingIndicator(
                             color = red,
                             strokeWidth = 2.dp,
-                            modifier = Modifier.size(20.dp)
+                            size = 20.dp
                         )
                     } else {
                         Text(
@@ -536,9 +533,8 @@ private fun ProfileCard(
 ) {
     val colors = AppTheme.colors
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        cornerRadius = 24.dp,
+        colors = CardDefaults.defaultColors(color = colors.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -577,9 +573,8 @@ private fun SettingsSectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = AppTheme.colors.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        cornerRadius = 24.dp,
+        colors = CardDefaults.defaultColors(color = AppTheme.colors.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.fillMaxWidth(), content = content)
@@ -630,7 +625,7 @@ private fun SettingsNavigationRow(
             Spacer(modifier = Modifier.size(4.dp))
         }
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = MiuixIcons.ChevronForward,
             contentDescription = null,
             tint = colors.textTertiary,
             modifier = Modifier.size(22.dp)
@@ -834,30 +829,26 @@ private fun CaptchaPanel(
         Spacer(modifier = Modifier.height(12.dp))
 
         Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = colors.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            cornerRadius = 24.dp,
+            colors = CardDefaults.defaultColors(color = colors.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
-            val fieldColors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                focusedPlaceholderColor = colors.textSecondary,
-                unfocusedPlaceholderColor = colors.textSecondary,
-                cursorColor = red
+            val fieldColors = TextFieldDefaults.textFieldColors(
+                backgroundColor = Color.Transparent,
+                labelColor = colors.textSecondary,
+                borderColor = Color.Transparent
             )
+            @Suppress("DEPRECATION")
             TextField(
                 value = phone,
                 onValueChange = onPhoneChange,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                placeholder = { Text("请输入手机号") },
+                label = "请输入手机号",
+                useLabelAsPlaceholder = true,
+                textStyle = MiuixTheme.textStyles.body1.copy(color = colors.textPrimary),
                 colors = fieldColors,
+                cursorBrush = SolidColor(red),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
@@ -869,13 +860,17 @@ private fun CaptchaPanel(
                 thickness = 1.dp
             )
 
+            @Suppress("DEPRECATION")
             TextField(
                 value = captcha,
                 onValueChange = onCaptchaChange,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                placeholder = { Text("请输入验证码") },
+                label = "请输入验证码",
+                useLabelAsPlaceholder = true,
+                textStyle = MiuixTheme.textStyles.body1.copy(color = colors.textPrimary),
                 colors = fieldColors,
+                cursorBrush = SolidColor(red),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
@@ -887,14 +882,22 @@ private fun CaptchaPanel(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedButton(
+                Button(
                     onClick = onSendCaptcha,
-                    shape = RoundedCornerShape(16.dp),
+                    cornerRadius = 16.dp,
+                    colors = ButtonDefaults.buttonColors(
+                        color = Color.Transparent,
+                        disabledColor = Color.Transparent,
+                        contentColor = red,
+                        disabledContentColor = colors.textTertiary
+                    ),
                     enabled = canSendCaptcha,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, colors.divider, RoundedCornerShape(16.dp))
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        AppLoadingIndicator(color = red, strokeWidth = 2.dp, size = 18.dp)
                     } else if (captchaCooldownSeconds > 0) {
                         Text("${captchaCooldownSeconds}s 后重试")
                     } else {
@@ -904,13 +907,13 @@ private fun CaptchaPanel(
 
                 Button(
                     onClick = onLogin,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = red),
+                    cornerRadius = 16.dp,
+                    colors = ButtonDefaults.buttonColorsPrimary(color = red, contentColor = Color.White),
                     enabled = !isLoading,
                     modifier = Modifier.weight(1f)
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                        AppLoadingIndicator(color = Color.White, strokeWidth = 2.dp, size = 18.dp)
                     } else {
                         Text("登录")
                     }
@@ -922,7 +925,7 @@ private fun CaptchaPanel(
             Text(
                 text = helperText,
                 color = red,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MiuixTheme.textStyles.body2,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -930,9 +933,8 @@ private fun CaptchaPanel(
 
             if (isRiskControlError) {
                 Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    cornerRadius = 20.dp,
+                    colors = CardDefaults.defaultColors(color = colors.surface),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 2.dp)
@@ -949,11 +951,19 @@ private fun CaptchaPanel(
                             fontSize = 13.sp,
                             lineHeight = 19.sp
                         )
-                        OutlinedButton(
+                        Button(
                             onClick = onSwitchToQr,
-                            shape = RoundedCornerShape(14.dp),
+                            cornerRadius = 14.dp,
+                            colors = ButtonDefaults.buttonColors(
+                                color = Color.Transparent,
+                                disabledColor = Color.Transparent,
+                                contentColor = red,
+                                disabledContentColor = colors.textTertiary
+                            ),
                             enabled = !isLoading,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, colors.divider, RoundedCornerShape(14.dp))
                         ) {
                             Text(
                                 text = "改用二维码登录",
@@ -1000,9 +1010,8 @@ internal fun QrPanel(
         Spacer(modifier = Modifier.height(12.dp))
 
         Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = colors.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            cornerRadius = 24.dp,
+            colors = CardDefaults.defaultColors(color = colors.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -1028,10 +1037,10 @@ internal fun QrPanel(
                 ) {
                     when {
                         isLoading && imageBitmap == null -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
+                            AppLoadingIndicator(
                                 color = red,
-                                strokeWidth = 3.dp
+                                strokeWidth = 3.dp,
+                                size = 36.dp
                             )
                         }
                         imageBitmap != null -> {
@@ -1048,7 +1057,7 @@ internal fun QrPanel(
                                 modifier = Modifier.padding(12.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.CloudOff,
+                                    painter = painterResource(R.drawable.ic_cloud_off),
                                     contentDescription = "加载失败",
                                     tint = colors.textTertiary,
                                     modifier = Modifier.size(48.dp)
@@ -1069,8 +1078,8 @@ internal fun QrPanel(
 
                 if (isErrorState) {
                     Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
+                        cornerRadius = 14.dp,
+                        colors = CardDefaults.defaultColors(color = colors.errorContainer),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -1078,7 +1087,7 @@ internal fun QrPanel(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.ErrorOutline,
+                                painter = painterResource(R.drawable.ic_error_outline),
                                 contentDescription = null,
                                 tint = colors.errorIcon,
                                 modifier = Modifier.size(18.dp)
@@ -1108,14 +1117,22 @@ internal fun QrPanel(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                OutlinedButton(
+                Button(
                     onClick = onRefresh,
-                    shape = RoundedCornerShape(16.dp),
+                    cornerRadius = 16.dp,
+                    colors = ButtonDefaults.buttonColors(
+                        color = Color.Transparent,
+                        disabledColor = Color.Transparent,
+                        contentColor = red,
+                        disabledContentColor = colors.textTertiary
+                    ),
                     enabled = !isLoading,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, colors.divider, RoundedCornerShape(16.dp))
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        AppLoadingIndicator(color = red, strokeWidth = 2.dp, size = 18.dp)
                     } else {
                         Text(if (isErrorState) "重新获取二维码" else "刷新二维码")
                     }
@@ -1138,7 +1155,7 @@ private fun PanelTitle(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                imageVector = MiuixIcons.Back,
                 contentDescription = "返回",
                 tint = colors.textPrimary
             )
@@ -1241,7 +1258,7 @@ private fun <T> SettingsOptionDialog(
                     }
                     if (isSelected) {
                         Icon(
-                            imageVector = Icons.Filled.Check,
+                            imageVector = MiuixIcons.Basic.Check,
                             contentDescription = null,
                             tint = colors.accent,
                             modifier = Modifier.size(20.dp)

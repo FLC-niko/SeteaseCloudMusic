@@ -11,11 +11,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Music
 import com.example.seteasecloudmusic.core.ui.adaptive.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +38,6 @@ import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 /**
  * 播放列表二级菜单底栏 (当前待播清单与播放顺序)
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistQueueSheet(
     playbackState: PlaybackState,
@@ -47,7 +48,6 @@ fun PlaylistQueueSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
 
     // 打开时自动平滑滚动到当前正在播放的曲目
@@ -157,7 +157,7 @@ fun PlaylistQueueSheet(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.Filled.MusicNote,
+                            imageVector = MiuixIcons.Music,
                             contentDescription = null,
                             tint = colors.textTertiary,
                             modifier = Modifier.size(48.dp)
@@ -228,7 +228,7 @@ private fun QueueTrackItemRow(
             if (isCurrent) {
                 if (isPlaying) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        painter = painterResource(id = R.drawable.ic_volume_high),
                         contentDescription = null,
                         tint = colors.accent,
                         modifier = Modifier.size(18.dp)
