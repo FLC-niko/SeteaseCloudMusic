@@ -283,6 +283,119 @@ class LocalNeteaseApiAdapterTest {
         assertEquals(-460, obj.get("code").asInt)
     }
 
+    @Test
+    fun captchaSentThenCellphoneLogin_preservesSessionIdentityCookiesAndOmitsFakeIp() {
+        val tokenStore = InMemoryTokenStore(anon = "anon_tok")
+        val transport = RecordingTransport { req ->
+            when {
+                req.url.endsWith("/weapi/sms/captcha/sent") ->
+                    UpstreamHttpResponse(
+                        httpCode = 200,
+                        bodyText = """{"code":200,"data":true}""",
+                        setCookies = listOf(
+                            "NMTID=server_nmtid_1; Domain=.music.163.com; Path=/",
+                            "JSESSIONID-WYYY=jsess_abc; Path=/",
+                            "__csrf=csrf_pre_1; Path=/"
+                        )
+                    )
+                req.url.endsWith("/weapi/w/login/cellphone") ->
+                    UpstreamHttpResponse(
+                        httpCode = 200,
+                        bodyText = """{"code":200,"account":{"id":42}}""",
+                        setCookies = listOf("MUSIC_U=real_user_u; Domain=.music.163.com; Path=/")
+                    )
+                else -> error("Unexpected url ${req.url}")
+            }
+        }
+        val interceptor = buildInterceptor(transport, tokenStore = tokenStore)
+
+        val sentRes = interceptor.intercept(
+            FakeChain(
+                Request.Builder()
+                    .url("http://57.158.26.135:3000/captcha/sent?phone=13800138000")
+                    .post(FormBody.Builder().build())
+                    .build()
+            )
+        )
+        assertEquals(200, sentRes.code)
+
+        val loginRes = interceptor.intercept(
+            FakeChain(
+                Request.Builder()
+                    .url("http://57.158.26.135:3000/login/cellphone?phone=13800138000&captcha=1234")
+                    .post(FormBody.Builder().build())
+                    .build()
+            )
+        )
+        assertEquals(200, loginRes.code)
+        assertEquals(2, transport.requests.size)
+
+        val sentReq = transport.requests[0]
+        val loginReq = transport.requests[1]
+
+        // 本地直连请求不得伪造 X-Real-IP / X-Forwarded-For
+        assertFalse(sentReq.headers.containsKey("X-Real-IP"))
+        assertFalse(loginReq.headers.containsKey("X-Real-IP"))
+
+        // 发验证码与提交登录必须共享同一套持久化访客指纹
+        val sentCookie = sentReq.headers["Cookie"].orEmpty()
+        val loginCookie = loginReq.headers["Cookie"].orEmpty()
+        assertTrue(sentCookie.contains("_ntes_nuid=${tokenStore.getOrCreateNtesNuid()}"))
+        assertTrue(loginCookie.contains("_ntes_nuid=${tokenStore.getOrCreateNtesNuid()}"))
+        assertTrue(sentCookie.contains("WNMCID=${tokenStore.getOrCreateWnmcid()}"))
+        assertTrue(loginCookie.contains("WNMCID=${tokenStore.getOrCreateWnmcid()}"))
+
+        // /captcha/sent 下发的预登录临时 Cookie 应自动带入 /login/cellphone
+        assertTrue(loginCookie.contains("NMTID=server_nmtid_1"))
+        assertTrue(loginCookie.contains("JSESSIONID-WYYY=jsess_abc"))
+        assertTrue(loginCookie.contains("__csrf=csrf_pre_1"))
+
+        // 下发正式 MUSIC_U 后自动清理预登录临时 Cookie
+        assertTrue(tokenStore.getPreLoginCookies().isEmpty())
+
+        // WEAPI 的 User-Agent 应与 Windows 10 PC 环境配置保持一致
+        assertTrue(sentReq.headers["User-Agent"].orEmpty().contains("Windows NT 10.0"))
+        assertTrue(loginReq.headers["User-Agent"].orEmpty().contains("Windows NT 10.0"))
+    }
+
+    @Test
+    fun eapiUserAgent_matchesCookieOsProfileInsteadOfHardcodingIphone() {
+        val transport = RecordingTransport {
+            UpstreamHttpResponse(200, """{"code":200,"data":[]}""")
+        }
+        val interceptor = buildInterceptor(transport, tokenStore = InMemoryTokenStore(anon = "anon"))
+
+        interceptor.intercept(
+            FakeChain(
+                Request.Builder()
+                    .url("http://57.158.26.135:3000/song/url/v1?id=1&level=hires")
+                    .header("Cookie", "MUSIC_U=u")
+                    .build()
+            )
+        )
+        val pcUa = transport.requests.last().headers["User-Agent"].orEmpty()
+        assertTrue(pcUa.contains("NeteaseMusicDesktop/3.1.17.204416"))
+        assertFalse(pcUa.contains("iPhone"))
+
+        interceptor.intercept(
+            FakeChain(
+                Request.Builder()
+                    .url("http://57.158.26.135:3000/song/url/v1?id=1&level=hires")
+                    .header("Cookie", "MUSIC_U=u; os=android")
+                    .build()
+            )
+        )
+        assertTrue(transport.requests.last().headers["User-Agent"].orEmpty().contains("Android"))
+    }
+
+    @Test
+    fun sessionChineseIp_isStableAcrossRepeatedCalls() {
+        val ip1 = NeteaseRequestContextBuilder.sessionChineseIp()
+        val ip2 = NeteaseRequestContextBuilder.sessionChineseIp()
+        assertEquals(ip1, ip2)
+        assertTrue(com.example.seteasecloudmusic.core.network.PublicIpResolver.isValidPublicIpv4(ip1))
+    }
+
     private fun buildInterceptor(
         transport: NeteaseUpstreamTransport,
         tokenStore: NeteaseTokenStore = InMemoryTokenStore()
@@ -298,12 +411,33 @@ class LocalNeteaseApiAdapterTest {
 
     private class InMemoryTokenStore(
         private val deviceId: String = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123",
-        private var anon: String? = null
+        private var anon: String? = null,
+        private val ntesNuid: String = "a".repeat(64),
+        private val ntesNnid: String = "${"a".repeat(64)},1700000000000",
+        private val wnmcid: String = "abcdef.1700000000000.01.0"
     ) : NeteaseTokenStore {
+        private val preLogin = LinkedHashMap<String, String>()
         override fun getOrCreateDeviceId(): String = deviceId
         override fun getAnonymousToken(): String? = anon
         override fun saveAnonymousToken(token: String) {
             anon = token
+        }
+        override fun getOrCreateNtesNuid(): String = ntesNuid
+        override fun getOrCreateNtesNnid(nowMs: Long): String = ntesNnid
+        override fun getOrCreateWnmcid(nowMs: Long): String = wnmcid
+        override fun getPreLoginCookies(): Map<String, String> = LinkedHashMap(preLogin)
+        override fun mergePreLoginCookies(setCookies: List<String>) {
+            for (line in setCookies) {
+                val parsed = com.example.seteasecloudmusic.core.network.CookieSanitizer.parsePairs(line)
+                for ((k, v) in parsed) {
+                    if (k != "MUSIC_U" && v.isNotBlank()) {
+                        preLogin[k] = v
+                    }
+                }
+            }
+        }
+        override fun clearPreLoginCookies() {
+            preLogin.clear()
         }
     }
 

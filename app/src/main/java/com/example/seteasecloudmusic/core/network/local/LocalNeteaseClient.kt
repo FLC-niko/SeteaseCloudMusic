@@ -13,8 +13,8 @@ internal data class LocalApiResult(
 )
 
 /**
- * Executes Netease API upstream calls locally, handling crypto mode selection,
- * anonymous token lazy registration/persistence, header assembly, and response normalization.
+ * 在本地直连执行网易云上游接口请求，负责加密模式选择、匿名游客令牌懒注册与持久化、
+ * 请求头/会话 Cookie 组装以及响应规范化。
  */
 internal class LocalNeteaseClient(
     private val transport: NeteaseUpstreamTransport,
@@ -33,13 +33,18 @@ internal class LocalNeteaseClient(
     ): LocalApiResult {
         val crypto = NeteaseCryptoMode.fromQuery(queryParams["crypto"]) ?: defaultCrypto
         val deviceId = tokenStore.getOrCreateDeviceId()
+        val nowMs = clockMs()
+        val effectiveRawCookie = mergePreLoginCookiesIfUnauthenticated(rawCookie)
 
         var cookieMap = NeteaseRequestContextBuilder.processCookieMap(
-            rawCookie = rawCookie,
+            rawCookie = effectiveRawCookie,
             uri = upstreamPath,
             deviceId = deviceId,
             anonymousToken = tokenStore.getAnonymousToken(),
-            nowMs = clockMs()
+            nowMs = nowMs,
+            ntesNuid = tokenStore.getOrCreateNtesNuid(),
+            ntesNnid = tokenStore.getOrCreateNtesNnid(nowMs),
+            wnmcidOverride = tokenStore.getOrCreateWnmcid(nowMs)
         )
 
         if (cookieMap["MUSIC_U"].isNullOrBlank() &&
@@ -79,6 +84,13 @@ internal class LocalNeteaseClient(
         )
 
         val cleanedCookies = stripDomainFromSetCookies(upstreamRes.setCookies)
+        if (cleanedCookies.isNotEmpty()) {
+            if (extractCookieValue(cleanedCookies, "MUSIC_U") != null) {
+                tokenStore.clearPreLoginCookies()
+            } else {
+                tokenStore.mergePreLoginCookies(cleanedCookies)
+            }
+        }
         val parsedBody = parseBodyJson(upstreamRes.bodyText, encryptedResponse = upstreamReq.encryptedResponse)
         val bodyCode = parsedBody?.get("code")
             ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
@@ -191,7 +203,10 @@ internal class LocalNeteaseClient(
                 )
                 headers["Cookie"] = NeteaseRequestContextBuilder.eapiHeaderCookieString(headerJson)
                 headers["User-Agent"] = explicitUa
-                    ?: NeteaseRequestContextBuilder.chooseUserAgent(NeteaseCryptoMode.API, "iphone")
+                    ?: NeteaseRequestContextBuilder.chooseUserAgent(
+                        NeteaseCryptoMode.API,
+                        NeteaseRequestContextBuilder.resolveUaTypeForOs(cookieMap["os"])
+                    )
 
                 if (crypto == NeteaseCryptoMode.EAPI) {
                     val encryptResponse = queryParams["e_r"]?.equals("true", ignoreCase = true) ?: false
@@ -223,10 +238,25 @@ internal class LocalNeteaseClient(
         }
     }
 
+    private fun mergePreLoginCookiesIfUnauthenticated(rawCookie: String?): String? {
+        val explicitPairs = com.example.seteasecloudmusic.core.network.CookieSanitizer.parsePairs(rawCookie)
+        if (!explicitPairs["MUSIC_U"].isNullOrBlank()) {
+            return rawCookie
+        }
+        val preLogin = tokenStore.getPreLoginCookies()
+        if (preLogin.isEmpty()) {
+            return rawCookie
+        }
+        val merged = LinkedHashMap<String, String>(preLogin.size + explicitPairs.size)
+        merged.putAll(preLogin)
+        merged.putAll(explicitPairs)
+        return merged.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
     private fun resolveClientIp(queryParams: Map<String, String>): String? {
         queryParams["realIP"]?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         if (queryParams["randomCNIP"]?.equals("true", ignoreCase = true) == true) {
-            return NeteaseRequestContextBuilder.generateRandomChineseIp()
+            return NeteaseRequestContextBuilder.sessionChineseIp()
         }
         return null
     }
