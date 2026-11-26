@@ -58,6 +58,10 @@ class NetworkMonitor @Inject constructor(
     private val _retryTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val retryTrigger: SharedFlow<Unit> = _retryTrigger.asSharedFlow()
 
+    // 底层网络切换事件流（例如 Wi-Fi <-> 蜂窝切换时通知依赖网络出口的组件刷新缓存）
+    private val _networkChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val networkChanged: SharedFlow<Unit> = _networkChanged.asSharedFlow()
+
     private var activeCustomRetryAction: (() -> Unit)? = null
 
     // 断网判定防抖 Job。
@@ -88,6 +92,7 @@ class NetworkMonitor @Inject constructor(
             val online = checkOnlineStatus()
             android.util.Log.d("NetworkMonitor", "onAvailable: online=$online, wasOffline=$wasOffline")
             _isOnline.value = online
+            _networkChanged.tryEmit(Unit)
             if (online && wasOffline && _showOfflineDialog.value) {
                 // 网络恢复连接时自动通知刷新并关闭弹窗
                 scope.launch {

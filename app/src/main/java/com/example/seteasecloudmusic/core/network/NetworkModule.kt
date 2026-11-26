@@ -54,27 +54,51 @@ class NetworkModule {
     @Singleton
     fun provideHttpClient(
         @ApplicationContext context: Context,
-        settingsManager: PlayerSettingsManager
+        settingsManager: PlayerSettingsManager,
+        networkMonitor: NetworkMonitor
     ): OkHttpClient {
+        val ipProbeClient = OkHttpClient.Builder()
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(2, TimeUnit.SECONDS)
+            .writeTimeout(2, TimeUnit.SECONDS)
+            .build()
+
+        val publicIpResolver = PublicIpResolver(httpClient = ipProbeClient).also {
+            it.observeNetworkChanges(networkMonitor)
+        }
+
         /**
-         * 随机中国 IP 参数拦截器：
-         * 为所有请求统一附加 randomCNIP=true，规避部分环境下的 460 限制。
+         * 代理线路真实 IP 附带拦截器：
+         * - 本地直连模式（默认）走设备真实出口 IP，不附带伪造 IP，也不触发任何外部查 IP 请求。
+         * - 仅当用户手动关闭本地直连、回退海外代理服务器时，才附带测得的国内真实公网 IP
+         *   （若开启海外代理或探测失败，自动兜底为本次会话固定的国内运营商 IP）。
          */
-        val randomCnIpInterceptor = Interceptor { chain ->
+        val proxyRealIpInterceptor = Interceptor { chain ->
             val originalRequest = chain.request()
             val originalUrl = originalRequest.url
 
-            // 官方网易云接口（如 clientlog3.music.163.com）保持纯净请求，不附加 randomCNIP
+            // 官方网易云接口（如 clientlog3.music.163.com）保持纯净请求
             if (originalUrl.host.contains("163.com") || originalUrl.host.contains("netease.com")) {
                 return@Interceptor chain.proceed(originalRequest)
             }
 
-            // 若调用方已显式传入 randomCNIP，则保持原值不覆盖。
-            val request = if (originalUrl.queryParameter("randomCNIP") != null) {
+            // 本地直连模式直接由手机本机连接网易云官方，严禁伪造 randomCNIP / X-Real-IP
+            if (settingsManager.localDirectApiEnabled.value) {
+                return@Interceptor chain.proceed(originalRequest)
+            }
+
+            // 若调用方已显式传入 realIP 或 randomCNIP，则保持原值不覆盖。
+            val request = if (
+                originalUrl.queryParameter("realIP") != null ||
+                originalUrl.queryParameter("randomCNIP") != null
+            ) {
                 originalRequest
             } else {
+                val path = originalUrl.encodedPath.lowercase()
+                val isAuthPath = path.contains("login") || path.contains("captcha")
+                val resolvedIp = publicIpResolver.resolveProxyClientIp(allowBriefWait = isAuthPath)
                 val updatedUrl = originalUrl.newBuilder()
-                    .addQueryParameter("randomCNIP", "true")
+                    .addQueryParameter("realIP", resolvedIp)
                     .build()
 
                 originalRequest.newBuilder()
@@ -215,7 +239,7 @@ class NetworkModule {
             registry = NeteaseEndpointRegistry(
                 client = LocalNeteaseClient(
                     transport = OkHttpNeteaseUpstreamTransport(upstreamClient),
-                    tokenStore = SharedPreferencesNeteaseTokenStore(context)
+                    tokenStore = SharedPreferencesNeteaseTokenStore.getInstance(context)
                 )
             ),
             isLocalModeEnabled = { settingsManager.localDirectApiEnabled.value },
@@ -232,8 +256,8 @@ class NetworkModule {
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
-            // 优先补充 randomCNIP 参数，确保后续日志能打印最终 URL。
-            .addInterceptor(randomCnIpInterceptor)
+            // 仅在外部代理模式下附带稳定的国内真实 IP；本地直连保持设备真实网络出口。
+            .addInterceptor(proxyRealIpInterceptor)
             // 先补公共请求头，确保后续拦截器拿到的是完整请求。
             .addInterceptor(commonHeadersInterceptor)
             // 自动管理 Cookie（登录态）。
