@@ -3,6 +3,14 @@ package com.example.seteasecloudmusic.feature.search.domain
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 
+/** 下载场景解析出的完整可用音源直链及元信息。 */
+data class ResolvedDownloadTrackUrl(
+    val url: String,
+    val actualLevel: String,
+    val formatHint: String? = null,
+    val fileSizeBytes: Long? = null
+)
+
 /**
  * 搜索域仓库接口：定义歌曲/歌手/歌单搜索、热搜与联想、播放直链获取及听歌打卡能力。
  */
@@ -33,6 +41,12 @@ interface SearchRepository {
         trackId: Long,
         level: String = "hires"
     ): Result<String>
+
+    /** 解析下载用的完整音源直链：过滤试听片段，并按音质梯度自动向下降级。 */
+    suspend fun resolveDownloadTrackUrl(
+        trackId: Long,
+        preferredLevel: String = "hires"
+    ): Result<ResolvedDownloadTrackUrl>
 
     /** 获取搜索建议，返回单曲、歌手、歌单与匹配词建议。 */
     suspend fun getSearchSuggestions(

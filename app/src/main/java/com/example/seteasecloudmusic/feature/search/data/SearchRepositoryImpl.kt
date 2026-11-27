@@ -11,6 +11,7 @@ import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.feature.search.domain.ArtistSuggestion
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.PlaylistSuggestion
+import com.example.seteasecloudmusic.feature.search.domain.ResolvedDownloadTrackUrl
 import com.example.seteasecloudmusic.feature.search.domain.SearchRepository
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import kotlinx.coroutines.CancellationException
@@ -251,6 +252,94 @@ class SearchRepositoryImpl @Inject constructor(
             throw e
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun resolveDownloadTrackUrl(
+        trackId: Long,
+        preferredLevel: String
+    ): Result<ResolvedDownloadTrackUrl> = withContext(Dispatchers.IO) {
+        if (trackId <= 0L) {
+            return@withContext Result.failure(IllegalArgumentException("无效的歌曲 ID: $trackId"))
+        }
+
+        val candidates = downloadQualityCandidates(preferredLevel)
+        var sawTrialOnly = false
+        var lastError: Throwable? = null
+
+        for (level in candidates) {
+            try {
+                val response = resolveSongUrlWithFallback(
+                    fetchSongUrlV1 = { crypto ->
+                        musicService.getSongUrl(id = trackId, level = level, crypto = crypto)
+                    },
+                    fetchLegacySongUrl = {
+                        musicService.getLegacySongUrl(id = trackId)
+                    }
+                )
+                if (response.code != 200) {
+                    lastError = Exception("获取音源失败 (code=${response.code})")
+                    continue
+                }
+
+                val item = response.data.firstOrNull { it.id == trackId }
+                    ?: response.data.firstOrNull()
+                if (item == null) {
+                    lastError = Exception("未返回可用音源信息")
+                    continue
+                }
+
+                if (isFullAudioSource(item, trackId)) {
+                    val rawUrl = item.url!!.trim()
+                    val secureUrl = if (rawUrl.startsWith("http://")) {
+                        rawUrl.replaceFirst("http://", "https://")
+                    } else {
+                        rawUrl
+                    }
+                    val resolvedLevel = item.level?.trim()?.takeIf { it.isNotBlank() } ?: level
+                    val bitrateKbps = item.br?.let { br ->
+                        when {
+                            br > 10000 -> (br + 500) / 1000
+                            br in 1..10000 -> br
+                            else -> null
+                        }
+                    }
+                    val formatHint = resolveOnlineAudioFormat(
+                        url = secureUrl,
+                        type = item.type,
+                        encodeType = item.encodeType,
+                        level = resolvedLevel,
+                        bitrateKbps = bitrateKbps
+                    )
+                    return@withContext Result.success(
+                        ResolvedDownloadTrackUrl(
+                            url = secureUrl,
+                            actualLevel = resolvedLevel,
+                            formatHint = formatHint,
+                            fileSizeBytes = item.size?.takeIf { it > 0L }
+                        )
+                    )
+                }
+
+                if (!item.url.isNullOrBlank() && item.freeTrialInfo != null && !item.freeTrialInfo.isJsonNull) {
+                    sawTrialOnly = true
+                } else {
+                    lastError = Exception(item.message?.takeIf { it.isNotBlank() } ?: "当前音质 $level 无可用直链")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                if (t.isConnectivityFailure()) {
+                    return@withContext Result.failure(t)
+                }
+                lastError = t
+            }
+        }
+
+        if (sawTrialOnly) {
+            Result.failure(IllegalStateException("当前账号无完整音源权限（仅支持试听）"))
+        } else {
+            Result.failure(lastError ?: IllegalStateException("未获取到可用下载链接"))
         }
     }
 
@@ -610,6 +699,29 @@ class SearchRepositoryImpl @Inject constructor(
         )
         // /song/url/v1 加密策略重试顺序：依次尝试 weapi、api、无加密，全部失败后再降级到 /song/url 码率接口
         private val SONG_URL_CRYPTO_FALLBACK_ORDER = listOf("weapi", "api", null)
+        // 下载场景音质向下降级梯度
+        private val DOWNLOAD_QUALITY_LADDER = listOf("jymaster", "hires", "lossless", "exhigh", "higher", "standard")
+
+        internal fun downloadQualityCandidates(preferredLevel: String): List<String> {
+            val normalized = preferredLevel.trim().lowercase(Locale.ROOT)
+            val idx = DOWNLOAD_QUALITY_LADDER.indexOf(normalized)
+            return if (idx >= 0) {
+                DOWNLOAD_QUALITY_LADDER.subList(idx, DOWNLOAD_QUALITY_LADDER.size)
+            } else {
+                (listOfNotNull(normalized.takeIf { it.isNotBlank() }) + DOWNLOAD_QUALITY_LADDER).distinct()
+            }
+        }
+
+        /**
+         * 判断返回的音源条目是否为完整可下载音频（排除试听片段与失败占位条目）。
+         */
+        internal fun isFullAudioSource(item: SongUrlItemResponse, expectedTrackId: Long): Boolean {
+            val idMatches = item.id == 0L || item.id == expectedTrackId
+            val statusOk = item.code == null || item.code == 200
+            val hasUrl = !item.url.isNullOrBlank()
+            val notTrial = item.freeTrialInfo == null || item.freeTrialInfo.isJsonNull
+            return idMatches && statusOk && hasUrl && notTrial
+        }
         private val HTML_TAG_REGEX = Regex("<[^>]+>")
         private val HIGHLIGHT_TAG_REGEX = Regex("<(b|em)\\b", RegexOption.IGNORE_CASE)
         private val LRC_TIMESTAMP_REGEX = Regex("""\[\d{1,2}:\d{2}(?:\.\d{1,3})?]""")

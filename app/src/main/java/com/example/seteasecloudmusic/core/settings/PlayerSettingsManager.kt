@@ -86,6 +86,12 @@ class PlayerSettingsManager @Inject constructor(
     private val _liquidGlassOpacity = MutableStateFlow(loadSavedLiquidGlassOpacity())
     val liquidGlassOpacity: StateFlow<Float> = _liquidGlassOpacity.asStateFlow()
 
+    private val _downloadDirectoryPath = MutableStateFlow(loadSavedDownloadDirectory())
+    val downloadDirectoryPath: StateFlow<String> = _downloadDirectoryPath.asStateFlow()
+
+    private val _scanDirectories = MutableStateFlow(loadSavedScanDirectories())
+    val scanDirectories: StateFlow<List<String>> = _scanDirectories.asStateFlow()
+
     fun setThemeMode(mode: AppThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
@@ -143,6 +149,26 @@ class PlayerSettingsManager @Inject constructor(
         prefs.edit().putBoolean(KEY_LOCAL_DIRECT_API, enabled).apply()
     }
 
+    fun setDownloadDirectoryPath(path: String) {
+        val normalized = normalizeDirectoryPath(path).ifBlank { DEFAULT_DOWNLOAD_DIRECTORY }
+        _downloadDirectoryPath.value = normalized
+        prefs.edit().putString(KEY_DOWNLOAD_DIRECTORY, normalized).apply()
+    }
+
+    fun setScanDirectories(directories: List<String>) {
+        val normalized = directories
+            .map { normalizeDirectoryPath(it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .ifEmpty { DEFAULT_SCAN_DIRECTORIES }
+        _scanDirectories.value = normalized
+        prefs.edit().putString(KEY_SCAN_DIRECTORIES, normalized.joinToString("\n")).apply()
+    }
+
+    fun resetScanDirectoriesToDefault() {
+        setScanDirectories(DEFAULT_SCAN_DIRECTORIES)
+    }
+
     private fun loadSavedAudioQuality(): OnlineAudioQuality {
         val name = prefs.getString(KEY_AUDIO_QUALITY, OnlineAudioQuality.STANDARD.name)
         return try {
@@ -198,6 +224,25 @@ class PlayerSettingsManager @Inject constructor(
         }
     }
 
+    private fun loadSavedDownloadDirectory(): String {
+        val saved = prefs.getString(KEY_DOWNLOAD_DIRECTORY, null)
+        return saved?.let(::normalizeDirectoryPath)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_DOWNLOAD_DIRECTORY
+    }
+
+    private fun loadSavedScanDirectories(): List<String> {
+        if (!prefs.contains(KEY_SCAN_DIRECTORIES)) {
+            return DEFAULT_SCAN_DIRECTORIES
+        }
+        val raw = prefs.getString(KEY_SCAN_DIRECTORIES, null).orEmpty()
+        return raw.lineSequence()
+            .map(::normalizeDirectoryPath)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
+            .ifEmpty { DEFAULT_SCAN_DIRECTORIES }
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"                     // 全局设置 SharedPreferences 文件名
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"           // 在线音质偏好 Key（默认 OnlineAudioQuality.STANDARD）
@@ -210,6 +255,52 @@ class PlayerSettingsManager @Inject constructor(
         private const val KEY_TOP_AMBIENT_ENABLED = "top_ambient_enabled"      // 顶部氛围背景开关 Key（默认 true）
         private const val KEY_TOP_AMBIENT_COLOR_ARGB = "top_ambient_color_argb"// 顶部氛围背景色 ARGB 整数值 Key
         private const val KEY_LIQUID_GLASS_OPACITY = "liquid_glass_opacity_level" // 液态玻璃通透度/磨砂调节值 Key（[-1f, 1f]，默认 0f）
+        private const val KEY_DOWNLOAD_DIRECTORY = "download_directory_path"    // 歌曲下载保存目录 Key
+        private const val KEY_SCAN_DIRECTORIES = "local_scan_directories"       // 本地音乐扫描目录列表 Key（换行分隔）
+
+        /** 默认下载保存目录与默认扫描目录之一。 */
+        const val DEFAULT_DOWNLOAD_DIRECTORY = "/storage/emulated/0/Music/"
+
+        /** 网易云音乐客户端下载目录快捷路径，同时作为默认扫描目录之一。 */
+        const val NETEASE_DOWNLOAD_DIRECTORY = "/storage/emulated/0/Download/netease/cloudmusic/Music/"
+
+        /** 下载目录可选快捷路径列表。 */
+        val QUICK_DOWNLOAD_DIRECTORIES: List<String> = listOf(
+            DEFAULT_DOWNLOAD_DIRECTORY,
+            NETEASE_DOWNLOAD_DIRECTORY
+        )
+
+        /** 默认本地扫描目录列表（默认全扫两个常用目录）。 */
+        val DEFAULT_SCAN_DIRECTORIES: List<String> = listOf(
+            DEFAULT_DOWNLOAD_DIRECTORY,
+            NETEASE_DOWNLOAD_DIRECTORY
+        )
+
+        private val MULTIPLE_SLASHES_REGEX = Regex("/+")
+
+        /** 统一规范目录格式（处理 `/sdcard` 前缀、重复斜杠并保留末尾 `/`）。 */
+        fun normalizeDirectoryPath(raw: String): String {
+            val trimmed = raw.trim().replace('\\', '/')
+            if (trimmed.isBlank()) return ""
+            var collapsed = trimmed.replace(MULTIPLE_SLASHES_REGEX, "/")
+            if (collapsed == "/sdcard" || collapsed.startsWith("/sdcard/")) {
+                collapsed = "/storage/emulated/0" + collapsed.removePrefix("/sdcard")
+            }
+            if (!collapsed.startsWith("/")) {
+                collapsed = "/$collapsed"
+            }
+            return if (collapsed.endsWith("/")) collapsed else "$collapsed/"
+        }
+
+        /** 提取简短目录展示标签，供设置列表右侧摘要展示。 */
+        fun formatDirectoryShortLabel(path: String): String {
+            val normalized = normalizeDirectoryPath(path)
+            return when (normalized) {
+                DEFAULT_DOWNLOAD_DIRECTORY -> "Music"
+                NETEASE_DOWNLOAD_DIRECTORY -> "网易云目录"
+                else -> normalized.trimEnd('/').substringAfterLast('/').ifBlank { normalized }
+            }
+        }
 
         /** 顶部氛围背景默认颜色（ARGB）。 */
         const val DEFAULT_TOP_AMBIENT_COLOR_ARGB: Int = 0xFFFFE8ED.toInt()

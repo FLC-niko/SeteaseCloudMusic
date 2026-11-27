@@ -35,6 +35,8 @@ fun MineRoute(
         onPlayAll = viewModel::playAll,
         onScanLocal = viewModel::scanLocalMusic,
         onSetLocalDirectory = viewModel::setLocalDirectoryAndScan,
+        onSetScanDirectories = viewModel::setScanDirectoriesAndScan,
+        onSetDownloadDirectory = viewModel::setDownloadDirectory,
         onTrackLikedChanged = viewModel::onTrackLikedChanged,
         onTrackAddedToPlaylist = viewModel::onTrackAddedToPlaylist,
         onTracksAddedToPlaylist = viewModel::onTracksAddedToPlaylist,

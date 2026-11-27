@@ -68,6 +68,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
+import com.example.seteasecloudmusic.core.download.DownloadEnqueueResult
+import com.example.seteasecloudmusic.core.download.DownloadStatus
 import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
@@ -264,6 +266,10 @@ fun TrackActionSheet(
             val isLiked = track.id in likedTrackIds
             val artistNames = track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
             val albumTitle = track.album.title.ifBlank { "未知专辑" }
+            val downloadManager = remember { PlayerEntryPoints.downloadManagerOrNull() }
+            val downloadTasks by (downloadManager?.tasksFlow?.collectAsState()
+                ?: remember { androidx.compose.runtime.mutableStateOf(emptyList()) })
+            val downloadTask = downloadTasks.firstOrNull { it.trackId == track.id }
 
             Card(
                 colors = CardDefaults.defaultColors(color = colors.surfaceVariant),
@@ -341,8 +347,40 @@ fun TrackActionSheet(
                         )
                     },
                     title = "下载",
+                    badge = downloadTask?.let { task ->
+                        {
+                            val statusText = when (task.status) {
+                                DownloadStatus.PENDING -> "等待中"
+                                DownloadStatus.DOWNLOADING -> "${task.progress}%"
+                                DownloadStatus.COMPLETED -> "已下载"
+                                DownloadStatus.FAILED -> "失败 · 重试"
+                                DownloadStatus.PAUSED -> "已暂停"
+                            }
+                            Text(
+                                text = statusText,
+                                style = MiuixTheme.textStyles.footnote1.copy(
+                                    color = if (task.status == DownloadStatus.FAILED) colors.accent else colors.textSecondary,
+                                    fontSize = 12.sp
+                                )
+                            )
+                        }
+                    },
                     onClick = {
-                        Toast.makeText(context, "已加入下载队列", Toast.LENGTH_SHORT).show()
+                        val message = when {
+                            downloadManager == null -> "下载服务未初始化"
+                            downloadTask?.status == DownloadStatus.FAILED ||
+                                downloadTask?.status == DownloadStatus.PAUSED -> {
+                                downloadManager.resume(track.id)
+                                "已重新加入下载队列"
+                            }
+                            else -> when (downloadManager.enqueue(track)) {
+                                DownloadEnqueueResult.ENQUEUED -> "已加入下载队列"
+                                DownloadEnqueueResult.ALREADY_DOWNLOADED -> "该歌曲已下载到本地"
+                                DownloadEnqueueResult.ALREADY_IN_QUEUE -> "该歌曲已在下载队列中"
+                                DownloadEnqueueResult.ALREADY_LOCAL -> "该歌曲已是本地音频"
+                            }
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         onDismiss()
                     }
                 )

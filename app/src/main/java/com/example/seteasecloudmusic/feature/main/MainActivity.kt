@@ -5,15 +5,21 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.example.seteasecloudmusic.core.download.DownloadEvent
+import com.example.seteasecloudmusic.core.download.TrackDownloadManager
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
@@ -22,6 +28,7 @@ import com.example.seteasecloudmusic.core.ui.theme.LiquidGlassAppearance
 import com.example.seteasecloudmusic.core.ui.theme.SeteaseCloudMusicTheme
 import com.example.seteasecloudmusic.core.ui.theme.TopAmbientAppearance
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
+import kotlinx.coroutines.launch
 
 /**
  * 应用主入口 Activity：初始化播放器与点赞回调、请求通知权限、启用边到边布局并挂载 Compose 根界面。
@@ -38,6 +45,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var playerSettingsManager: PlayerSettingsManager
 
+    @Inject
+    lateinit var trackDownloadManager: TrackDownloadManager
+
     private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
 
@@ -46,7 +56,18 @@ class MainActivity : ComponentActivity() {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        PlayerEntryPoints.init(musicPlayerController)
+        PlayerEntryPoints.init(musicPlayerController, trackDownloadManager)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                trackDownloadManager.eventsFlow.collect { event ->
+                    val message = when (event) {
+                        is DownloadEvent.Completed -> "下载完成：${event.title}"
+                        is DownloadEvent.Failed -> "下载失败：${event.title}（${event.reason}）"
+                    }
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
         FavoriteTracksManager.setLikeApiHandler { trackId, like ->
             mineRepository.likeTrack(trackId, like)
         }

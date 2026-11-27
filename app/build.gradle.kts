@@ -142,4 +142,8 @@ dependencies {
 
     // Hilt 与 Compose Navigation 集成（提供 hiltViewModel()）
     implementation(libs.androidx.hilt.navigation.compose)
+
+    // 后台下载任务调度与音频元数据标签读写
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.jaudiotagger)
 }

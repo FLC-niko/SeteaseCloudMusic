@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.core.common.isRiskControlError
 import com.example.seteasecloudmusic.core.common.toUserFriendlyMessage
+import com.example.seteasecloudmusic.core.local.LocalMusicRepository
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrLoginStart
 import com.example.seteasecloudmusic.feature.auth.domain.model.QrStatus
 import com.example.seteasecloudmusic.feature.auth.usecase.LogoutUseCase
@@ -67,6 +68,7 @@ class AuthViewModel @Inject constructor(
     private val observeAuthStateUseCase: ObserveAuthStateUseCase,
     private val refreshSessionUseCase: RefreshSessionUseCase,
     private val logoutUseCase: LogoutUseCase,
+    private val localMusicRepository: LocalMusicRepository,
     val playerSettingsManager: com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 ) : ViewModel() {
 
@@ -84,6 +86,13 @@ class AuthViewModel @Inject constructor(
     private var captchaCooldownJob: Job? = null
     private var qrRequestId = 0L
     private var isRefreshingSessionProfile = false
+
+    fun updateScanDirectories(directories: List<String>) {
+        localMusicRepository.setScanDirectories(directories)
+        viewModelScope.launch {
+            runCatching { localMusicRepository.scanConfiguredDirectories() }
+        }
+    }
 
     init {
         viewModelScope.launch {

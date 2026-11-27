@@ -29,8 +29,11 @@ import androidx.compose.foundation.verticalScroll
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.settings.AppThemeMode
 import com.example.seteasecloudmusic.core.settings.OnlineAudioQuality
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveAlertDialog
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
+import com.example.seteasecloudmusic.core.ui.components.DownloadDirectorySettingsDialog
+import com.example.seteasecloudmusic.core.ui.components.ScanDirectoriesSettingsDialog
 import com.example.seteasecloudmusic.core.ui.components.UserAvatar
 import com.example.seteasecloudmusic.core.ui.components.formatTopAmbientColorLabel
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
@@ -93,9 +96,13 @@ fun AccountLoginSheetContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val contentScrollState = rememberScrollState()
     var showAudioQualityDialog by remember { mutableStateOf(false) }
+    var showDownloadDirDialog by remember { mutableStateOf(false) }
+    var showScanDirsDialog by remember { mutableStateOf(false) }
     var showThemeModeDialog by remember { mutableStateOf(false) }
     var showTopAmbientColorDialog by remember { mutableStateOf(false) }
     val audioQuality by viewModel.playerSettingsManager.audioQuality.collectAsStateWithLifecycle()
+    val downloadDirectoryPath by viewModel.playerSettingsManager.downloadDirectoryPath.collectAsStateWithLifecycle()
+    val scanDirectories by viewModel.playerSettingsManager.scanDirectories.collectAsStateWithLifecycle()
     val themeMode by viewModel.playerSettingsManager.themeMode.collectAsStateWithLifecycle()
     val topAmbientEnabled by viewModel.playerSettingsManager.topAmbientEnabled.collectAsStateWithLifecycle()
     val topAmbientColorArgb by viewModel.playerSettingsManager.topAmbientColorArgb.collectAsStateWithLifecycle()
@@ -155,6 +162,10 @@ fun AccountLoginSheetContent(
                             onQrClick = { viewModel.onQrPanelOpened() },
                             audioQuality = audioQuality,
                             onAudioQualityClick = { showAudioQualityDialog = true },
+                            downloadDirectoryPath = downloadDirectoryPath,
+                            onDownloadDirectoryClick = { showDownloadDirDialog = true },
+                            scanDirectories = scanDirectories,
+                            onScanDirectoriesClick = { showScanDirsDialog = true },
                             themeMode = themeMode,
                             onThemeModeClick = { showThemeModeDialog = true },
                             topAmbientEnabled = topAmbientEnabled,
@@ -234,6 +245,28 @@ fun AccountLoginSheetContent(
                     showAudioQualityDialog = false
                 },
                 onDismiss = { showAudioQualityDialog = false }
+            )
+        }
+
+        if (showDownloadDirDialog) {
+            DownloadDirectorySettingsDialog(
+                currentPath = downloadDirectoryPath,
+                onDismiss = { showDownloadDirDialog = false },
+                onConfirm = { newPath ->
+                    viewModel.playerSettingsManager.setDownloadDirectoryPath(newPath)
+                    showDownloadDirDialog = false
+                }
+            )
+        }
+
+        if (showScanDirsDialog) {
+            ScanDirectoriesSettingsDialog(
+                currentDirectories = scanDirectories,
+                onDismiss = { showScanDirsDialog = false },
+                onConfirm = { dirs ->
+                    viewModel.updateScanDirectories(dirs)
+                    showScanDirsDialog = false
+                }
             )
         }
 
@@ -332,6 +365,10 @@ private fun MethodSelectionPanel(
     onQrClick: () -> Unit,
     audioQuality: OnlineAudioQuality,
     onAudioQualityClick: () -> Unit,
+    downloadDirectoryPath: String,
+    onDownloadDirectoryClick: () -> Unit,
+    scanDirectories: List<String>,
+    onScanDirectoriesClick: () -> Unit,
     themeMode: AppThemeMode,
     onThemeModeClick: () -> Unit,
     topAmbientEnabled: Boolean,
@@ -410,6 +447,28 @@ private fun MethodSelectionPanel(
                     )
                 },
                 onClick = onAudioQualityClick
+            )
+            ArrowPreference(
+                title = "下载目录",
+                endActions = {
+                    Text(
+                        text = PlayerSettingsManager.formatDirectoryShortLabel(downloadDirectoryPath),
+                        fontSize = 14.sp,
+                        color = colors.textSecondary
+                    )
+                },
+                onClick = onDownloadDirectoryClick
+            )
+            ArrowPreference(
+                title = "本地扫描目录",
+                endActions = {
+                    Text(
+                        text = "${scanDirectories.size} 个目录",
+                        fontSize = 14.sp,
+                        color = colors.textSecondary
+                    )
+                },
+                onClick = onScanDirectoriesClick
             )
             ArrowPreference(
                 title = "外观模式",

@@ -12,9 +12,17 @@ import kotlinx.coroutines.flow.StateFlow
 interface LocalMusicRepository {
     val localTracksFlow: StateFlow<List<Track>>
 
+    val scanDirectoriesFlow: StateFlow<List<String>>
+
     suspend fun getLocalTracks(forceRefresh: Boolean = false): List<Track>
 
+    suspend fun scanConfiguredDirectories(): List<Track>
+
     suspend fun scanDirectory(directoryPath: String): List<Track>
+
+    fun getScanDirectories(): List<String>
+
+    fun setScanDirectories(directories: List<String>)
 
     fun getCustomDirectoryPath(): String?
 

@@ -6,6 +6,7 @@ import com.example.seteasecloudmusic.core.common.toUserFriendlyMessage
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.local.LocalMusicRepository
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.auth.AuthSession
 import com.example.seteasecloudmusic.core.auth.AuthStateProvider
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
@@ -48,6 +49,8 @@ data class MineUiState(
     val localSongs: List<Track> = emptyList(),
     val isScanningLocal: Boolean = false,
     val localDirectoryPath: String? = null,
+    val scanDirectories: List<String> = PlayerSettingsManager.DEFAULT_SCAN_DIRECTORIES,
+    val downloadDirectoryPath: String = PlayerSettingsManager.DEFAULT_DOWNLOAD_DIRECTORY,
     val selectedTab: MinePlaylistTab = MinePlaylistTab.CREATED,
     val activePlaylistDetail: PlaylistDetail? = null,
     val isLoadingDetail: Boolean = false,
@@ -74,6 +77,7 @@ class MineViewModel @Inject constructor(
     private val getUserPlaylistsUseCase: GetUserPlaylistsUseCase,
     private val getPlaylistDetailUseCase: GetPlaylistDetailUseCase,
     private val localMusicRepository: LocalMusicRepository,
+    private val playerSettingsManager: PlayerSettingsManager,
     private val musicPlayerController: MusicPlayerController,
     private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
@@ -176,10 +180,23 @@ class MineViewModel @Inject constructor(
             }
         }
 
-        // 3. 初始后台加载本地音乐目录及索引（供在线匹配与本地展示）
+        // 3. 监听目录设置并初始后台加载本地音乐索引（供在线匹配与本地展示）
+        viewModelScope.launch {
+            playerSettingsManager.scanDirectories.collect { dirs ->
+                _uiState.update {
+                    it.copy(
+                        scanDirectories = dirs,
+                        localDirectoryPath = dirs.joinToString(" / ")
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            playerSettingsManager.downloadDirectoryPath.collect { dir ->
+                _uiState.update { it.copy(downloadDirectoryPath = dir) }
+            }
+        }
         localScanJob = viewModelScope.launch {
-            val dirPath = localMusicRepository.getCustomDirectoryPath()
-            _uiState.update { it.copy(localDirectoryPath = dirPath) }
             localMusicRepository.getLocalTracks(forceRefresh = false)
         }
 
@@ -228,14 +245,13 @@ class MineViewModel @Inject constructor(
     fun scanLocalMusic(customDirectory: String? = null) {
         localScanJob?.cancel()
         val requestId = ++localScanRequestId
-        val dir = customDirectory ?: _uiState.value.localDirectoryPath
         localScanJob = viewModelScope.launch {
             _uiState.update { it.copy(isScanningLocal = true) }
             try {
-                val songs = if (!dir.isNullOrBlank()) {
-                    localMusicRepository.scanDirectory(dir)
+                val songs = if (!customDirectory.isNullOrBlank()) {
+                    localMusicRepository.scanDirectory(customDirectory)
                 } else {
-                    localMusicRepository.getLocalTracks(forceRefresh = true)
+                    localMusicRepository.scanConfiguredDirectories()
                 }
                 currentCoroutineContext().ensureActive()
                 if (requestId != localScanRequestId) return@launch
@@ -244,6 +260,7 @@ class MineViewModel @Inject constructor(
                     it.copy(
                         localSongs = songs,
                         localDirectoryPath = localMusicRepository.getCustomDirectoryPath(),
+                        scanDirectories = localMusicRepository.getScanDirectories(),
                         errorMessage = null
                     )
                 }
@@ -268,6 +285,21 @@ class MineViewModel @Inject constructor(
         localMusicRepository.setCustomDirectoryPath(path)
         _uiState.update { it.copy(localDirectoryPath = path) }
         scanLocalMusic(path)
+    }
+
+    /**
+     * 更新多扫描目录配置并立即重新扫描。
+     */
+    fun setScanDirectoriesAndScan(directories: List<String>) {
+        localMusicRepository.setScanDirectories(directories)
+        scanLocalMusic(null)
+    }
+
+    /**
+     * 更新歌曲下载保存目录。
+     */
+    fun setDownloadDirectory(path: String) {
+        playerSettingsManager.setDownloadDirectoryPath(path)
     }
 
     private suspend fun loadUserPlaylists(

@@ -51,6 +51,7 @@ import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.example.seteasecloudmusic.R
 import androidx.compose.ui.draw.clip
+import com.example.seteasecloudmusic.core.download.DownloadStatus
+import com.example.seteasecloudmusic.core.download.DownloadTask
+import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -148,10 +152,12 @@ fun MineScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: (List<Track>) -> Unit,
     onScanLocal: (String?) -> Unit,
-    onSetLocalDirectory: (String) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onSetLocalDirectory: (String) -> Unit,
     modifier: Modifier = Modifier,
     lazyListState: LazyListState = rememberLazyListState(),
     isForeground: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") onSetScanDirectories: (List<String>) -> Unit = {},
+    @Suppress("UNUSED_PARAMETER") onSetDownloadDirectory: (String) -> Unit = {},
     onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
     onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
     onTracksAddedToPlaylist: ((Long, List<Track>) -> Unit)? = null,
@@ -160,7 +166,6 @@ fun MineScreen(
 ) {
     val context = LocalContext.current
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    var showDirectoryDialog by rememberSaveable { mutableStateOf(false) }
 
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -184,7 +189,7 @@ fun MineScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasPermission = isGranted
-        if (isGranted) onScanLocal(uiState.localDirectoryPath)
+        if (isGranted) onScanLocal(null)
     }
 
     LaunchedEffect(uiState.selectedTab) {
@@ -194,7 +199,7 @@ fun MineScreen(
             if (!granted) {
                 permissionLauncher.launch(permissionToRequest)
             } else if (uiState.localSongs.isEmpty()) {
-                onScanLocal(uiState.localDirectoryPath)
+                onScanLocal(null)
             }
         }
     }
@@ -455,26 +460,19 @@ fun MineScreen(
                             )
                         }
                     }
-                    item(key = "local_dir_header") {
-                        SmallTitle(
-                            text = "扫描目录",
-                            insideMargin = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-                        )
-                    }
-                    item(key = "local_dir_control_bar") {
-                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                            LocalMusicDirectoryBar(
-                                backdrop = mineBackdrop,
-                                directoryPath = uiState.localDirectoryPath,
-                                hasPermission = hasPermission,
-                                isScanning = uiState.isScanningLocal,
-                                onChangeDirectory = { showDirectoryDialog = true },
-                                onRequestPermission = { permissionLauncher.launch(permissionToRequest) },
-                                onRescan = {
-                                    if (!hasPermission) permissionLauncher.launch(permissionToRequest)
-                                    else onScanLocal(uiState.localDirectoryPath)
-                                }
-                            )
+                    val downloadManager = PlayerEntryPoints.downloadManagerOrNull()
+                    if (downloadManager != null) {
+                        item(key = "local_download_tasks") {
+                            val downloadTasks by downloadManager.tasksFlow.collectAsState()
+                            if (downloadTasks.isNotEmpty()) {
+                                DownloadTasksSection(
+                                    tasks = downloadTasks,
+                                    onPause = { downloadManager.pause(it) },
+                                    onResume = { downloadManager.resume(it) },
+                                    onRemove = { downloadManager.deleteTask(it) },
+                                    onClearFinished = { downloadManager.clearFinished() }
+                                )
+                            }
                         }
                     }
                 }
@@ -507,18 +505,6 @@ fun MineScreen(
                 .align(Alignment.TopCenter)
                 .zIndex(4f)
         )
-
-    if (showDirectoryDialog) {
-        ChangeLocalDirectoryDialog(
-            currentPath = uiState.localDirectoryPath ?: "",
-            onDismiss = { showDirectoryDialog = false },
-            onConfirm = { newPath ->
-                showDirectoryDialog = false
-                if (!hasPermission) permissionLauncher.launch(permissionToRequest)
-                onSetLocalDirectory(newPath)
-            }
-        )
-    }
 
     val lastPlaylistDetail = remember { mutableStateOf<PlaylistDetail?>(null) }
     val lastOpenedPlaylistId = remember { mutableStateOf<Long?>(null) }
@@ -675,98 +661,6 @@ private fun MineAmbientBackground() {
         baseColor = MinePageBase,
         includeSideGlows = true
     )
-}
-
-@Composable
-private fun LocalMusicDirectoryBar(
-    @Suppress("UNUSED_PARAMETER") backdrop: Backdrop,
-    directoryPath: String?,
-    hasPermission: Boolean,
-    isScanning: Boolean,
-    onChangeDirectory: () -> Unit,
-    onRequestPermission: () -> Unit,
-    onRescan: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.defaultColors(color = AppTheme.colors.surfaceVariant),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    imageVector = MiuixIcons.Folder,
-                    contentDescription = null,
-                    tint = MineAccentRed,
-                    modifier = Modifier.size(17.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = directoryPath?.ifBlank { "全部系统音频 / 默认目录" } ?: "全部系统音频 / 默认目录",
-                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 12.sp, color = MineTextSecondary),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (!hasPermission) {
-                    TextButton(
-                        text = "授权权限",
-                        onClick = onRequestPermission,
-                        colors = ButtonDefaults.textButtonColors(
-                            color = Color.Transparent,
-                            textColor = MineAccentRed
-                        ),
-                        insideMargin = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                        textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold),
-                        modifier = Modifier.height(28.dp)
-                    )
-                } else {
-                    TextButton(
-                        text = "指定目录",
-                        onClick = onChangeDirectory,
-                        colors = ButtonDefaults.textButtonColors(
-                            color = Color.Transparent,
-                            textColor = MineTextPrimary
-                        ),
-                        insideMargin = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        textStyle = TextStyle(fontSize = 12.sp),
-                        modifier = Modifier.height(28.dp)
-                    )
-                    IconButton(
-                        onClick = onRescan,
-                        enabled = !isScanning,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        if (isScanning) {
-                            AppLoadingIndicator(
-                                color = MineAccentRed,
-                                strokeWidth = 2.dp,
-                                size = 14.dp
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_refresh),
-                                contentDescription = "重新扫描",
-                                tint = MineTextSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -1128,78 +1022,6 @@ private fun MinePlaylistTabs(
 }
 
 @Composable
-private fun ChangeLocalDirectoryDialog(
-    currentPath: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var inputPath by remember { mutableStateOf(currentPath) }
-    val quickPaths = listOf(
-        "/storage/emulated/0/Music",
-        "/storage/emulated/0/Download",
-        "/storage/emulated/0/netease/cloudmusic/Music",
-        "/sdcard/Music"
-    )
-
-    AdaptiveAlertDialog(
-        onDismissRequest = onDismiss,
-        title = "设置音乐扫描目录",
-        confirmText = "确定并扫描",
-        confirmColor = MineAccentRed,
-        onConfirm = { onConfirm(inputPath.trim()) },
-        dismissText = "取消",
-        onDismiss = onDismiss
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = "请输入存放音频文件的完整目录路径（支持递归扫描子目录）：",
-                style = MiuixTheme.textStyles.footnote1.copy(color = MineTextSecondary)
-            )
-            @Suppress("DEPRECATION")
-            TextField(
-                value = inputPath,
-                onValueChange = { inputPath = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = "/storage/emulated/0/Music",
-                useLabelAsPlaceholder = true,
-                textStyle = MiuixTheme.textStyles.body1.copy(color = MineTextPrimary),
-                colors = TextFieldDefaults.textFieldColors(
-                    backgroundColor = AppTheme.colors.surfaceVariant,
-                    labelColor = MineTextSecondary,
-                    borderColor = MineAccentRed
-                ),
-                cursorBrush = SolidColor(MineAccentRed)
-            )
-            Text(
-                text = "常用快捷目录：",
-                style = MiuixTheme.textStyles.footnote1.copy(fontWeight = FontWeight.SemiBold)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                quickPaths.take(3).forEach { path ->
-                    Surface(
-                        onClick = { inputPath = path },
-                        shape = RoundedCornerShape(8.dp),
-                        color = AppTheme.colors.surfaceVariant,
-                        border = BorderStroke(0.5.dp, AppTheme.colors.divider)
-                    ) {
-                        Text(
-                            text = path.substringAfterLast("/"),
-                            fontSize = 11.sp,
-                            color = MineTextPrimary,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun PlaylistRowItem(
     playlist: UserPlaylist,
     onClick: () -> Unit
@@ -1260,6 +1082,146 @@ private fun PlaylistRowItem(
             tint = AppTheme.colors.textTertiary,
             modifier = Modifier.size(20.dp)
         )
+    }
+}
+
+@Composable
+private fun DownloadTasksSection(
+    tasks: List<DownloadTask>,
+    onPause: (Long) -> Unit,
+    onResume: (Long) -> Unit,
+    onRemove: (Long) -> Unit,
+    onClearFinished: () -> Unit
+) {
+    val hasFinished = tasks.any {
+        it.status == DownloadStatus.COMPLETED || it.status == DownloadStatus.FAILED
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "下载任务 (${tasks.size})",
+                style = MiuixTheme.textStyles.footnote1.copy(
+                    color = MineTextSecondary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            )
+            if (hasFinished) {
+                Text(
+                    text = "清空已结束",
+                    style = MiuixTheme.textStyles.footnote1.copy(
+                        color = MineAccentRed,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = Modifier.clickable(onClick = onClearFinished)
+                )
+            }
+        }
+        Card(
+            colors = CardDefaults.defaultColors(
+                color = Color.White.copy(alpha = if (AppTheme.isDark) 0.08f else 0.72f)
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            tasks.forEachIndexed { index, task ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = AppTheme.colors.dividerSubtle,
+                        thickness = 0.5.dp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = task.title,
+                            style = MiuixTheme.textStyles.body1.copy(
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MineTextPrimary
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val statusSubtitle = when (task.status) {
+                            DownloadStatus.PENDING -> "${task.artist} · 等待下载"
+                            DownloadStatus.DOWNLOADING -> "${task.artist} · 下载中 ${task.progress}%"
+                            DownloadStatus.PAUSED -> "${task.artist} · 已暂停"
+                            DownloadStatus.COMPLETED -> {
+                                val fmt = task.fileFormat?.uppercase()?.let { " · $it" } ?: ""
+                                "${task.artist} · 已下载$fmt"
+                            }
+                            DownloadStatus.FAILED -> "失败：${task.errorMessage ?: "请稍后重试"}"
+                        }
+                        Text(
+                            text = statusSubtitle,
+                            style = MiuixTheme.textStyles.footnote1.copy(
+                                fontSize = 12.sp,
+                                color = if (task.status == DownloadStatus.FAILED) MineAccentRed else MineTextSecondary
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    when (task.status) {
+                        DownloadStatus.PENDING, DownloadStatus.DOWNLOADING -> {
+                            Text(
+                                text = "暂停",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MineAccentRed,
+                                modifier = Modifier
+                                    .clickable { onPause(task.trackId) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                        DownloadStatus.PAUSED, DownloadStatus.FAILED -> {
+                            Text(
+                                text = "重试",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MineAccentRed,
+                                modifier = Modifier
+                                    .clickable { onResume(task.trackId) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                            Text(
+                                text = "移除",
+                                fontSize = 12.5.sp,
+                                color = MineTextSecondary,
+                                modifier = Modifier
+                                    .clickable { onRemove(task.trackId) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                        DownloadStatus.COMPLETED -> {
+                            Text(
+                                text = "移除",
+                                fontSize = 12.5.sp,
+                                color = MineTextSecondary,
+                                modifier = Modifier
+                                    .clickable { onRemove(task.trackId) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

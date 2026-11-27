@@ -53,3 +53,15 @@
 
 # SuperLyricApi AIDL & Parcelable 跨进程传参：保留类名与成员，防止 R8 混淆后远端 super_lyric 服务反序列化 ClassNotFoundException
 -keep class com.hchen.superlyricapi.** { *; }
+
+# 下载模块模型与 WorkManager Worker（Gson 持久化与反射实例化）
+-keep class com.example.seteasecloudmusic.core.download.** { *; }
+-keep,allowshrinking class * extends androidx.work.ListenableWorker { <init>(...); }
+-keep class androidx.work.WorkerParameters { <init>(...); }
+-keep,allowshrinking class * extends androidx.work.InputMerger { <init>(...); }
+
+# jaudiotagger 桌面端 AWT/ImageIO 引用（Android 运行时不触发）
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-dontwarn javax.swing.filechooser.FileFilter
+-dontwarn java.lang.management.**

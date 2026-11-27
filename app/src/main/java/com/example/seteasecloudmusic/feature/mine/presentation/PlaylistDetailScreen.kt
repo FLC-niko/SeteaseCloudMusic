@@ -322,7 +322,23 @@ fun PlaylistDetailScreen(
         if (selectedTrackIds.isEmpty()) {
             Toast.makeText(context, "请先选择歌曲", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "已将 ${selectedTrackIds.size} 首歌曲加入下载队列", Toast.LENGTH_SHORT).show()
+            val selected = localTracks.filter { it.id in selectedTrackIds }
+            val downloadManager = PlayerEntryPoints.downloadManagerOrNull()
+            if (downloadManager == null) {
+                Toast.makeText(context, "下载服务未初始化", Toast.LENGTH_SHORT).show()
+            } else {
+                val res = downloadManager.enqueueBatch(selected, playlistName = detail.name)
+                val skipped = res.alreadyDownloadedCount + res.alreadyInQueueCount + res.localSkippedCount
+                val message = when {
+                    res.enqueuedCount > 0 && skipped > 0 ->
+                        "已将 ${res.enqueuedCount} 首歌曲加入下载队列（跳过 $skipped 首已下载/队列/本地曲目）"
+                    res.enqueuedCount > 0 ->
+                        "已将 ${res.enqueuedCount} 首歌曲加入下载队列"
+                    else ->
+                        "所选歌曲均已下载或在队列中"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
             commitReorderIfNeeded()
             isEditMode = false
             selectedTrackIds = emptySet()
