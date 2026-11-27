@@ -15,9 +15,10 @@ import javax.inject.Singleton
 class MineCacheManager @Inject constructor(
     @ApplicationContext context: Context
 ) {
-    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-    private val fullDetailDir = File(context.cacheDir, FULL_DETAIL_DIR_NAME)
-    private val gson = Gson()
+    // 惰性初始化磁盘缓存与 Gson，避免依赖注入阶段阻塞主线程
+    private val prefs by lazy { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
+    private val fullDetailDir by lazy { File(context.cacheDir, FULL_DETAIL_DIR_NAME) }
+    private val gson by lazy { Gson() }
 
     fun saveUserPlaylists(userId: Long, group: UserPlaylistsGroup) {
         runCatching {

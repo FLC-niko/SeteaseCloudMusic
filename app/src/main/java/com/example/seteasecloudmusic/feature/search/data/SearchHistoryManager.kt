@@ -4,9 +4,13 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,10 +25,26 @@ import javax.inject.Singleton
 class SearchHistoryManager @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
-    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-    private val gson = Gson()
-    private val _historyFlow = MutableStateFlow<List<String>>(loadHistory())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // 惰性加载磁盘与 Gson，避免冷启动主线程执行 SharedPreferences 读取和反射
+    private val prefs by lazy { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
+    private val gson by lazy { Gson() }
+    private val _historyFlow = MutableStateFlow<List<String>>(emptyList())
     val historyFlow: StateFlow<List<String>> = _historyFlow.asStateFlow()
+
+    @Volatile
+    private var hasMutated = false
+
+    init {
+        scope.launch {
+            val loaded = loadHistory()
+            synchronized(this@SearchHistoryManager) {
+                if (!hasMutated && loaded.isNotEmpty()) {
+                    _historyFlow.value = loaded
+                }
+            }
+        }
+    }
 
     private fun loadHistory(): List<String> {
         val json = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
@@ -36,8 +56,11 @@ class SearchHistoryManager @Inject constructor(
     }
 
     private fun persist(list: List<String>) {
+        hasMutated = true
         _historyFlow.value = list
-        prefs.edit().putString(KEY_HISTORY, gson.toJson(list)).apply()
+        scope.launch {
+            prefs.edit().putString(KEY_HISTORY, gson.toJson(list)).apply()
+        }
     }
 
     /**

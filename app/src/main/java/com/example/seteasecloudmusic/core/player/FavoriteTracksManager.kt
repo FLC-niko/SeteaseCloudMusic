@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -26,14 +27,23 @@ object FavoriteTracksManager {
     private var appContext: Context? = null
 
     @Volatile
+    private var hasAuthoritativeWrite = false
+
+    @Volatile
     private var likeApiHandler: (suspend (trackId: Long, like: Boolean) -> Result<Boolean>)? = null
 
     fun init(context: Context) {
         val app = context.applicationContext
         appContext = app
-        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val saved = prefs.getStringSet(KEY_LIKED_IDS, emptySet()) ?: emptySet()
-        _likedTrackIds.value = saved.mapNotNull { it.toLongOrNull() }.toSet()
+        // 切至 IO 线程异步加载本地红心集合，避免冷启动首帧阻塞主线程
+        scope.launch {
+            val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val saved = prefs.getStringSet(KEY_LIKED_IDS, emptySet()) ?: emptySet()
+            val loadedIds = saved.mapNotNull { it.toLongOrNull() }.toSet()
+            if (loadedIds.isNotEmpty() && !hasAuthoritativeWrite) {
+                _likedTrackIds.update { current -> current + loadedIds }
+            }
+        }
     }
 
     /**
@@ -54,6 +64,9 @@ object FavoriteTracksManager {
      */
     fun syncLikedTrackIds(ids: Collection<Long>, replace: Boolean = false) {
         if (ids.isEmpty() && !replace) return
+        if (replace) {
+            hasAuthoritativeWrite = true
+        }
         val current = _likedTrackIds.value
         val updated = if (replace) ids.toSet() else current + ids
         _likedTrackIds.value = updated
@@ -61,6 +74,7 @@ object FavoriteTracksManager {
     }
 
     fun setLiked(trackId: Long, liked: Boolean) {
+        hasAuthoritativeWrite = true
         val current = _likedTrackIds.value
         val updated = if (liked) current + trackId else current - trackId
         if (updated != current) {
@@ -74,6 +88,7 @@ object FavoriteTracksManager {
      * 本地立即乐观更新，并在后台异步通知网易云云端。若接口失败则自动回滚本地状态。
      */
     fun toggleLiked(trackId: Long): Boolean {
+        hasAuthoritativeWrite = true
         val current = _likedTrackIds.value
         val willBeLiked = trackId !in current
         val updated = if (willBeLiked) current + trackId else current - trackId
@@ -94,9 +109,11 @@ object FavoriteTracksManager {
     }
 
     private fun persist(ids: Set<Long>) {
-        appContext?.let { ctx ->
+        val ctx = appContext ?: return
+        val snapshot = ids.map { it.toString() }.toSet()
+        scope.launch {
             val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putStringSet(KEY_LIKED_IDS, ids.map { it.toString() }.toSet()).apply()
+            prefs.edit().putStringSet(KEY_LIKED_IDS, snapshot).apply()
         }
     }
 }

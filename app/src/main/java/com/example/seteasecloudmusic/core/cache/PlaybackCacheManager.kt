@@ -27,8 +27,9 @@ data class SavedPlaybackState(
 class PlaybackCacheManager @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
-    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-    private val gson = Gson()
+    // 惰性初始化 SharedPreferences 与 Gson，避免 Hilt 注入单例时在主线程触发磁盘与反射开销
+    private val prefs by lazy { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
+    private val gson by lazy { Gson() }
 
     /** 保存播放状态；队列为空时跳过写入以避免覆盖有效缓存。 */
     fun savePlaybackState(state: SavedPlaybackState) {

@@ -106,26 +106,33 @@ class MusicPlayerController @Inject constructor(
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     init {
-        // 冷启动时恢复上次持久化的播放队列与进度
-        val saved = playbackCacheManager.getSavedPlaybackState()
-        if (saved != null && saved.queueTracks.isNotEmpty() && saved.currentQueueIndex in saved.queueTracks.indices) {
-            // 在线签名直链具有短时效，冷启动恢复时清除旧直链（首次起播重新解析），本地文件路径保留
-            val restoredQueue = saved.queueTracks.map { it.withoutExpiredRemoteUrl() }
-            val track = restoredQueue.getOrNull(saved.currentQueueIndex)
-            _playbackState.update {
-                it.copy(
-                    status = PlayerStatus.PAUSED,
-                    currentTrack = track,
-                    currentPositionMs = saved.currentPositionMs,
-                    durationMs = saved.durationMs,
-                    queueTracks = restoredQueue,
-                    currentQueueIndex = saved.currentQueueIndex,
-                    playbackMode = saved.playbackMode
-                )
+        // 切至 IO 线程异步恢复上次持久化的播放队列与进度，避免冷启动在主线程同步反序列化大队列 JSON
+        scope.launch(ioDispatcher) {
+            val saved = playbackCacheManager.getSavedPlaybackState()
+            if (saved != null && saved.queueTracks.isNotEmpty() && saved.currentQueueIndex in saved.queueTracks.indices) {
+                // 在线签名直链具有短时效，冷启动恢复时清除旧直链（首次起播重新解析），本地文件路径保留
+                val restoredQueue = saved.queueTracks.map { it.withoutExpiredRemoteUrl() }
+                val track = restoredQueue.getOrNull(saved.currentQueueIndex)
+                _playbackState.update { current ->
+                    // 若用户在异步恢复完成前已主动点播了新曲目，则不覆盖当前播放态
+                    if (current.queueTracks.isNotEmpty() || current.currentTrack != null) {
+                        current
+                    } else {
+                        current.copy(
+                            status = PlayerStatus.PAUSED,
+                            currentTrack = track,
+                            currentPositionMs = saved.currentPositionMs,
+                            durationMs = saved.durationMs,
+                            queueTracks = restoredQueue,
+                            currentQueueIndex = saved.currentQueueIndex,
+                            playbackMode = saved.playbackMode
+                        )
+                    }
+                }
             }
         }
 
-        // 连接由 PlayerViewModel 或实际播放命令触发，避免 MusicService 注入控制器时递归启动自身
+        // 连接由首帧后的分阶段预热或实际播放命令触发，避免冷启动首帧提前拉起 MusicService 与 ExoPlayer
     }
 
     /**

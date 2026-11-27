@@ -17,9 +17,10 @@ class SeteaseCloudMusicApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // 异步初始化红心集合，避免冷启动 Application.onCreate 阻塞主线程磁盘读取
         FavoriteTracksManager.init(this)
-        // 注册全局 ImageLoader，开启本地内存与磁盘缓存
-        coil.Coil.setImageLoader(newImageLoader())
+        // 本类已实现 ImageLoaderFactory，Coil 会在首次加载图片时按需惰性构造并缓存全局 ImageLoader，
+        // 无需在 onCreate 主线程提前创建 200MB 磁盘缓存目录与索引。
     }
 
     override fun newImageLoader(): ImageLoader {

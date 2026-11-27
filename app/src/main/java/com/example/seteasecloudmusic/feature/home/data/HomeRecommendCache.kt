@@ -14,8 +14,9 @@ import javax.inject.Singleton
 class HomeRecommendCache @Inject constructor(
     @ApplicationContext context: Context
 ) {
-    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-    private val gson = Gson()
+    // 惰性初始化 SharedPreferences 与 Gson，确保在 IO 线程首次读取时才触发加载
+    private val prefs by lazy { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
+    private val gson by lazy { Gson() }
 
     fun saveDailyRecommend(tracks: List<Track>) = saveTrackList(KEY_DAILY_RECOMMEND, tracks)
 
