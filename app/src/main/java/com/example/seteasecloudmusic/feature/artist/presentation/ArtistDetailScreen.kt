@@ -4,9 +4,11 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -75,6 +77,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -82,6 +85,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,6 +94,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
@@ -110,10 +115,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
 import com.example.seteasecloudmusic.core.model.Track
+import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveTwoPane
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalAdaptiveWindow
 import com.example.seteasecloudmusic.core.ui.adaptive.LocalContentBottomPadding
+import com.example.seteasecloudmusic.core.ui.adaptive.PredictiveBackMotion
+import com.example.seteasecloudmusic.core.ui.adaptive.rememberDeviceCornerRadius
 import com.example.seteasecloudmusic.core.ui.components.LiquidGlassCircleButton
 import com.example.seteasecloudmusic.core.ui.components.ProgressiveTopBlur
 import com.example.seteasecloudmusic.core.ui.components.verticalElasticOverscroll
@@ -130,6 +138,8 @@ import com.example.seteasecloudmusic.feature.mine.presentation.TrackActionSheet
 import com.example.seteasecloudmusic.feature.player.presentation.AppleMusicPlayTriangleIcon
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 // 歌手页主题适配颜色与卡片基础尺寸
@@ -268,7 +278,6 @@ fun ArtistDetailScreen(
 ) {
     val isDark = AppTheme.isDark
     val hasActivePlaylist = uiState.activePlaylistDetail != null
-    BackHandler(enabled = backHandlerEnabled && !hasActivePlaylist, onBack = onClose)
     ArtistLightStatusBarEffect(isDark = isDark)
 
     val window = LocalAdaptiveWindow.current
@@ -345,13 +354,65 @@ fun ArtistDetailScreen(
         saver = LazyListState.Saver
     ) { LazyListState() }
 
+    val context = LocalContext.current
+    val settingsManager = remember(context) { PlayerSettingsManager.getInstance(context) }
+    val isPredictiveBackEnabled by settingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
+    val coroutineScope = rememberCoroutineScope()
+    val deviceCorners = rememberDeviceCornerRadius()
+    val predictiveTranslationX = remember(uiState.artistId) { Animatable(0f) }
+    LaunchedEffect(uiState.artistId) {
+        predictiveTranslationX.snapTo(0f)
+    }
+
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ambientDarkColor)
+        modifier = Modifier.fillMaxSize()
     ) {
         // 宽屏或折叠屏展开/桌面形态下切换为双栏布局（宽度 >= 720dp 且高度 >= 360dp）
         val split = (maxWidth >= 720.dp && maxHeight >= 360.dp) || window.isBook || window.isTabletop
+        val isCardMode = !split
+        val fullWidthPx = with(density) { maxWidth.toPx() }
+        // 预测性返回位移判定阈值（px）
+        val isPredictiveGestureActive = predictiveTranslationX.value > 0.5f
+        val canHandleBack = backHandlerEnabled && !hasActivePlaylist
+
+        if (isCardMode && isPredictiveBackEnabled) {
+            PredictiveBackHandler(enabled = canHandleBack) { progressFlow ->
+                try {
+                    progressFlow.collect { backEvent ->
+                        val targetTranslationX = PredictiveBackMotion.calculateTranslationX(
+                            progress = backEvent.progress,
+                            fullWidthPx = fullWidthPx
+                        )
+                        predictiveTranslationX.snapTo(targetTranslationX)
+                    }
+                    onClose()
+                } catch (e: CancellationException) {
+                    coroutineScope.launch {
+                        predictiveTranslationX.animateTo(
+                            targetValue = 0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.86f, // 取消返回手势回弹阻尼比（越小回弹越明显）
+                                stiffness = 400f // 取消返回手势弹簧刚度
+                            )
+                        )
+                    }
+                }
+            }
+        } else {
+            BackHandler(enabled = canHandleBack, onBack = onClose)
+        }
+
+        val cornerShape = remember(deviceCorners, isCardMode, isPredictiveGestureActive) {
+            if (isCardMode) {
+                if (deviceCorners.hasRoundedCorners) {
+                    deviceCorners.toShape()
+                } else if (isPredictiveGestureActive) {
+                    RoundedCornerShape(24.dp) // 无硬件圆角设备在拖动返回时的临时卡片圆角
+                } else {
+                    RoundedCornerShape(0.dp)
+                }
+            } else RoundedCornerShape(0.dp)
+        }
         val works: @Composable () -> Unit = {
             LazyColumn(
                 modifier = Modifier
@@ -526,6 +587,28 @@ fun ArtistDetailScreen(
             }
         }
 
+        // 不透明纯色页面底座，配合硬件圆角裁剪与预测性返回时的右滑投影
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = predictiveTranslationX.value
+                }
+                .then(
+                    if (isCardMode && (deviceCorners.hasRoundedCorners || isPredictiveGestureActive)) {
+                        Modifier
+                            .shadow(
+                                elevation = if (isPredictiveGestureActive) 24.dp else 20.dp, // 卡片投影高度（拖动返回时略微抬升）
+                                shape = cornerShape,
+                                clip = false
+                            )
+                            .clip(cornerShape)
+                    } else Modifier
+                ),
+            shape = cornerShape,
+            color = ambientDarkColor
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
         if (split) {
             val primaryScrollState = rememberScrollState()
             // 分栏模式下顶部渐进模糊显隐的滚动阈值（dp）
@@ -720,6 +803,8 @@ fun ArtistDetailScreen(
                         )
                     }
                 }
+            }
+        }
             }
         }
 
