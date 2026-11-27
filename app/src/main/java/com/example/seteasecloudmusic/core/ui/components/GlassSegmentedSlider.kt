@@ -591,6 +591,7 @@ fun LiquidGlassActiveTabsRecorder(
     surfaceColor: Color = if (isDarkSurface) Color(0xFF1C1C24) else Color(0xFFF7F7FA),
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
     alphaProvider: (() -> Float)? = null,
+    isWarmingUp: Boolean = false,
     selectedContent: @Composable BoxScope.() -> Unit
 ) {
     val appearance = AppTheme.liquidGlass
@@ -607,7 +608,8 @@ fun LiquidGlassActiveTabsRecorder(
             .size(containerWidth, containerHeight)
             .drawWithContent {
                 val outerAlpha = alphaProvider?.invoke() ?: 1f
-                if (state.pressProgress.value * outerAlpha > 0.005f) {
+                // 预热阶段允许执行一次离屏模糊录制以提前编译着色器（自身 alpha=0 不可见）
+                if (isWarmingUp || state.pressProgress.value * outerAlpha > 0.005f) {
                     drawContent()
                 }
             }
@@ -665,7 +667,8 @@ fun LiquidGlassActiveDroplet(
     maxPressScale: Float = GlassSliderDefaults.MaxPressScale,
     isDarkSurface: Boolean = AppTheme.isDark,
     alphaProvider: (() -> Float)? = null,
-    orientation: Orientation = Orientation.Horizontal
+    orientation: Orientation = Orientation.Horizontal,
+    isWarmingUp: Boolean = false
 ) {
     if (state.itemCount <= 0 || containerWidth <= 0.dp || containerHeight <= 0.dp) return
 
@@ -681,7 +684,9 @@ fun LiquidGlassActiveDroplet(
     val dropletLayerBlock: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
         val outerAlpha = (alphaProvider?.invoke() ?: 1f).coerceIn(0f, 1f)
         val p = state.pressProgress.value.coerceIn(0f, 1f)
-        alpha = (p * outerAlpha).coerceIn(0f, 1f)
+        val warmupOnly = isWarmingUp && p <= 0.005f
+        // 预热帧使用低于 1/255 的极微透明度（肉眼完全不可见），绕过 HWUI 零透明度裁剪以触发 GPU 着色器预编译
+        alpha = if (warmupOnly) 0.0001f else (p * outerAlpha).coerceIn(0f, 1f)
         val padPx = thumbPadding.toPx()
         if (orientation == Orientation.Vertical) {
             translationX = padPx
@@ -712,7 +717,7 @@ fun LiquidGlassActiveDroplet(
     val visibilityModifier = modifier.drawWithContent {
         val outerAlpha = alphaProvider?.invoke() ?: 1f
         val p = state.pressProgress.value
-        if (p * outerAlpha > 0.005f) {
+        if (isWarmingUp || p * outerAlpha > 0.005f) {
             drawContent()
         }
     }
@@ -725,7 +730,8 @@ fun LiquidGlassActiveDroplet(
                     shape = { shape },
                     highlight = null,
                     shadow = {
-                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        val rawP = state.pressProgress.value.coerceIn(0f, 1f)
+                        val p = if (isWarmingUp && rawP <= 0.01f) 0.1f else rawP
                         if (p > 0.01f) {
                             Shadow(
                                 radius = 10.dp * p,
@@ -735,7 +741,8 @@ fun LiquidGlassActiveDroplet(
                         } else null
                     },
                     innerShadow = {
-                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        val rawP = state.pressProgress.value.coerceIn(0f, 1f)
+                        val p = if (isWarmingUp && rawP <= 0.01f) 0.1f else rawP
                         if (p > 0.01f) {
                             InnerShadow(
                                 radius = GlassSliderDefaults.DropletInnerShadowRadius * p,
@@ -746,7 +753,8 @@ fun LiquidGlassActiveDroplet(
                         } else null
                     },
                     effects = {
-                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        val rawP = state.pressProgress.value.coerceIn(0f, 1f)
+                        val p = if (isWarmingUp && rawP <= 0.01f) 0.1f else rawP
                         if (p > 0.01f) {
                             val rawHeightPx = (GlassSliderDefaults.DropletRefractionHeight * p).toPx()
                             val effectiveHeightPx = clampLensRefractionHeightPx(rawHeightPx, size.minDimension)
@@ -763,7 +771,8 @@ fun LiquidGlassActiveDroplet(
                     },
                     layerBlock = dropletLayerBlock,
                     onDrawSurface = {
-                        val p = state.pressProgress.value.coerceIn(0f, 1f)
+                        val rawP = state.pressProgress.value.coerceIn(0f, 1f)
+                        val p = if (isWarmingUp && rawP <= 0.01f) 0.1f else rawP
                         if (p > 0.01f) {
                             if (isDarkSurface) {
                                 drawRect(Color.White.copy(alpha = 0.09f * p))
@@ -793,7 +802,8 @@ fun LiquidGlassActiveDroplet(
                     extraDegrees = 90f,
                     alphaProvider = {
                         val outerAlpha = (alphaProvider?.invoke() ?: 1f).coerceIn(0f, 1f)
-                        (state.pressProgress.value * outerAlpha).coerceIn(0f, 1f)
+                        val rawP = state.pressProgress.value
+                        if (isWarmingUp && rawP <= 0.005f) 0.0001f else (rawP * outerAlpha).coerceIn(0f, 1f)
                     }
                 )
                 .size(thumbWidth, thumbHeight)
