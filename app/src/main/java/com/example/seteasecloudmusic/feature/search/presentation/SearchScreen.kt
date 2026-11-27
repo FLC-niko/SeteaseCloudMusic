@@ -46,6 +46,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
@@ -101,6 +102,7 @@ import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import com.example.seteasecloudmusic.feature.mine.domain.model.PlaylistDetail
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
 import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
+import com.example.seteasecloudmusic.feature.mine.presentation.TrackActionSheet
 import com.example.seteasecloudmusic.feature.search.domain.HotSearchItem
 import com.example.seteasecloudmusic.feature.search.domain.SearchSuggestions
 import com.kyant.backdrop.Backdrop
@@ -186,6 +188,8 @@ fun SearchRoute(
     topContentPadding: Dp = 18.dp, // 列表顶部内容内边距（为顶部搜索框预留空间）
     bottomContentPadding: Dp = 180.dp, // 列表底部内容内边距（为迷你播放器与导航栏预留空间）
     onArtistClick: (Long, String, String?) -> Unit = { _, _, _ -> },
+    onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
     isForeground: Boolean = true,
     topHeader: @Composable () -> Unit = {}
 ) {
@@ -216,6 +220,8 @@ fun SearchRoute(
         },
         onPlayPlaylistAll = { tracks -> viewModel.playTrackList(tracks, 0) },
         onShufflePlaylist = { tracks -> viewModel.playTrackList(tracks.shuffled(), 0) },
+        onTrackLikedChanged = onTrackLikedChanged,
+        onTrackAddedToPlaylist = onTrackAddedToPlaylist,
         isForeground = isForeground,
         topHeader = topHeader
     )
@@ -245,6 +251,8 @@ fun SearchScreenContent(
     onPlayPlaylistTrack: (Track, List<Track>) -> Unit = { _, _ -> },
     onPlayPlaylistAll: (List<Track>) -> Unit = {},
     onShufflePlaylist: (List<Track>) -> Unit = {},
+    onTrackLikedChanged: ((Track, Boolean) -> Unit)? = null,
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
     isForeground: Boolean = true,
     topHeader: @Composable () -> Unit = {}
 ) {
@@ -276,6 +284,7 @@ fun SearchScreenContent(
     val lastIsAlbum = remember { mutableStateOf(false) }
     val lastOpenedPlaylistId = remember { mutableStateOf<Long?>(null) }
     val playlistOpenCounter = remember { mutableIntStateOf(0) }
+    var selectedTrackForAction by remember { mutableStateOf<Track?>(null) }
     LaunchedEffect(uiState.activePlaylistDetail, uiState.isActiveDetailAlbum) {
         val current = uiState.activePlaylistDetail
         if (current != null) {
@@ -293,6 +302,7 @@ fun SearchScreenContent(
         if (!isForeground) {
             lastPlaylistDetail.value = null
             lastIsAlbum.value = false
+            selectedTrackForAction = null
         }
     }
     val detailListState = rememberSaveable(uiState.activePlaylistDetail?.id, saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
@@ -347,6 +357,7 @@ fun SearchScreenContent(
                                 onSearchSubmit = { handleSelect { onSearchSubmit() } },
                                 onSuggestionClick = { handleSelect { onSuggestionClick(it) } },
                                 onTrackClick = onTrackClick,
+                                onTrackMoreClick = { track -> handleSelect { selectedTrackForAction = track } },
                                 onArtistClick = { id, name, cover -> handleSelect { onArtistClick(id, name, cover) } },
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -390,6 +401,7 @@ fun SearchScreenContent(
                                         onRowClick = onSuggestionClick,
                                         onArtistClick = { id, name, cover -> handleSelect { onArtistClick(id, name, cover) } },
                                         onTrackClick = onTrackClick,
+                                        onTrackMoreClick = { track -> handleSelect { selectedTrackForAction = track } },
                                         onAlbumClick = { album ->
                                             handleSelect {
                                                 onAlbumClick(album.id, album.title, album.artistName, album.coverUrl)
@@ -447,6 +459,8 @@ fun SearchScreenContent(
                     onPlayTrack = { track -> onPlayPlaylistTrack(track, detail.tracks) },
                     onPlayAll = { onPlayPlaylistAll(detail.tracks) },
                     onShufflePlay = { onShufflePlaylist(detail.tracks) },
+                    onTrackLikedChanged = onTrackLikedChanged,
+                    onTrackAddedToPlaylist = onTrackAddedToPlaylist,
                     isLoading = uiState.isLoadingDetail,
                     listState = detailListState,
                     filterByCurrentUserLikes = false,
@@ -491,6 +505,8 @@ fun SearchScreenContent(
                             onPlayTrack = { track -> onPlayPlaylistTrack(track, detail.tracks) },
                             onPlayAll = { onPlayPlaylistAll(detail.tracks) },
                             onShufflePlay = { onShufflePlaylist(detail.tracks) },
+                            onTrackLikedChanged = onTrackLikedChanged,
+                            onTrackAddedToPlaylist = onTrackAddedToPlaylist,
                             isLoading = uiState.isLoadingDetail,
                             listState = detailListState,
                             filterByCurrentUserLikes = false,
@@ -500,6 +516,19 @@ fun SearchScreenContent(
                     }
                 }
             }
+        }
+
+        selectedTrackForAction?.let { track ->
+            TrackActionSheet(
+                track = track,
+                onDismiss = { selectedTrackForAction = null },
+                onToggleLiked = { t, willBeLiked ->
+                    onTrackLikedChanged?.invoke(t, willBeLiked)
+                },
+                onTrackAddedToPlaylist = { playlistId, t ->
+                    onTrackAddedToPlaylist?.invoke(playlistId, t)
+                }
+            )
         }
     }
 }
@@ -572,6 +601,7 @@ private fun SearchResultsList(
     onRowClick: (String) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     onTrackClick: (Track) -> Unit,
+    onTrackMoreClick: (Track) -> Unit,
     onAlbumClick: (SearchRowItem.Album) -> Unit,
     onPlaylistClick: (SearchRowItem.Playlist) -> Unit,
     modifier: Modifier = Modifier
@@ -583,7 +613,8 @@ private fun SearchResultsList(
             when (item) {
                 is SearchRowItem.Song -> SongRow(
                     track = item.track,
-                    onClick = { onTrackClick(item.track) }
+                    onClick = { onTrackClick(item.track) },
+                    onMoreClick = { onTrackMoreClick(item.track) }
                 )
 
                 is SearchRowItem.Album -> AlbumRow(
@@ -718,13 +749,14 @@ private fun SearchArtworkCard(
 @Composable
 private fun SongRow(
     track: Track,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 11.dp),
+            .padding(start = 16.dp, end = 7.dp, top = 11.dp, bottom = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Artwork(
@@ -765,12 +797,17 @@ private fun SongRow(
             )
         }
 
-        Icon(
-            imageVector = MiuixIcons.More,
-            contentDescription = null,
-            tint = PrimaryText,
-            modifier = Modifier.size(22.dp)
-        )
+        IconButton(
+            onClick = onMoreClick,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = MiuixIcons.More,
+                contentDescription = "更多操作",
+                tint = PrimaryText,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
@@ -1289,6 +1326,7 @@ private fun SearchSuggestionsSection(
     onSearchSubmit: () -> Unit,
     onSuggestionClick: (String) -> Unit,
     onTrackClick: (Track) -> Unit,
+    onTrackMoreClick: (Track) -> Unit,
     onArtistClick: (Long, String, String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1371,7 +1409,8 @@ private fun SearchSuggestionsSection(
             items(suggestions.songs, key = { "suggest_song_${it.id}" }) { track ->
                 SongRow(
                     track = track,
-                    onClick = { onTrackClick(track) }
+                    onClick = { onTrackClick(track) },
+                    onMoreClick = { onTrackMoreClick(track) }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 84.dp, end = 20.dp),

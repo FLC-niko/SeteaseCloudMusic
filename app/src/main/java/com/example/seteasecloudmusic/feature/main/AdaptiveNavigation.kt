@@ -63,7 +63,8 @@ internal data class SelectedArtist(
     val id: Long,
     val name: String,
     val coverUrl: String?,
-    val pageIndex: Int = 3
+    val pageIndex: Int = 3,
+    val requestId: Long = 0L
 )
 internal data class DailyRecommendState(
     val tracks: List<Track>,

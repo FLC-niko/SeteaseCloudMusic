@@ -27,15 +27,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Close
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.ExpandMore
 import top.yukonga.miuix.kmp.icon.extended.Music
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -46,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.seteasecloudmusic.R
 import com.example.seteasecloudmusic.core.common.toCoverThumbnailUrl
+import com.example.seteasecloudmusic.core.model.Artist
 import com.example.seteasecloudmusic.core.model.Track
 import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
@@ -70,13 +77,25 @@ import com.example.seteasecloudmusic.feature.main.PlayerEntryPoints
 import com.example.seteasecloudmusic.feature.player.presentation.ResolvedAudioDetails
 
 /**
+ * 歌曲操作菜单的全局导航入口：从任意页面打开歌手详情页或专辑详情页。
+ */
+data class TrackActionNavigator(
+    val onOpenArtist: (artistId: Long, artistName: String, artistCoverUrl: String?) -> Unit,
+    val onOpenAlbum: (albumId: Long, albumTitle: String, artistName: String, coverUrl: String?) -> Unit
+)
+
+val LocalTrackNavigation = staticCompositionLocalOf<TrackActionNavigator?> { null }
+
+/**
  * 歌曲操作面板页面状态：
  * ACTIONS: 默认动作菜单（下一首播放、喜欢/取消喜欢、收藏到歌单、下载、歌手、专辑）
  * ADD_TO_PLAYLIST: 收藏到歌单（内嵌切页，带返回按钮与新建歌单入口）
+ * SELECT_ARTIST: 多歌手选择（内嵌切页，选择后跳转到对应艺人页）
  */
 enum class TrackActionSheetPage {
     ACTIONS,
-    ADD_TO_PLAYLIST
+    ADD_TO_PLAYLIST,
+    SELECT_ARTIST
 }
 
 /**
@@ -99,30 +118,72 @@ fun TrackActionSheet(
     audioDetails: ResolvedAudioDetails? = null,
     onToggleLiked: ((Track, Boolean) -> Unit)? = null,
     onAddToPlaylistClick: ((Track) -> Unit)? = null,
-    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null
+    onTrackAddedToPlaylist: ((Long, Track) -> Unit)? = null,
+    onArtistClick: ((Artist) -> Unit)? = null,
+    onAlbumClick: ((albumId: Long, albumTitle: String, artistName: String, coverUrl: String?) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    var currentPage by remember { mutableStateOf(TrackActionSheetPage.ACTIONS) }
+    val navigator = LocalTrackNavigation.current
+    var currentPage by remember(track.id) { mutableStateOf(TrackActionSheetPage.ACTIONS) }
     val colors = AppTheme.colors
+
+    val isLocalTrack = remember(track) {
+        track.audioQualityLevel == "local" ||
+            track.id < 0L ||
+            track.playableUrl?.let { url ->
+                url.startsWith("content:") || url.startsWith("file:") || url.startsWith("/")
+            } == true
+    }
+    val navigableArtists = remember(track, isLocalTrack) {
+        if (isLocalTrack) {
+            emptyList()
+        } else {
+            track.artists
+                .filter { it.id > 0L && it.name.isNotBlank() }
+                .distinctBy { it.id }
+        }
+    }
+    val hasNavigableAlbum = !isLocalTrack && track.album.id > 0L
+
+    val navigateToArtist: (Artist) -> Unit = { artist ->
+        onDismiss()
+        if (onArtistClick != null) {
+            onArtistClick(artist)
+        } else {
+            navigator?.onOpenArtist(artist.id, artist.name, artist.coverUrl)
+        }
+    }
 
     AdaptiveModalSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.surface,
         modifier = modifier
     ) {
-        if (currentPage == TrackActionSheetPage.ADD_TO_PLAYLIST) {
-            AddToPlaylistContent(
-                track = track,
-                onDismiss = onDismiss,
-                onBack = { currentPage = TrackActionSheetPage.ACTIONS },
-                currentPlaylistId = currentPlaylistId,
-                onTrackLikedChanged = onToggleLiked,
-                onTrackAdded = { pid, t ->
-                    onTrackAddedToPlaylist?.invoke(pid, t)
-                }
-            )
-        } else {
-            Column(
+        when (currentPage) {
+            TrackActionSheetPage.ADD_TO_PLAYLIST -> {
+                AddToPlaylistContent(
+                    track = track,
+                    onDismiss = onDismiss,
+                    onBack = { currentPage = TrackActionSheetPage.ACTIONS },
+                    currentPlaylistId = currentPlaylistId,
+                    onTrackLikedChanged = onToggleLiked,
+                    onTrackAdded = { pid, t ->
+                        onTrackAddedToPlaylist?.invoke(pid, t)
+                    }
+                )
+            }
+
+            TrackActionSheetPage.SELECT_ARTIST -> {
+                SelectArtistContent(
+                    artists = navigableArtists,
+                    onBack = { currentPage = TrackActionSheetPage.ACTIONS },
+                    onDismiss = onDismiss,
+                    onArtistClick = navigateToArtist
+                )
+            }
+
+            TrackActionSheetPage.ACTIONS -> {
+                Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
@@ -137,6 +198,7 @@ fun TrackActionSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 歌曲封面
+                val coverUrl = (track.coverUrl ?: track.album.coverUrl)?.takeIf { it.isNotBlank() }
                 Box(
                     modifier = Modifier
                         .size(60.dp) // 头部预览封面尺寸
@@ -144,9 +206,9 @@ fun TrackActionSheet(
                         .background(colors.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!track.coverUrl.isNullOrBlank()) {
+                    if (coverUrl != null) {
                         AsyncImage(
-                            model = track.coverUrl.toCoverThumbnailUrl(180),
+                            model = coverUrl.toCoverThumbnailUrl(180),
                             contentDescription = track.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -297,8 +359,19 @@ fun TrackActionSheet(
                     },
                     title = "歌手：$artistNames",
                     onClick = {
-                        Toast.makeText(context, "歌手：$artistNames", Toast.LENGTH_SHORT).show()
-                        onDismiss()
+                        val canNavigateArtist = onArtistClick != null || navigator != null
+                        when {
+                            !canNavigateArtist || navigableArtists.isEmpty() -> {
+                                Toast.makeText(context, "暂无该歌手详情页", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                            navigableArtists.size == 1 -> {
+                                navigateToArtist(navigableArtists.first())
+                            }
+                            else -> {
+                                currentPage = TrackActionSheetPage.SELECT_ARTIST
+                            }
+                        }
                     }
                 )
 
@@ -314,8 +387,19 @@ fun TrackActionSheet(
                     },
                     title = "专辑：$albumTitle",
                     onClick = {
-                        Toast.makeText(context, "专辑：$albumTitle", Toast.LENGTH_SHORT).show()
-                        onDismiss()
+                        val canNavigateAlbum = onAlbumClick != null || navigator != null
+                        if (canNavigateAlbum && hasNavigableAlbum) {
+                            val albumCover = (track.album.coverUrl ?: track.coverUrl)?.takeIf { it.isNotBlank() }
+                            onDismiss()
+                            if (onAlbumClick != null) {
+                                onAlbumClick(track.album.id, albumTitle, artistNames, albumCover)
+                            } else {
+                                navigator?.onOpenAlbum(track.album.id, albumTitle, artistNames, albumCover)
+                            }
+                        } else {
+                            Toast.makeText(context, "暂无该专辑详情页", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
                     }
                 )
 
@@ -326,10 +410,136 @@ fun TrackActionSheet(
                         details = audioDetails
                     )
                 }
+                }
             }
         }
     }
 }
+}
+
+@Composable
+private fun SelectArtistContent(
+    artists: List<Artist>,
+    onBack: () -> Unit,
+    onDismiss: () -> Unit,
+    onArtistClick: (Artist) -> Unit
+) {
+    val colors = AppTheme.colors
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(bottom = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Back,
+                    contentDescription = "返回",
+                    tint = colors.textPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "选择歌手",
+                style = MiuixTheme.textStyles.headline1.copy(
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Basic.Close,
+                    contentDescription = "关闭",
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(
+            color = colors.dividerSubtle,
+            thickness = 0.5.dp,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Card(
+            colors = CardDefaults.defaultColors(color = colors.surfaceVariant),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            artists.forEach { artist ->
+                BasicComponent(
+                    startAction = {
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 12.dp)
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(colors.surface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val coverUrl = artist.coverUrl?.takeIf { it.isNotBlank() }
+                            if (coverUrl != null) {
+                                AsyncImage(
+                                    model = coverUrl.toCoverThumbnailUrl(160),
+                                    contentDescription = artist.name,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_action_artist),
+                                    contentDescription = null,
+                                    tint = colors.iconSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    },
+                    endActions = {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronForward,
+                            contentDescription = null,
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                    onClick = { onArtistClick(artist) }
+                ) {
+                    Text(
+                        text = artist.name,
+                        style = MiuixTheme.textStyles.body1.copy(
+                            color = colors.textPrimary,
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Normal
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -368,29 +578,40 @@ private fun TrackAudioDetailsItem(
                     )
                 }
             },
-            title = "音频详细信息",
-            titleColor = BasicComponentDefaults.titleColor(color = colors.textPrimary),
             endActions = {
-                Text(
-                    text = details.summaryBadge,
-                    color = colors.textSecondary,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Icon(
-                    imageVector = MiuixIcons.ExpandMore,
-                    contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
-                    tint = colors.textSecondary,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .graphicsLayer { rotationZ = chevronRotation }
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = details.summaryBadge,
+                        color = colors.textSecondary,
+                        fontSize = 12.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = MiuixIcons.ExpandMore,
+                        contentDescription = if (isExpanded) "收起音频详细信息" else "展开音频详细信息",
+                        tint = colors.textSecondary,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .graphicsLayer { rotationZ = chevronRotation }
+                    )
+                }
             },
             insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
             onClick = { isExpanded = !isExpanded }
-        )
+        ) {
+            Text(
+                text = "音频详细信息",
+                style = MiuixTheme.textStyles.body1.copy(
+                    color = colors.textPrimary,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
         // 音频详情面板展开/收起动画（无回弹弹簧 + 渐显 180ms / 渐隐 140ms）
         AnimatedVisibility(
@@ -537,10 +758,19 @@ private fun TrackActionItem(
                 icon()
             }
         },
-        title = title,
-        titleColor = BasicComponentDefaults.titleColor(color = AppTheme.colors.textPrimary),
         endActions = badge?.let { { it() } },
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
         onClick = onClick
-    )
+    ) {
+        Text(
+            text = title,
+            style = MiuixTheme.textStyles.body1.copy(
+                color = AppTheme.colors.textPrimary,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Normal
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }

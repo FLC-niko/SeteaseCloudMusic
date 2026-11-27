@@ -98,8 +98,12 @@ import com.example.seteasecloudmusic.feature.auth.presentation.AuthViewModel
 import com.example.seteasecloudmusic.feature.artist.presentation.ArtistDetailRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeRoute
 import com.example.seteasecloudmusic.feature.home.presentation.HomeViewModel
+import com.example.seteasecloudmusic.feature.mine.presentation.LocalTrackNavigation
 import com.example.seteasecloudmusic.feature.mine.presentation.MineRoute
 import com.example.seteasecloudmusic.feature.mine.presentation.MineViewModel
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailScreen
+import com.example.seteasecloudmusic.feature.mine.presentation.PlaylistDetailStyle
+import com.example.seteasecloudmusic.feature.mine.presentation.TrackActionNavigator
 import com.example.seteasecloudmusic.feature.radio.presentation.RadioRoute
 import com.example.seteasecloudmusic.feature.radio.presentation.RadioViewModel
 import com.example.seteasecloudmusic.feature.search.presentation.SearchRoute
@@ -546,6 +550,9 @@ fun AppNavigation(
     var showAccountSheet by rememberSaveable { mutableStateOf(false) }
     var mountAccountOverlay by remember { mutableStateOf(showAccountSheet) }
     var selectedArtist by navigationState::selectedArtist
+    val albumOverlayState by mainViewModel.albumOverlayState.collectAsStateWithLifecycle()
+    val currentShowNowPlaying by rememberUpdatedState(showNowPlaying)
+    var artistRequestSeq by remember { mutableLongStateOf(0L) }
 
     fun openPlayer(artworkUrl: String?) {
         nowPlayingAnimJob?.cancel()
@@ -734,12 +741,41 @@ fun AppNavigation(
         derivedStateOf { showNowPlaying && nowPlayingProgress.value >= 0.999f }
     }
 
+    val trackNavigator = remember(selectedIndexState, mainViewModel) {
+        TrackActionNavigator(
+            onOpenArtist = { artistId, artistName, artistCoverUrl ->
+                val targetPage = selectedIndexState.intValue
+                if (currentShowNowPlaying) closePlayer()
+                mainViewModel.closeAlbumDetail(targetPage)
+                selectedArtist = SelectedArtist(
+                    id = artistId,
+                    name = artistName,
+                    coverUrl = artistCoverUrl,
+                    pageIndex = targetPage,
+                    requestId = ++artistRequestSeq
+                )
+            },
+            onOpenAlbum = { albumId, albumTitle, artistName, coverUrl ->
+                val targetPage = selectedIndexState.intValue
+                if (currentShowNowPlaying) closePlayer()
+                mainViewModel.openAlbumDetail(
+                    pageIndex = targetPage,
+                    albumId = albumId,
+                    title = albumTitle,
+                    artistName = artistName,
+                    coverUrl = coverUrl
+                )
+            }
+        )
+    }
+
     // 根层叠容器：自下而上依次为页面内容、迷你播放条、导航栏、播放页与各类浮层
     CompositionLocalProvider(
         LocalGlassBackdrop provides backdrop,
         LocalContentBottomPadding provides (if (useRail) 112.dp else 150.dp), // 页面底部安全留白（需覆盖底栏与迷你播放条）
         LocalPlayerArtwork provides sharedArtworkPair,
-        LocalNavigationScrollState provides navigationScroll
+        LocalNavigationScrollState provides navigationScroll,
+        LocalTrackNavigation provides trackNavigator
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // 底层页面内容与毛玻璃采样层
@@ -780,7 +816,8 @@ fun AppNavigation(
                         id = artistId,
                         name = artistName,
                         coverUrl = artistCoverUrl,
-                        pageIndex = pageIndex
+                        pageIndex = pageIndex,
+                        requestId = ++artistRequestSeq
                     )
                 },
                 onCloseArtist = { closingPageIndex ->
@@ -788,13 +825,18 @@ fun AppNavigation(
                         selectedArtist = null
                     }
                 },
+                albumOverlayState = albumOverlayState,
+                onCloseAlbumOverlay = { closingPageIndex ->
+                    mainViewModel.closeAlbumDetail(closingPageIndex)
+                },
+                onPlayAlbumTracks = mainViewModel::playAlbumTracks,
                 homeListState = homeListState,
                 radioListState = radioListState,
                 mineListState = mineListState
             )
             }
         }
-        if (useRail && isSearchExpanded && selectedArtist?.pageIndex != SEARCH_PAGE_INDEX && !hasSearchPlaylistDetail) {
+        if (useRail && isSearchExpanded && selectedArtist?.pageIndex != SEARCH_PAGE_INDEX && albumOverlayState?.pageIndex != SEARCH_PAGE_INDEX && !hasSearchPlaylistDetail) {
             Box(Modifier.fillMaxWidth().padding(start = railStartPadding + 20.dp, end = railEndPadding + 20.dp)
                 .statusBarsPadding().padding(top = 68.dp), contentAlignment = Alignment.TopCenter) {
                 // 宽屏模式搜索页悬浮输入栏（最大宽度 680.dp、高度 54.dp、胶囊圆角 27.dp）
@@ -1494,6 +1536,9 @@ private fun AppPageContent(
     selectedArtist: SelectedArtist?,
     onArtistClick: (Int, Long, String, String?) -> Unit,
     onCloseArtist: (Int?) -> Unit,
+    albumOverlayState: GlobalAlbumOverlayState?,
+    onCloseAlbumOverlay: (Int?) -> Unit,
+    onPlayAlbumTracks: (List<Track>, Int) -> Unit,
     homeListState: LazyListState,
     radioListState: LazyListState,
     mineListState: LazyListState
@@ -1552,6 +1597,7 @@ private fun AppPageContent(
                     3 -> searchViewModel.closePlaylistDetail()
                 }
                 onCloseArtist(from)
+                onCloseAlbumOverlay(from)
             }
         }
     }
@@ -1610,8 +1656,9 @@ private fun AppPageContent(
                         }
                 ) {
                     val pageArtist = selectedArtist?.takeIf { it.pageIndex == pageIndex }
+                    val pageAlbum = albumOverlayState?.takeIf { it.pageIndex == pageIndex }
                     val isPageForeground = isHostForeground && displayedIndex == pageIndex && transitionState == null
-                    val isPageContentVisible = isHostForeground && isVisible && pageArtist == null
+                    val isPageContentVisible = isHostForeground && isVisible && pageArtist == null && pageAlbum == null
                     CompositionLocalProvider(LocalPageVisible provides isPageContentVisible) {
                     when (pageIndex) {
                         0 -> HomeRoute(
@@ -1655,6 +1702,8 @@ private fun AppPageContent(
                             onArtistClick = { artistId, artistName, artistCoverUrl ->
                                 onArtistClick(3, artistId, artistName, artistCoverUrl)
                             },
+                            onTrackLikedChanged = mineViewModel::onTrackLikedChanged,
+                            onTrackAddedToPlaylist = mineViewModel::onTrackAddedToPlaylist,
                             isForeground = isPageForeground,
                             topHeader = {
                                 SearchPageTopHeader(
@@ -1701,7 +1750,7 @@ private fun AppPageContent(
                         },
                         modifier = Modifier
                             .fillMaxSize()
-                            .zIndex(20f)
+                            .zIndex(25f)
                     ) {
                         val displayArtist = pageArtist ?: lastArtist.value
                         displayArtist?.let { artist ->
@@ -1711,7 +1760,80 @@ private fun AppPageContent(
                                     artistName = artist.name,
                                     artistCoverUrl = artist.coverUrl,
                                     onClose = { onCloseArtist(pageIndex) },
-                                    backHandlerEnabled = isPageForeground && pageArtist != null
+                                    backHandlerEnabled = isPageForeground && pageArtist != null && pageAlbum == null
+                                )
+                            }
+                        }
+                    }
+
+                    val lastAlbum = remember { mutableStateOf<GlobalAlbumOverlayState?>(null) }
+                    val lastOpenedAlbumId = remember { mutableStateOf<Long?>(null) }
+                    val albumOpenCounter = remember { mutableIntStateOf(0) }
+                    val fallbackAlbumBackdrop = rememberLayerBackdrop { drawContent() }
+                    LaunchedEffect(pageAlbum) {
+                        if (pageAlbum != null) {
+                            if (lastOpenedAlbumId.value != pageAlbum.detail.id) {
+                                albumOpenCounter.intValue++
+                                lastOpenedAlbumId.value = pageAlbum.detail.id
+                            }
+                            lastAlbum.value = pageAlbum
+                        } else {
+                            lastOpenedAlbumId.value = null
+                        }
+                    }
+                    LaunchedEffect(isPageForeground) {
+                        if (!isPageForeground && pageAlbum == null) {
+                            lastAlbum.value = null
+                        }
+                    }
+                    val albumDetailListState = rememberSaveable(
+                        pageAlbum?.detail?.id,
+                        saver = LazyListState.Saver
+                    ) {
+                        LazyListState()
+                    }
+
+                    AnimatedVisibility(
+                        visible = pageAlbum != null,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { fullWidth -> fullWidth },
+                            // 专辑详情页滑入弹簧参数（阻尼比 0.92f，刚度 260f）
+                            animationSpec = spring(dampingRatio = 0.92f, stiffness = 260f)
+                        ),
+                        exit = if (isPageForeground) {
+                            slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> fullWidth },
+                                // 专辑详情页滑出弹簧参数（阻尼比 0.92f，刚度 300f）
+                                animationSpec = spring(dampingRatio = 0.92f, stiffness = 300f)
+                            )
+                        } else {
+                            ExitTransition.None
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(30f)
+                    ) {
+                        val displayAlbum = pageAlbum ?: lastAlbum.value
+                        displayAlbum?.let { albumState ->
+                            key(albumOpenCounter.intValue) {
+                                val glassBackdrop = LocalGlassBackdrop.current ?: fallbackAlbumBackdrop
+                                PlaylistDetailScreen(
+                                    detail = albumState.detail,
+                                    backdrop = glassBackdrop,
+                                    onClose = { onCloseAlbumOverlay(pageIndex) },
+                                    onPlayTrack = { track ->
+                                        val idx = albumState.detail.tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+                                        onPlayAlbumTracks(albumState.detail.tracks, idx)
+                                    },
+                                    onPlayAll = { onPlayAlbumTracks(albumState.detail.tracks, 0) },
+                                    onShufflePlay = { onPlayAlbumTracks(albumState.detail.tracks.shuffled(), 0) },
+                                    onTrackLikedChanged = mineViewModel::onTrackLikedChanged,
+                                    onTrackAddedToPlaylist = mineViewModel::onTrackAddedToPlaylist,
+                                    isLoading = pageAlbum?.isLoading ?: false,
+                                    listState = albumDetailListState,
+                                    filterByCurrentUserLikes = false,
+                                    defaultStyle = PlaylistDetailStyle.APPLE_MUSIC,
+                                    isAlbum = true
                                 )
                             }
                         }
