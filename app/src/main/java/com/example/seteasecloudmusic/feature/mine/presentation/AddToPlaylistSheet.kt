@@ -38,6 +38,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -51,7 +52,6 @@ import com.example.seteasecloudmusic.core.ui.adaptive.AdaptiveModalSheet
 import com.example.seteasecloudmusic.core.ui.components.AppLoadingIndicator
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -439,12 +439,6 @@ private fun PlaylistPickerItem(
                 }
             }
         },
-        title = playlist.name,
-        titleColor = BasicComponentDefaults.titleColor(
-            color = if (isAlreadyAdded) colors.textSecondary else colors.textPrimary
-        ),
-        summary = "${playlist.trackCount} 首",
-        summaryColor = BasicComponentDefaults.summaryColor(color = colors.textSecondary),
         endActions = if (isAlreadyAdded) {
             {
                 Text(
@@ -464,7 +458,29 @@ private fun PlaylistPickerItem(
         },
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         onClick = onClick
-    )
+    ) {
+        Text(
+            text = playlist.name,
+            style = MiuixTheme.textStyles.body1.copy(
+                color = if (isAlreadyAdded) colors.textSecondary else colors.textPrimary,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Normal
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "${playlist.trackCount} 首",
+            style = MiuixTheme.textStyles.body2.copy(
+                color = colors.textSecondary,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Normal
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -490,13 +506,31 @@ private fun NewPlaylistPickerItem(
                 )
             }
         },
-        title = "新建歌单",
-        titleColor = BasicComponentDefaults.titleColor(color = colors.textPrimary),
-        summary = "创建新歌单并加入此歌曲",
-        summaryColor = BasicComponentDefaults.summaryColor(color = colors.textSecondary),
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         onClick = onClick
-    )
+    ) {
+        Text(
+            text = "新建歌单",
+            style = MiuixTheme.textStyles.body1.copy(
+                color = colors.textPrimary,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Normal
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "创建新歌单并加入此歌曲",
+            style = MiuixTheme.textStyles.body2.copy(
+                color = colors.textSecondary,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Normal
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 /**
