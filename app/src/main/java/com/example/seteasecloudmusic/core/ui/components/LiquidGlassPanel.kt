@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import com.example.seteasecloudmusic.core.ui.theme.LiquidGlassAppearance
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -34,14 +35,17 @@ val LocalGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
  * @param cornerRadius 面板圆角半径（默认 28.dp）
  * @param shadowElevation 外阴影弥散半径（默认 18.dp）
  */
+@Composable
 fun Modifier.liquidGlassPanel(
     backdrop: Backdrop?,
     containerColor: Color = Color.White,
     cornerRadius: Dp = 28.dp,
-    shadowElevation: Dp = 18.dp
+    shadowElevation: Dp = 18.dp,
+    appearance: LiquidGlassAppearance = AppTheme.liquidGlass
 ): Modifier {
     val dark = containerColor.luminance() < 0.5f
     val shape = RoundedRectangle(cornerRadius)
+    val resolved = resolveLiquidGlassPanelParams(isDarkSurface = dark, appearance = appearance)
     return this
         .then(
             if (backdrop != null) {
@@ -58,14 +62,19 @@ fun Modifier.liquidGlassPanel(
                     },
                     effects = {
                         vibrancy()
-                        blur(6.dp.toPx()) // 面板高斯模糊半径（6.dp）
+                        if (resolved.blurRadius > 0.dp) {
+                            blur(resolved.blurRadius.toPx())
+                        }
                         noiseDither(GlassDefaults.NoiseDitherCoeff)
-                        // 边缘透镜折射：折射高度 16.dp、折射量 20.dp，开启色散
-                        lens(16.dp.toPx(), 20.dp.toPx(), chromaticAberration = true)
+                        // 边缘透镜折射，开启色散
+                        lens(
+                            resolved.refractionHeight.toPx(),
+                            resolved.refractionAmount.toPx(),
+                            chromaticAberration = true
+                        )
                     },
                     onDrawSurface = {
-                        // 深色底 0.66 / 浅色底 0.50 铺底，兼顾透背景与文字对比度
-                        drawRect(containerColor.copy(alpha = if (dark) 0.66f else 0.50f))
+                        drawRect(containerColor.copy(alpha = resolved.surfaceAlpha))
                         drawRect(
                             Brush.verticalGradient(
                                 listOf(

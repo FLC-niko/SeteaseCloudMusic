@@ -593,6 +593,15 @@ fun LiquidGlassActiveTabsRecorder(
     alphaProvider: (() -> Float)? = null,
     selectedContent: @Composable BoxScope.() -> Unit
 ) {
+    val appearance = AppTheme.liquidGlass
+    val resolved = resolveLiquidGlassParams(
+        baseSurfaceAlpha = surfaceAlpha,
+        baseBlurRadius = GlassDefaults.BlurRadius,
+        baseRefractionHeight = 0.dp,
+        baseRefractionAmount = 0.dp,
+        isDarkSurface = isDarkSurface,
+        appearance = appearance
+    )
     Box(
         modifier = modifier
             .size(containerWidth, containerHeight)
@@ -612,13 +621,15 @@ fun LiquidGlassActiveTabsRecorder(
                         layerBlock = layerBlock,
                         effects = {
                             vibrancy()
-                            blur(GlassDefaults.BlurRadius.toPx())
+                            if (resolved.blurRadius > 0.dp) {
+                                blur(resolved.blurRadius.toPx())
+                            }
                         },
                         onDrawSurface = {
                             val effectiveAlpha = if (isRenderEffectSupported()) {
-                                surfaceAlpha
+                                resolved.surfaceAlpha
                             } else {
-                                maxOf(surfaceAlpha, if (isDarkSurface) 0.72f else 0.76f)
+                                resolved.fallbackSurfaceAlpha
                             }
                             if (effectiveAlpha > 0f) {
                                 drawRect(color = surfaceColor.copy(alpha = effectiveAlpha))

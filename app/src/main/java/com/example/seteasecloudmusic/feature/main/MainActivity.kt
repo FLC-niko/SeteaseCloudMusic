@@ -18,6 +18,7 @@ import com.example.seteasecloudmusic.core.player.FavoriteTracksManager
 import com.example.seteasecloudmusic.core.player.MusicPlayerController
 import com.example.seteasecloudmusic.core.settings.PlayerSettingsManager
 import com.example.seteasecloudmusic.core.ui.components.ProvideDeviceTilt
+import com.example.seteasecloudmusic.core.ui.theme.LiquidGlassAppearance
 import com.example.seteasecloudmusic.core.ui.theme.SeteaseCloudMusicTheme
 import com.example.seteasecloudmusic.core.ui.theme.TopAmbientAppearance
 import com.example.seteasecloudmusic.feature.mine.domain.repository.MineRepository
@@ -76,11 +77,15 @@ class MainActivity : ComponentActivity() {
             val themeMode by playerSettingsManager.themeMode.collectAsStateWithLifecycle()
             val topAmbientEnabled by playerSettingsManager.topAmbientEnabled.collectAsStateWithLifecycle()
             val topAmbientColorArgb by playerSettingsManager.topAmbientColorArgb.collectAsStateWithLifecycle()
+            val liquidGlassOpacity by playerSettingsManager.liquidGlassOpacity.collectAsStateWithLifecycle()
             SeteaseCloudMusicTheme(
                 themeMode = themeMode,
                 topAmbientAppearance = TopAmbientAppearance(
                     enabled = topAmbientEnabled,
                     colorArgb = topAmbientColorArgb
+                ),
+                liquidGlassAppearance = LiquidGlassAppearance(
+                    opacityLevel = liquidGlassOpacity
                 )
             ) {
                 ProvideDeviceTilt {

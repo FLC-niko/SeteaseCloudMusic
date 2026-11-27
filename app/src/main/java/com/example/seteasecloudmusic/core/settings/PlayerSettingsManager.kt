@@ -83,6 +83,9 @@ class PlayerSettingsManager @Inject constructor(
     private val _topAmbientColorArgb = MutableStateFlow(loadSavedTopAmbientColorArgb())
     val topAmbientColorArgb: StateFlow<Int> = _topAmbientColorArgb.asStateFlow()
 
+    private val _liquidGlassOpacity = MutableStateFlow(loadSavedLiquidGlassOpacity())
+    val liquidGlassOpacity: StateFlow<Float> = _liquidGlassOpacity.asStateFlow()
+
     fun setThemeMode(mode: AppThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
@@ -96,6 +99,18 @@ class PlayerSettingsManager @Inject constructor(
     fun setTopAmbientColorArgb(argb: Int) {
         _topAmbientColorArgb.value = argb
         prefs.edit().putInt(KEY_TOP_AMBIENT_COLOR_ARGB, argb).apply()
+    }
+
+    fun setLiquidGlassOpacity(level: Float, persist: Boolean = true) {
+        val clamped = if (level.isNaN()) {
+            DEFAULT_LIQUID_GLASS_OPACITY
+        } else {
+            level.coerceIn(MIN_LIQUID_GLASS_OPACITY, MAX_LIQUID_GLASS_OPACITY)
+        }
+        _liquidGlassOpacity.value = clamped
+        if (persist) {
+            prefs.edit().putFloat(KEY_LIQUID_GLASS_OPACITY, clamped).apply()
+        }
     }
 
     fun setAudioQuality(quality: OnlineAudioQuality) {
@@ -174,6 +189,15 @@ class PlayerSettingsManager @Inject constructor(
         return prefs.getInt(KEY_TOP_AMBIENT_COLOR_ARGB, DEFAULT_TOP_AMBIENT_COLOR_ARGB)
     }
 
+    private fun loadSavedLiquidGlassOpacity(): Float {
+        val raw = prefs.getFloat(KEY_LIQUID_GLASS_OPACITY, DEFAULT_LIQUID_GLASS_OPACITY)
+        return if (raw.isNaN()) {
+            DEFAULT_LIQUID_GLASS_OPACITY
+        } else {
+            raw.coerceIn(MIN_LIQUID_GLASS_OPACITY, MAX_LIQUID_GLASS_OPACITY)
+        }
+    }
+
     companion object {
         private const val PREF_NAME = "app_settings_prefs"                     // 全局设置 SharedPreferences 文件名
         private const val KEY_AUDIO_QUALITY = "player_audio_quality"           // 在线音质偏好 Key（默认 OnlineAudioQuality.STANDARD）
@@ -185,9 +209,19 @@ class PlayerSettingsManager @Inject constructor(
         private const val KEY_THEME_MODE = "app_theme_mode"                    // 应用深浅主题模式 Key（默认 AppThemeMode.SYSTEM）
         private const val KEY_TOP_AMBIENT_ENABLED = "top_ambient_enabled"      // 顶部氛围背景开关 Key（默认 true）
         private const val KEY_TOP_AMBIENT_COLOR_ARGB = "top_ambient_color_argb"// 顶部氛围背景色 ARGB 整数值 Key
+        private const val KEY_LIQUID_GLASS_OPACITY = "liquid_glass_opacity_level" // 液态玻璃通透度/磨砂调节值 Key（[-1f, 1f]，默认 0f）
 
         /** 顶部氛围背景默认颜色（ARGB）。 */
         const val DEFAULT_TOP_AMBIENT_COLOR_ARGB: Int = 0xFFFFE8ED.toInt()
+
+        /** 液态玻璃最通透档位下限（Clear）。 */
+        const val MIN_LIQUID_GLASS_OPACITY: Float = -1f
+
+        /** 液态玻璃默认档位（0f，保持原有默认光学参数）。 */
+        const val DEFAULT_LIQUID_GLASS_OPACITY: Float = 0f
+
+        /** 液态玻璃最磨砂档位上限（Tinted）。 */
+        const val MAX_LIQUID_GLASS_OPACITY: Float = 1f
 
         @Volatile
         private var INSTANCE: PlayerSettingsManager? = null

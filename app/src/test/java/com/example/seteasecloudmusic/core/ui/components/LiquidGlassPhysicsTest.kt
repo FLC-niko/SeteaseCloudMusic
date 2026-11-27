@@ -1,6 +1,13 @@
 package com.example.seteasecloudmusic.core.ui.components
 
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.ui.unit.dp
+import com.example.seteasecloudmusic.core.ui.theme.LiquidGlassAppearance
+import com.example.seteasecloudmusic.feature.auth.presentation.DEFAULT_LIQUID_GLASS_SLIDER_POSITION
+import com.example.seteasecloudmusic.feature.auth.presentation.formatLiquidGlassLevelLabel
+import com.example.seteasecloudmusic.feature.auth.presentation.opacityLevelToSliderPosition
+import com.example.seteasecloudmusic.feature.auth.presentation.sliderPositionToOpacityLevel
+import com.example.seteasecloudmusic.feature.auth.presentation.snapLiquidGlassLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -173,5 +180,123 @@ class LiquidGlassPhysicsTest {
         assertEquals(0f, clampLensRefractionHeightPx(0f, 132f), EPSILON)
         assertEquals(0f, clampLensRefractionHeightPx(72f, 0f), EPSILON)
         assertEquals(0f, clampLensRefractionHeightPx(-10f, 132f), EPSILON)
+    }
+
+    @Test
+    fun resolveLiquidGlassParams_preservesDefaultsAtZeroAndScalesClearVsTinted() {
+        val lightDefault = resolveLiquidGlassParams(
+            baseSurfaceAlpha = 0.14f,
+            baseBlurRadius = 1.8.dp,
+            baseRefractionHeight = 24.dp,
+            baseRefractionAmount = 24.dp,
+            isDarkSurface = false,
+            appearance = LiquidGlassAppearance(0f)
+        )
+        assertEquals(0.14f, lightDefault.surfaceAlpha, EPSILON)
+        assertEquals(0.76f, lightDefault.fallbackSurfaceAlpha, EPSILON)
+        assertEquals(1.8f, lightDefault.blurRadius.value, EPSILON)
+        assertEquals(24f, lightDefault.refractionHeight.value, EPSILON)
+        assertEquals(24f, lightDefault.refractionAmount.value, EPSILON)
+        assertEquals(0f, lightDefault.subtleOutlineAlphaBoost, EPSILON)
+
+        val darkDefault = resolveLiquidGlassParams(
+            baseSurfaceAlpha = 0.20f,
+            baseBlurRadius = 1.8.dp,
+            baseRefractionHeight = 24.dp,
+            baseRefractionAmount = 24.dp,
+            isDarkSurface = true,
+            appearance = LiquidGlassAppearance(0f)
+        )
+        assertEquals(0.20f, darkDefault.surfaceAlpha, EPSILON)
+        assertEquals(0.72f, darkDefault.fallbackSurfaceAlpha, EPSILON)
+
+        val lightClear = resolveLiquidGlassParams(
+            baseSurfaceAlpha = 0.14f,
+            baseBlurRadius = 1.8.dp,
+            baseRefractionHeight = 24.dp,
+            baseRefractionAmount = 24.dp,
+            isDarkSurface = false,
+            appearance = LiquidGlassAppearance(-1f)
+        )
+        assertTrue(lightClear.surfaceAlpha < lightDefault.surfaceAlpha)
+        assertEquals(0f, lightClear.blurRadius.value, EPSILON)
+        assertTrue(lightClear.refractionAmount > lightDefault.refractionAmount)
+        assertTrue(lightClear.subtleOutlineAlphaBoost > 0f)
+
+        val lightTinted = resolveLiquidGlassParams(
+            baseSurfaceAlpha = 0.14f,
+            baseBlurRadius = 1.8.dp,
+            baseRefractionHeight = 24.dp,
+            baseRefractionAmount = 24.dp,
+            isDarkSurface = false,
+            appearance = LiquidGlassAppearance(1f)
+        )
+        assertTrue(lightTinted.surfaceAlpha > 0.7f)
+        assertTrue(lightTinted.blurRadius >= 14.dp)
+        assertTrue(lightTinted.refractionAmount < lightDefault.refractionAmount)
+
+        // Guards NaN and out-of-range inputs
+        val nanResolved = resolveLiquidGlassParams(
+            baseSurfaceAlpha = 0.14f,
+            baseBlurRadius = 1.8.dp,
+            baseRefractionHeight = 24.dp,
+            baseRefractionAmount = 24.dp,
+            isDarkSurface = false,
+            appearance = LiquidGlassAppearance(Float.NaN)
+        )
+        assertEquals(lightDefault, nanResolved)
+    }
+
+    @Test
+    fun resolveLiquidGlassPanelParams_preservesDefaultsAndScalesMonotonically() {
+        val defaultPanel = resolveLiquidGlassPanelParams(isDarkSurface = false, appearance = LiquidGlassAppearance(0f))
+        val clearPanel = resolveLiquidGlassPanelParams(isDarkSurface = false, appearance = LiquidGlassAppearance(-1f))
+        val tintedPanel = resolveLiquidGlassPanelParams(isDarkSurface = false, appearance = LiquidGlassAppearance(1f))
+
+        assertEquals(0.50f, defaultPanel.surfaceAlpha, EPSILON)
+        assertEquals(6f, defaultPanel.blurRadius.value, EPSILON)
+        assertTrue(clearPanel.surfaceAlpha < defaultPanel.surfaceAlpha)
+        assertTrue(clearPanel.blurRadius < defaultPanel.blurRadius)
+        assertTrue(tintedPanel.surfaceAlpha > defaultPanel.surfaceAlpha)
+        assertTrue(tintedPanel.blurRadius > defaultPanel.blurRadius)
+    }
+
+    @Test
+    fun snapAndFormatLiquidGlassLevel_handlesDeadzoneClampingAndLabels() {
+        assertEquals(0f, snapLiquidGlassLevel(0.05f), EPSILON)
+        assertEquals(0f, snapLiquidGlassLevel(-0.06f), EPSILON)
+        assertEquals(0f, snapLiquidGlassLevel(Float.NaN), EPSILON)
+        assertEquals(-1f, snapLiquidGlassLevel(-2.5f), EPSILON)
+        assertEquals(1f, snapLiquidGlassLevel(2.5f), EPSILON)
+        assertEquals(0.42f, snapLiquidGlassLevel(0.42f), EPSILON)
+
+        assertEquals("默认", formatLiquidGlassLevelLabel(0f))
+        assertEquals("默认", formatLiquidGlassLevelLabel(0.03f))
+        assertEquals("通透 50%", formatLiquidGlassLevelLabel(-0.5f))
+        assertEquals("通透 100%", formatLiquidGlassLevelLabel(-1f))
+        assertEquals("磨砂 75%", formatLiquidGlassLevelLabel(0.75f))
+        assertEquals("磨砂 100%", formatLiquidGlassLevelLabel(1f))
+    }
+
+    @Test
+    fun sliderPositionMapping_anchorsDefaultAtQuarterAndPreservesBijection() {
+        assertEquals(0f, opacityLevelToSliderPosition(-1f), EPSILON)
+        assertEquals(DEFAULT_LIQUID_GLASS_SLIDER_POSITION, opacityLevelToSliderPosition(0f), EPSILON)
+        assertEquals(1f, opacityLevelToSliderPosition(1f), EPSILON)
+        assertEquals(DEFAULT_LIQUID_GLASS_SLIDER_POSITION, opacityLevelToSliderPosition(Float.NaN), EPSILON)
+
+        assertEquals(-1f, sliderPositionToOpacityLevel(0f), EPSILON)
+        assertEquals(0f, sliderPositionToOpacityLevel(DEFAULT_LIQUID_GLASS_SLIDER_POSITION), EPSILON)
+        assertEquals(0f, sliderPositionToOpacityLevel(DEFAULT_LIQUID_GLASS_SLIDER_POSITION + 0.02f), EPSILON)
+        assertEquals(0f, sliderPositionToOpacityLevel(DEFAULT_LIQUID_GLASS_SLIDER_POSITION - 0.02f), EPSILON)
+        assertEquals(1f, sliderPositionToOpacityLevel(1f), EPSILON)
+        assertEquals(0f, sliderPositionToOpacityLevel(Float.NaN), EPSILON)
+
+        val roundTripSamples = listOf(-1f, -0.6f, -0.25f, 0f, 0.2f, 0.5f, 0.85f, 1f)
+        for (level in roundTripSamples) {
+            val pos = opacityLevelToSliderPosition(level)
+            val recovered = sliderPositionToOpacityLevel(pos)
+            assertEquals("Round-trip mismatch for $level", level, recovered, EPSILON)
+        }
     }
 }

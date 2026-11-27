@@ -99,6 +99,7 @@ fun AccountLoginSheetContent(
     val themeMode by viewModel.playerSettingsManager.themeMode.collectAsStateWithLifecycle()
     val topAmbientEnabled by viewModel.playerSettingsManager.topAmbientEnabled.collectAsStateWithLifecycle()
     val topAmbientColorArgb by viewModel.playerSettingsManager.topAmbientColorArgb.collectAsStateWithLifecycle()
+    val liquidGlassOpacity by viewModel.playerSettingsManager.liquidGlassOpacity.collectAsStateWithLifecycle()
     val bluetoothLyricsEnabled by viewModel.playerSettingsManager.bluetoothLyricsEnabled.collectAsStateWithLifecycle()
     val superLyricApiEnabled by viewModel.playerSettingsManager.superLyricApiEnabled.collectAsStateWithLifecycle()
     val predictiveBackEnabled by viewModel.playerSettingsManager.predictiveBackEnabled.collectAsStateWithLifecycle()
@@ -160,6 +161,13 @@ fun AccountLoginSheetContent(
                             onTopAmbientEnabledChange = { viewModel.playerSettingsManager.setTopAmbientEnabled(it) },
                             topAmbientColorArgb = topAmbientColorArgb,
                             onTopAmbientColorClick = { showTopAmbientColorDialog = true },
+                            liquidGlassOpacity = liquidGlassOpacity,
+                            onLiquidGlassOpacityChange = {
+                                viewModel.playerSettingsManager.setLiquidGlassOpacity(it, persist = false)
+                            },
+                            onLiquidGlassOpacityChangeFinished = {
+                                viewModel.playerSettingsManager.setLiquidGlassOpacity(it, persist = true)
+                            },
                             bluetoothLyricsEnabled = bluetoothLyricsEnabled,
                             onBluetoothLyricsChange = { viewModel.playerSettingsManager.setBluetoothLyricsEnabled(it) },
                             superLyricApiEnabled = superLyricApiEnabled,
@@ -330,6 +338,9 @@ private fun MethodSelectionPanel(
     onTopAmbientEnabledChange: (Boolean) -> Unit,
     topAmbientColorArgb: Int,
     onTopAmbientColorClick: () -> Unit,
+    liquidGlassOpacity: Float,
+    onLiquidGlassOpacityChange: (Float) -> Unit,
+    onLiquidGlassOpacityChangeFinished: (Float) -> Unit,
     bluetoothLyricsEnabled: Boolean,
     onBluetoothLyricsChange: (Boolean) -> Unit,
     superLyricApiEnabled: Boolean,
@@ -448,6 +459,53 @@ private fun MethodSelectionPanel(
                 onClick = onTopAmbientColorClick
             )
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SmallTitle(
+                text = "液态玻璃",
+                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            )
+            if (kotlin.math.abs(liquidGlassOpacity) > 0.01f) {
+                Text(
+                    text = "恢复默认",
+                    style = MiuixTheme.textStyles.body2,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            onLiquidGlassOpacityChange(0f)
+                            onLiquidGlassOpacityChangeFinished(0f)
+                        }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+
+        LiquidGlassSettingsCard(
+            opacityLevel = liquidGlassOpacity,
+            onOpacityChange = onLiquidGlassOpacityChange,
+            onOpacityChangeFinished = onLiquidGlassOpacityChangeFinished
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = "实时应用于底部导航栏、播放条与浮层液态玻璃效果。",
+            color = secondary,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+        )
 
         Spacer(modifier = Modifier.height(10.dp))
 

@@ -158,8 +158,25 @@ data class TopAmbientAppearance(
     val colorArgb: Int = PlayerSettingsManager.DEFAULT_TOP_AMBIENT_COLOR_ARGB
 )
 
+/** 全局液态玻璃通透度/磨砂调节外观配置（[-1f, 1f]，0f 为默认）。 */
+@Immutable
+data class LiquidGlassAppearance(
+    val opacityLevel: Float = PlayerSettingsManager.DEFAULT_LIQUID_GLASS_OPACITY
+) {
+    val clampedLevel: Float
+        get() = if (opacityLevel.isNaN()) {
+            PlayerSettingsManager.DEFAULT_LIQUID_GLASS_OPACITY
+        } else {
+            opacityLevel.coerceIn(
+                PlayerSettingsManager.MIN_LIQUID_GLASS_OPACITY,
+                PlayerSettingsManager.MAX_LIQUID_GLASS_OPACITY
+            )
+        }
+}
+
 val LocalAppColors = staticCompositionLocalOf { LightAppColors }
 val LocalTopAmbientAppearance = staticCompositionLocalOf { TopAmbientAppearance() }
+val LocalLiquidGlassAppearance = staticCompositionLocalOf { LiquidGlassAppearance() }
 
 /** 主题颜色与顶部氛围外观访问入口。 */
 object AppTheme {
@@ -177,15 +194,21 @@ object AppTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalTopAmbientAppearance.current
+
+    val liquidGlass: LiquidGlassAppearance
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalLiquidGlassAppearance.current
 }
 
 /**
- * 应用根主题容器：注入语义色板与顶部氛围配置，同步系统状态栏/导航栏图标亮暗与窗口底色，并挂载 Miuix 主题。
+ * 应用根主题容器：注入语义色板、顶部氛围与液态玻璃外观配置，同步系统状态栏/导航栏图标亮暗与窗口底色，并挂载 Miuix 主题。
  */
 @Composable
 fun SeteaseCloudMusicTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     topAmbientAppearance: TopAmbientAppearance = TopAmbientAppearance(),
+    liquidGlassAppearance: LiquidGlassAppearance = LiquidGlassAppearance(),
     content: @Composable () -> Unit
 ) {
     val darkTheme = resolveDarkTheme(themeMode, isSystemInDarkTheme())
@@ -209,7 +232,8 @@ fun SeteaseCloudMusicTheme(
 
     CompositionLocalProvider(
         LocalAppColors provides appColors,
-        LocalTopAmbientAppearance provides topAmbientAppearance
+        LocalTopAmbientAppearance provides topAmbientAppearance,
+        LocalLiquidGlassAppearance provides liquidGlassAppearance
     ) {
         MiuixThemeHost(
             darkTheme = darkTheme,

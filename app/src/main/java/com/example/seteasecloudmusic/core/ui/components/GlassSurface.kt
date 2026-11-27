@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -27,7 +28,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import com.example.seteasecloudmusic.core.ui.theme.AppTheme
+import com.example.seteasecloudmusic.core.ui.theme.LiquidGlassAppearance
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
@@ -86,9 +89,158 @@ internal fun clampLensRefractionHeightPx(desiredPx: Float, minDimensionPx: Float
 }
 
 /**
+ * 解析后的液态玻璃光学参数。
+ */
+@Immutable
+data class ResolvedLiquidGlassParams(
+    val surfaceAlpha: Float,
+    val fallbackSurfaceAlpha: Float,
+    val blurRadius: Dp,
+    val refractionHeight: Dp,
+    val refractionAmount: Dp,
+    val subtleOutlineAlphaBoost: Float
+)
+
+/**
+ * 根据全局 [LiquidGlassAppearance] 解析标准液态玻璃表面参数；
+ * `opacityLevel == 0f` 时保持原有默认参数零回归。
+ */
+fun resolveLiquidGlassParams(
+    baseSurfaceAlpha: Float,
+    baseBlurRadius: Dp,
+    baseRefractionHeight: Dp,
+    baseRefractionAmount: Dp,
+    isDarkSurface: Boolean,
+    appearance: LiquidGlassAppearance
+): ResolvedLiquidGlassParams {
+    val level = appearance.clampedLevel
+    val defaultFallback = maxOf(baseSurfaceAlpha, if (isDarkSurface) 0.72f else 0.76f)
+    if (level == 0f) {
+        return ResolvedLiquidGlassParams(
+            surfaceAlpha = baseSurfaceAlpha,
+            fallbackSurfaceAlpha = defaultFallback,
+            blurRadius = baseBlurRadius,
+            refractionHeight = baseRefractionHeight,
+            refractionAmount = baseRefractionAmount,
+            subtleOutlineAlphaBoost = 0f
+        )
+    }
+
+    return if (level < 0f) {
+        val clearT = -level
+        val surfaceAlpha = lerp(
+            baseSurfaceAlpha,
+            baseSurfaceAlpha * if (isDarkSurface) 0.14f else 0.08f,
+            clearT
+        )
+        val fallbackAlpha = maxOf(
+            surfaceAlpha,
+            lerp(
+                if (isDarkSurface) 0.72f else 0.76f,
+                if (isDarkSurface) 0.46f else 0.50f,
+                clearT
+            )
+        )
+        val blurRadius = if (baseBlurRadius > 0.dp) {
+            lerp(baseBlurRadius.value, 0f, clearT).dp
+        } else {
+            0.dp
+        }
+        ResolvedLiquidGlassParams(
+            surfaceAlpha = surfaceAlpha,
+            fallbackSurfaceAlpha = fallbackAlpha,
+            blurRadius = blurRadius,
+            refractionHeight = baseRefractionHeight * lerp(1f, 1.10f, clearT),
+            refractionAmount = baseRefractionAmount * lerp(1f, 1.22f, clearT),
+            subtleOutlineAlphaBoost = if (isDarkSurface) 0f else 0.03f * clearT
+        )
+    } else {
+        val tintedT = level
+        val maxTintedAlpha = if (isDarkSurface) 0.74f else 0.80f
+        val surfaceAlpha = lerp(
+            baseSurfaceAlpha,
+            maxOf(baseSurfaceAlpha, maxTintedAlpha),
+            tintedT
+        )
+        val fallbackAlpha = maxOf(
+            surfaceAlpha,
+            lerp(
+                if (isDarkSurface) 0.72f else 0.76f,
+                if (isDarkSurface) 0.90f else 0.94f,
+                tintedT
+            )
+        )
+        val blurCurve = tintedT * (0.78f + 0.22f * tintedT)
+        val blurRadius = if (baseBlurRadius > 0.dp) {
+            lerp(baseBlurRadius.value, maxOf(baseBlurRadius.value, 14f), blurCurve).dp
+        } else {
+            lerp(0f, 12f, blurCurve).dp
+        }
+        ResolvedLiquidGlassParams(
+            surfaceAlpha = surfaceAlpha,
+            fallbackSurfaceAlpha = fallbackAlpha,
+            blurRadius = blurRadius,
+            refractionHeight = baseRefractionHeight * lerp(1f, 0.72f, tintedT),
+            refractionAmount = baseRefractionAmount * lerp(1f, 0.52f, tintedT),
+            subtleOutlineAlphaBoost = 0f
+        )
+    }
+}
+
+/**
+ * 根据全局 [LiquidGlassAppearance] 解析浮层面板（[liquidGlassPanel]）光学参数。
+ */
+fun resolveLiquidGlassPanelParams(
+    isDarkSurface: Boolean,
+    appearance: LiquidGlassAppearance
+): ResolvedLiquidGlassParams {
+    val level = appearance.clampedLevel
+    val baseAlpha = if (isDarkSurface) 0.66f else 0.50f
+    val baseBlur = 6.dp
+    val baseRefractionHeight = 16.dp
+    val baseRefractionAmount = 20.dp
+    val defaultFallback = maxOf(baseAlpha, if (isDarkSurface) 0.72f else 0.76f)
+    if (level == 0f) {
+        return ResolvedLiquidGlassParams(
+            surfaceAlpha = baseAlpha,
+            fallbackSurfaceAlpha = defaultFallback,
+            blurRadius = baseBlur,
+            refractionHeight = baseRefractionHeight,
+            refractionAmount = baseRefractionAmount,
+            subtleOutlineAlphaBoost = 0f
+        )
+    }
+
+    return if (level < 0f) {
+        val clearT = -level
+        val surfaceAlpha = lerp(baseAlpha, if (isDarkSurface) 0.30f else 0.20f, clearT)
+        ResolvedLiquidGlassParams(
+            surfaceAlpha = surfaceAlpha,
+            fallbackSurfaceAlpha = maxOf(surfaceAlpha, lerp(defaultFallback, if (isDarkSurface) 0.46f else 0.50f, clearT)),
+            blurRadius = lerp(baseBlur.value, 1.2f, clearT).dp,
+            refractionHeight = lerp(baseRefractionHeight.value, 18f, clearT).dp,
+            refractionAmount = lerp(baseRefractionAmount.value, 24f, clearT).dp,
+            subtleOutlineAlphaBoost = if (isDarkSurface) 0f else 0.03f * clearT
+        )
+    } else {
+        val tintedT = level
+        val surfaceAlpha = lerp(baseAlpha, if (isDarkSurface) 0.88f else 0.86f, tintedT)
+        ResolvedLiquidGlassParams(
+            surfaceAlpha = surfaceAlpha,
+            fallbackSurfaceAlpha = maxOf(surfaceAlpha, lerp(defaultFallback, if (isDarkSurface) 0.92f else 0.94f, tintedT)),
+            blurRadius = lerp(baseBlur.value, 18f, tintedT).dp,
+            refractionHeight = lerp(baseRefractionHeight.value, 12f, tintedT).dp,
+            refractionAmount = lerp(baseRefractionAmount.value, 12f, tintedT).dp,
+            subtleOutlineAlphaBoost = 0f
+        )
+    }
+}
+
+/**
  * 为任意 Modifier 叠加液态玻璃背景：
  * 色彩提鲜 + 高斯模糊 + 可选防色带噪点 + 透镜折射 + 外阴影 + 3D 重力棱边高光（BloomStroke）。
  */
+@Composable
 fun Modifier.liquidGlass(
     backdrop: Backdrop,
     cornerRadius: Dp,
@@ -107,8 +259,26 @@ fun Modifier.liquidGlass(
     enableNoiseDither: Boolean = false,
     depthEffect: Boolean = false,
     chromaticAberration: Boolean = false,
-    exportedBackdrop: LayerBackdrop? = null
+    exportedBackdrop: LayerBackdrop? = null,
+    appearance: LiquidGlassAppearance = AppTheme.liquidGlass
 ): Modifier {
+    val resolved = resolveLiquidGlassParams(
+        baseSurfaceAlpha = surfaceAlpha,
+        baseBlurRadius = blurRadius,
+        baseRefractionHeight = refractionHeight,
+        baseRefractionAmount = refractionAmount,
+        isDarkSurface = isDarkSurface,
+        appearance = appearance
+    )
+    val effectiveBloomStyle = if (enableBloomStroke && resolved.subtleOutlineAlphaBoost > 0f) {
+        bloomStyle.copy(
+            lightSurfaceSubtleOutlineAlpha = (bloomStyle.lightSurfaceSubtleOutlineAlpha + resolved.subtleOutlineAlphaBoost)
+                .coerceIn(0f, 1f)
+        )
+    } else {
+        bloomStyle
+    }
+
     val shadowSpec = if (enableShadow && shadowRadius > 0.dp) {
         Shadow(
             radius = shadowRadius,
@@ -127,20 +297,20 @@ fun Modifier.liquidGlass(
             shadow = if (shadowSpec != null) ({ shadowSpec }) else null,
             effects = {
                 vibrancy()
-                if (blurRadius > 0.dp) {
-                    blur(blurRadius.toPx())
+                if (resolved.blurRadius > 0.dp) {
+                    blur(resolved.blurRadius.toPx())
                 }
                 if (enableNoiseDither) {
                     noiseDither(GlassDefaults.NoiseDitherCoeff)
                 }
-                if (refractionHeight > 0.dp && refractionAmount > 0.dp) {
-                    val rawHeightPx = refractionHeight.toPx()
+                if (resolved.refractionHeight > 0.dp && resolved.refractionAmount > 0.dp) {
+                    val rawHeightPx = resolved.refractionHeight.toPx()
                     val effectiveHeightPx = clampLensRefractionHeightPx(rawHeightPx, size.minDimension)
                     if (effectiveHeightPx > 0f) {
                         val scaleRatio = (effectiveHeightPx / rawHeightPx).coerceIn(0f, 1f)
                         lens(
                             refractionHeight = effectiveHeightPx,
-                            refractionAmount = refractionAmount.toPx() * scaleRatio,
+                            refractionAmount = resolved.refractionAmount.toPx() * scaleRatio,
                             depthEffect = depthEffect,
                             chromaticAberration = chromaticAberration
                         )
@@ -152,9 +322,9 @@ fun Modifier.liquidGlass(
             onDrawSurface = {
                 // 不支持 RenderEffect 的设备提高底色不透明度以保证前景文字可读性
                 val effectiveAlpha = if (isRenderEffectSupported()) {
-                    surfaceAlpha
+                    resolved.surfaceAlpha
                 } else {
-                    maxOf(surfaceAlpha, if (isDarkSurface) 0.72f else 0.76f)
+                    resolved.fallbackSurfaceAlpha
                 }
                 if (effectiveAlpha > 0f) {
                     drawRect(color = surfaceColor.copy(alpha = effectiveAlpha))
@@ -165,7 +335,7 @@ fun Modifier.liquidGlass(
             if (enableBloomStroke) {
                 Modifier.bloomStroke(
                     cornerRadius = cornerRadius,
-                    style = bloomStyle,
+                    style = effectiveBloomStyle,
                     extraDegrees = bloomExtraDegrees
                 )
             } else {
