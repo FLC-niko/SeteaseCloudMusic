@@ -788,13 +788,15 @@ private fun SongRow(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Text(
-                text = "歌词：\"${track.title}\"",
-                fontSize = 12.sp,
-                color = SecondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            track.matchedLyric?.takeIf { it.isNotBlank() }?.let { matchedLyric ->
+                Text(
+                    text = "歌词：\"$matchedLyric\"",
+                    fontSize = 12.sp,
+                    color = SecondaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         IconButton(

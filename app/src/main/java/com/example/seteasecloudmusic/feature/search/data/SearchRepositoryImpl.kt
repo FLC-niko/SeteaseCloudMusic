@@ -590,7 +590,8 @@ class SearchRepositoryImpl @Inject constructor(
             coverUrl = albumCover,
             qualityTags = qualityTags,
             playableUrl = null,
-            isPlayable = song.fee != 4
+            isPlayable = song.fee != 4,
+            matchedLyric = extractMatchedLyric(song.lyrics)
         )
     }
 
@@ -609,6 +610,46 @@ class SearchRepositoryImpl @Inject constructor(
         )
         // /song/url/v1 加密策略重试顺序：依次尝试 weapi、api、无加密，全部失败后再降级到 /song/url 码率接口
         private val SONG_URL_CRYPTO_FALLBACK_ORDER = listOf("weapi", "api", null)
+        private val HTML_TAG_REGEX = Regex("<[^>]+>")
+        private val HIGHLIGHT_TAG_REGEX = Regex("<(b|em)\\b", RegexOption.IGNORE_CASE)
+        private val LRC_TIMESTAMP_REGEX = Regex("""\[\d{1,2}:\d{2}(?:\.\d{1,3})?]""")
+        private val WHITESPACE_REGEX = Regex("""\s+""")
+
+        private fun cleanLyricLine(raw: String): String {
+            return raw
+                .replace(HTML_TAG_REGEX, "")
+                .replace(LRC_TIMESTAMP_REGEX, "")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'")
+                .replace("&nbsp;", " ")
+                .replace(WHITESPACE_REGEX, " ")
+                .trim()
+        }
+
+        /**
+         * 从搜索接口返回的 `lyrics` 行列表中提取并清洗匹配的歌词片段：
+         * 优先选择包含高亮标签（`<b>` / `<em>`）且清洗后非空的行；若无高亮行则回退至首条非空行。
+         */
+        internal fun extractMatchedLyric(lyrics: List<String?>?): String? {
+            if (lyrics.isNullOrEmpty()) return null
+            var fallback: String? = null
+            for (rawLine in lyrics) {
+                if (rawLine.isNullOrBlank()) continue
+                val cleaned = cleanLyricLine(rawLine)
+                if (cleaned.isEmpty()) continue
+                if (HIGHLIGHT_TAG_REGEX.containsMatchIn(rawLine)) {
+                    return cleaned
+                }
+                if (fallback == null) {
+                    fallback = cleaned
+                }
+            }
+            return fallback
+        }
 
         internal fun extractAudioFormatFromUrl(url: String?): String? {
             if (url.isNullOrBlank()) return null

@@ -68,7 +68,8 @@ data class SearchSongItemResponse(
 	val t: Int? = null,
 	val v: Int? = null,
 	val name: String = "",
-	val mark: Long? = null
+	val mark: Long? = null,
+	val lyrics: List<String?>? = null
 )
 
 /**

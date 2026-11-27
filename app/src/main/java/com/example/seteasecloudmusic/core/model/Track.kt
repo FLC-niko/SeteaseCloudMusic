@@ -15,6 +15,7 @@ data class Track(
     val playableUrl: String? = null,
     val isPlayable: Boolean = true,
     val recommendReason: String? = null,
+    val matchedLyric: String? = null,
 
     // 音频详细元数据（来源、码率、采样率、大小、编码格式、实际音质等级）
     val audioSourceLabel: String? = null,
