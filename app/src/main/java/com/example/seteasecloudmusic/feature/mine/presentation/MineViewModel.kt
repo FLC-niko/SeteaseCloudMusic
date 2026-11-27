@@ -18,6 +18,7 @@ import com.example.seteasecloudmusic.feature.mine.domain.usecase.GetUserPlaylist
 import com.example.seteasecloudmusic.core.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /** 本地音乐虚拟歌单 ID（负数避免与云端歌单 ID 冲突） */
@@ -94,12 +96,16 @@ class MineViewModel @Inject constructor(
     private var playlistRequestId = 0L
     private var playlistDetailJob: Job? = null
     private var playlistDetailRequestId = 0L
+    // 标记是否已启动“我的”页后台同步与本地曲库扫描，避免冷启动首帧抢占 CPU 与磁盘 IO
+    private var hasStartedBackgroundWarmup = false
+    private var pendingWarmupUserId: Long? = null
 
     init {
         // 1. 监听账号登录状态与云端歌单
         viewModelScope.launch {
             authStateProvider.observeAuthState().collectLatest { session ->
                 val previousSession = _uiState.value.authSession
+                val isFirstEmission = previousSession == null
                 val userChanged = previousSession?.userId != session?.userId ||
                     previousSession?.isLoggedIn != session?.isLoggedIn
                 val loadRequestId = ++playlistRequestId
@@ -127,7 +133,10 @@ class MineViewModel @Inject constructor(
                 }
 
                 if (session?.isLoggedIn == true && session.userId != null) {
-                    val cachedGroup = getUserPlaylistsUseCase.getCached(session.userId)
+                    // 切至 IO 线程读取本地歌单缓存，避免在主线程执行 Gson 反序列化
+                    val cachedGroup = withContext(Dispatchers.IO) {
+                        getUserPlaylistsUseCase.getCached(session.userId)
+                    }
                     if (cachedGroup != null) {
                         _uiState.update {
                             it.copy(
@@ -138,16 +147,23 @@ class MineViewModel @Inject constructor(
                             )
                         }
                     }
-                    loadUserPlaylists(
-                        userId = session.userId,
-                        silent = cachedGroup != null,
-                        requestId = loadRequestId
-                    )
-                    // 同步网易云云端已喜欢的音乐 ID 列表
-                    viewModelScope.launch {
-                        mineRepository.getLikelist(session.userId)
+                    // 冷启动首次发射且尚未进入预热阶段时，暂缓远端歌单与红心列表拉取；登录/切号变更则立即同步
+                    if (hasStartedBackgroundWarmup || !isFirstEmission) {
+                        pendingWarmupUserId = null
+                        loadUserPlaylists(
+                            userId = session.userId,
+                            silent = cachedGroup != null,
+                            requestId = loadRequestId
+                        )
+                        // 同步网易云云端已喜欢的音乐 ID 列表
+                        viewModelScope.launch {
+                            mineRepository.getLikelist(session.userId)
+                        }
+                    } else {
+                        pendingWarmupUserId = session.userId
                     }
                 } else {
+                    pendingWarmupUserId = null
                     _uiState.update {
                         it.copy(
                             likedPlaylist = null,
@@ -180,7 +196,7 @@ class MineViewModel @Inject constructor(
             }
         }
 
-        // 3. 监听目录设置并初始后台加载本地音乐索引（供在线匹配与本地展示）
+        // 3. 监听目录设置（本地音频全盘扫描延后至 ensureBackgroundWarmup 启动）
         viewModelScope.launch {
             playerSettingsManager.scanDirectories.collect { dirs ->
                 _uiState.update {
@@ -196,9 +212,6 @@ class MineViewModel @Inject constructor(
                 _uiState.update { it.copy(downloadDirectoryPath = dir) }
             }
         }
-        localScanJob = viewModelScope.launch {
-            localMusicRepository.getLocalTracks(forceRefresh = false)
-        }
 
         // 4. 监听全局断网重试事件
         viewModelScope.launch {
@@ -209,6 +222,42 @@ class MineViewModel @Inject constructor(
                     loadUserPlaylists(session.userId, silent = false, requestId = reqId)
                 }
             }
+        }
+    }
+
+    /**
+     * 幂等启动“我的”页后台同步（远端歌单、红心列表及本地音频索引扫描），
+     * 供冷启动分阶段预热或用户首次切换到“我的”页时立即调用。
+     */
+    fun ensureBackgroundWarmup() {
+        if (hasStartedBackgroundWarmup) return
+        hasStartedBackgroundWarmup = true
+
+        val targetUserId = pendingWarmupUserId ?: _uiState.value.authSession
+            ?.takeIf { it.isLoggedIn && it.userId != null }
+            ?.userId
+        pendingWarmupUserId = null
+
+        if (targetUserId != null) {
+            val hasCached = _uiState.value.likedPlaylist != null ||
+                _uiState.value.createdPlaylists.isNotEmpty() ||
+                _uiState.value.favoritedPlaylists.isNotEmpty()
+            val reqId = ++playlistRequestId
+            playlistRefreshJob?.cancel()
+            playlistRefreshJob = viewModelScope.launch {
+                loadUserPlaylists(
+                    userId = targetUserId,
+                    silent = hasCached,
+                    requestId = reqId
+                )
+            }
+            viewModelScope.launch {
+                mineRepository.getLikelist(targetUserId)
+            }
+        }
+
+        localScanJob = viewModelScope.launch {
+            localMusicRepository.getLocalTracks(forceRefresh = false)
         }
     }
 

@@ -555,6 +555,7 @@ fun AppNavigation(
     var artistRequestSeq by remember { mutableLongStateOf(0L) }
 
     fun openPlayer(artworkUrl: String?) {
+        playerViewModel.ensureServiceConnected()
         nowPlayingAnimJob?.cancel()
         if (!artworkUrl.isNullOrBlank()) {
             nowPlayingArtworkUrl = artworkUrl
@@ -651,9 +652,52 @@ fun AppNavigation(
     val selectedIndexState = rememberSaveable { mutableIntStateOf(0) }
     var lastActiveTab by rememberSaveable { mutableIntStateOf(0) }
 
+    // 底栏 3D 放大镜水滴分阶段挂载与着色器预热状态：
+    // 首帧先跳过离屏录制与水滴着色器，待首屏稳定后在空闲窗口执行 2 帧隐形预热，避免首次按压才临时编译导致掉帧
+    var mountBottomDroplet by remember { mutableStateOf(false) }
+    var isWarmingUpDroplet by remember { mutableStateOf(false) }
+
+    // 分阶段按顺序预热后台任务，彻底错开冷启动首帧的 CPU / GPU / 网络争抢
+    LaunchedEffect(Unit) {
+        // 等待首屏两帧完成绘制并稳定上屏
+        withFrameNanos { }
+        withFrameNanos { }
+        delay(350L)
+
+        // 阶段 1：挂载底栏 3D 水滴层并执行 2 帧隐形预热，提前编译折射与高光着色器
+        mountBottomDroplet = true
+        isWarmingUpDroplet = true
+        withFrameNanos { }
+        withFrameNanos { }
+        isWarmingUpDroplet = false
+
+        // 阶段 2：静默连接后台播放服务并补拉当前恢复曲目的歌词
+        delay(250L)
+        playerViewModel.ensureServiceConnected()
+
+        // 阶段 3：后台同步“我的”页歌单、红心列表并启动本地音乐索引扫描
+        delay(550L)
+        mineViewModel.ensureBackgroundWarmup()
+
+        // 阶段 4：后台预热搜索热榜
+        delay(450L)
+        searchViewModel.ensureHotSearchesLoaded()
+
+        // 阶段 5：最后错峰预热“电台”9 大分区数据
+        delay(650L)
+        radioViewModel.ensureLoaded()
+    }
+
     LaunchedEffect(selectedIndexState.intValue) {
-        if (selectedIndexState.intValue != SEARCH_PAGE_INDEX) {
-            lastActiveTab = selectedIndexState.intValue
+        val currentIdx = selectedIndexState.intValue
+        if (currentIdx != SEARCH_PAGE_INDEX) {
+            lastActiveTab = currentIdx
+        }
+        // 用户在后台预热尚未轮到前主动切换页面时，立即按需触发对应页面初始化，零额外等待
+        when (currentIdx) {
+            1 -> radioViewModel.ensureLoaded()
+            2 -> mineViewModel.ensureBackgroundWarmup()
+            SEARCH_PAGE_INDEX -> searchViewModel.ensureHotSearchesLoaded()
         }
     }
 
@@ -1030,31 +1074,43 @@ fun AppNavigation(
                         )
                     }
 
-                    // 离屏激活录制层（同级节点）：按压/拖动时将柔和玻璃底板与高亮红 Tab 写入 bottomTabsBackdrop
-                    LiquidGlassActiveTabsRecorder(
-                        pageBackdrop = backdrop,
-                        activeTabsBackdrop = bottomTabsBackdrop,
-                        state = leftSegmentState,
-                        containerWidth = normalLeftWidth,
-                        containerHeight = navBarHeight,
-                        cornerRadius = cornerRadius,
-                        layerBlock = outerBarLayerBlock,
-                        alphaProvider = thumbAlphaProvider,
-                        modifier = Modifier.align(Alignment.TopStart),
-                        selectedContent = selectedTabsLayer
-                    )
+                    // 首屏稳定后由分阶段预热挂载并提前编译着色器；若用户在预热前抢先按压则立即挂载响应
+                    val shouldMountDroplet by remember {
+                        derivedStateOf {
+                            mountBottomDroplet ||
+                                leftSegmentState.isDragging ||
+                                leftSegmentState.pressProgress.value > 0.001f
+                        }
+                    }
+                    if (shouldMountDroplet) {
+                        // 离屏激活录制层（同级节点）：按压/拖动（或预热帧）时将柔和玻璃底板与高亮红 Tab 写入 bottomTabsBackdrop
+                        LiquidGlassActiveTabsRecorder(
+                            pageBackdrop = backdrop,
+                            activeTabsBackdrop = bottomTabsBackdrop,
+                            state = leftSegmentState,
+                            containerWidth = normalLeftWidth,
+                            containerHeight = navBarHeight,
+                            cornerRadius = cornerRadius,
+                            layerBlock = outerBarLayerBlock,
+                            alphaProvider = thumbAlphaProvider,
+                            isWarmingUp = isWarmingUpDroplet,
+                            modifier = Modifier.align(Alignment.TopStart),
+                            selectedContent = selectedTabsLayer
+                        )
 
-                    // 激活态 3D 放大镜水滴滑块（同级兄弟节点，不被外框裁剪，折射下方高亮图标/文字与玻璃表面）
-                    LiquidGlassActiveDroplet(
-                        combinedBackdrop = combinedTabBackdrop,
-                        state = leftSegmentState,
-                        containerWidth = normalLeftWidth,
-                        containerHeight = navBarHeight,
-                        cornerRadius = cornerRadius,
-                        maxPressScale = GlassSliderDefaults.MaxPressScale,
-                        alphaProvider = thumbAlphaProvider,
-                        modifier = Modifier.align(Alignment.TopStart)
-                    )
+                        // 激活态 3D 放大镜水滴滑块（同级兄弟节点，不被外框裁剪，折射下方高亮图标/文字与玻璃表面）
+                        LiquidGlassActiveDroplet(
+                            combinedBackdrop = combinedTabBackdrop,
+                            state = leftSegmentState,
+                            containerWidth = normalLeftWidth,
+                            containerHeight = navBarHeight,
+                            cornerRadius = cornerRadius,
+                            maxPressScale = GlassSliderDefaults.MaxPressScale,
+                            alphaProvider = thumbAlphaProvider,
+                            isWarmingUp = isWarmingUpDroplet,
+                            modifier = Modifier.align(Alignment.TopStart)
+                        )
+                    }
                 }
 
                 // 搜索按钮与展开态搜索栏：从右侧圆形按钮向左侧展开为输入长条

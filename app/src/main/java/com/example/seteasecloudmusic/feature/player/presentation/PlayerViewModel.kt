@@ -47,27 +47,53 @@ class PlayerViewModel @Inject constructor(
     val likedTrackIds: StateFlow<Set<Long>> = com.example.seteasecloudmusic.core.player.FavoriteTracksManager.likedTrackIds
 
     private var currentLyricTrackId: Long? = null
+    private var pendingLyricTrackId: Long? = null
+    private var hasConnectedService: Boolean = false
     private var lyricRequestId = 0L
     private var lyricJob: Job? = null
 
     init {
-        controller.connect()
+        // 不在冷启动首帧同步拉起 MusicService / ExoPlayer，改为由首帧后分阶段预热或用户操作触发连接
         viewModelScope.launch {
             controller.playbackState.collect { state ->
                 val trackId = state.currentTrack?.id
+                val isActivelyPlaying = state.status == PlayerStatus.PLAYING || state.status == PlayerStatus.BUFFERING
+                if (isActivelyPlaying && !hasConnectedService) {
+                    ensureServiceConnected()
+                }
                 if (trackId != currentLyricTrackId) {
                     currentLyricTrackId = trackId
                     if (trackId == null || trackId <= 0L) {
+                        pendingLyricTrackId = null
                         lyricRequestId += 1L
                         lyricJob?.cancel()
                         lyricJob = null
                         _isLyricsLoading.value = false
                         _parsedLyrics.value = EmptyLyrics
+                    } else if (!hasConnectedService && !isActivelyPlaying) {
+                        // 冷启动仅从本地缓存恢复暂停态曲目时，先记录待加载歌词 ID，待预热阶段或起播后再联网获取
+                        pendingLyricTrackId = trackId
                     } else {
+                        pendingLyricTrackId = null
                         fetchLyrics(trackId)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * 幂等触发后台播放服务连接与待加载歌词补拉，供首帧后分阶段预热或用户主动交互时调用。
+     */
+    fun ensureServiceConnected() {
+        if (!hasConnectedService) {
+            hasConnectedService = true
+            controller.connect()
+        }
+        val pendingId = pendingLyricTrackId
+        if (pendingId != null && pendingId > 0L && controller.playbackState.value.currentTrack?.id == pendingId) {
+            pendingLyricTrackId = null
+            fetchLyrics(pendingId)
         }
     }
 
@@ -88,12 +114,13 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun connect() {
-        controller.connect()
+        ensureServiceConnected()
     }
 
     val currentAudioQuality: StateFlow<OnlineAudioQuality> = playerSettingsManager.audioQuality
 
     fun selectAudioQuality(quality: OnlineAudioQuality) {
+        ensureServiceConnected()
         playerSettingsManager.setAudioQuality(quality)
         controller.reloadCurrentTrackWithQuality()
     }
@@ -103,6 +130,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun onPlayPause() {
+        ensureServiceConnected()
         when (playbackState.value.status) {
             PlayerStatus.PLAYING -> controller.pause()
             PlayerStatus.PAUSED -> controller.resume()
@@ -114,14 +142,17 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun onNext() {
+        ensureServiceConnected()
         controller.playNext()
     }
 
     fun onPrevious(forcePreviousSong: Boolean = false) {
+        ensureServiceConnected()
         controller.playPrevious(forcePreviousSong)
     }
 
     fun seekTo(positionMs: Int) {
+        ensureServiceConnected()
         controller.seekTo(positionMs)
     }
 
@@ -134,6 +165,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun playQueueTrackAt(index: Int) {
+        ensureServiceConnected()
         controller.playQueueIndexAt(index)
     }
 

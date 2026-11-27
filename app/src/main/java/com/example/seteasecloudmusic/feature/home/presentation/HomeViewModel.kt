@@ -14,6 +14,7 @@ import com.example.seteasecloudmusic.core.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -113,15 +114,18 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
-        // 3. 后台静默拉取今日最新推荐、喜好推荐、雷达歌单、新歌雷达、私人 DJ、相似歌曲、心动模式与用户红心封面
+        // 3. 首屏优先拉取顶部可见区（每日推荐与喜好推荐），次级卡片错峰延后拉取以避开冷启动首帧拥堵
         refreshDailyRecommend(afresh = false, silent = true)
         refreshFavoriteRecommend(afresh = false, silent = true)
-        refreshRadarPlaylist(silent = true)
-        refreshNewSongRadarPlaylist(silent = true)
-        refreshPrivateDjSongs()
-        refreshSimiSongs()
-        refreshHeartModeSongs()
-        fetchLikedMusicCover()
+        viewModelScope.launch {
+            delay(450L)
+            refreshRadarPlaylist(silent = true)
+            refreshNewSongRadarPlaylist(silent = true)
+            refreshPrivateDjSongs()
+            refreshSimiSongs()
+            refreshHeartModeSongs()
+            fetchLikedMusicCover()
+        }
 
         // 4. 监听全局断网重试事件
         viewModelScope.launch {

@@ -80,14 +80,18 @@ class RadioViewModel @Inject constructor(
     private var isRoamDirty: Boolean = false
     private var playlistDetailJob: Job? = null
     private var playlistDetailRequestId: Long = 0L
+    // 标记是否已触发过电台首屏数据加载，避免冷启动首帧并发发起 9 大分区请求
+    private var hasStartedInitialLoad: Boolean = false
 
     init {
-        loadAllSections()
+        // 不在 init 中立即并发拉取 9 大分区，改为由首帧后分阶段预热或用户切换到电台页时触发
 
         // 监听断网重连自动刷新
         viewModelScope.launch {
             networkMonitor.retryTrigger.collect {
-                loadAllSections(silent = false)
+                if (hasStartedInitialLoad) {
+                    loadAllSections(silent = false)
+                }
             }
         }
 
@@ -100,7 +104,9 @@ class RadioViewModel @Inject constructor(
                     lastAuthKey = currentKey
                 } else if (lastAuthKey != currentKey) {
                     lastAuthKey = currentKey
-                    loadAllSections(silent = true)
+                    if (hasStartedInitialLoad) {
+                        loadAllSections(silent = true)
+                    }
                 }
             }
         }
@@ -114,22 +120,39 @@ class RadioViewModel @Inject constructor(
                 } else if (lastLikedIds != ids) {
                     lastLikedIds = ids
                     isRoamDirty = true
-                    refreshRoamItems(debounced = true)
+                    if (hasStartedInitialLoad) {
+                        refreshRoamItems(debounced = true)
+                    }
                 }
             }
         }
     }
 
+    /**
+     * 幂等触发电台页 9 大分区初始加载，供冷启动尾阶段预热或用户首次切换到电台页时调用。
+     */
+    fun ensureLoaded() {
+        if (hasStartedInitialLoad) return
+        hasStartedInitialLoad = true
+        loadAllSections(silent = true)
+    }
+
     fun onRefreshClick() {
+        hasStartedInitialLoad = true
         loadAllSections(silent = false)
     }
 
     fun onRetryClick() {
+        hasStartedInitialLoad = true
         loadAllSections(silent = false)
     }
 
-    /** 页面进入前台时，若收藏有变更或距上次刷新超过 2 分钟则刷新漫游列表。 */
+    /** 页面进入前台时，若尚未加载则立即启动；若收藏有变更或距上次刷新超过 2 分钟则刷新漫游列表。 */
     fun onEnterForeground() {
+        if (!hasStartedInitialLoad) {
+            ensureLoaded()
+            return
+        }
         val elapsedMs = System.currentTimeMillis() - lastRoamRefreshTimeMs
         // 120_000 ms（2 分钟）前台回流自动刷新冷却阈值
         if (isRoamDirty || (lastRoamRefreshTimeMs > 0L && elapsedMs >= 120_000L)) {

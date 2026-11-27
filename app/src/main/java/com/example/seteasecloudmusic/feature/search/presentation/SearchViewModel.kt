@@ -89,6 +89,8 @@ class SearchViewModel @Inject constructor(
     private var searchRequestId = 0L
     private var suggestionRequestId = 0L
     private var detailRequestId = 0L
+    // 标记是否已触发过热搜榜加载，避免冷启动首帧提前发起非可见页网络请求
+    private var hasLoadedHotSearches = false
 
     companion object {
         // 输入联想防抖延时（ms，越大越减少接口请求，越小联想响应越快）
@@ -98,13 +100,20 @@ class SearchViewModel @Inject constructor(
     }
 
     init {
-        // 观察本地持久化搜索历史变更
+        // 观察本地持久化搜索历史变更（搜索热榜延后至分阶段预热或进入搜索页时加载）
         viewModelScope.launch {
             searchHistoryManager.historyFlow.collect { history ->
                 _uiState.update { it.copy(searchHistory = history) }
             }
         }
-        // 加载热搜列表
+    }
+
+    /**
+     * 幂等预热热搜列表，供冷启动后台预热或用户首次打开搜索页时调用。
+     */
+    fun ensureHotSearchesLoaded() {
+        if (hasLoadedHotSearches) return
+        hasLoadedHotSearches = true
         loadHotSearches()
     }
 
@@ -112,6 +121,7 @@ class SearchViewModel @Inject constructor(
      * 获取热搜列表。
      */
     fun loadHotSearches() {
+        hasLoadedHotSearches = true
         viewModelScope.launch {
             _uiState.update { it.copy(isHotSearchLoading = true) }
             val result = getHotSearchUseCase()
