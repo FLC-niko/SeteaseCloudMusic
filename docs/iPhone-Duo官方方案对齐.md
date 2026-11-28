@@ -1,119 +1,51 @@
 # iPhone Duo 官方布局方案对齐
 
-参考 Apple 设计团队 [Design for iPhone Duo](https://developer.apple.com/videos/play/tech-talks/111466/)：5:07 控件位置、7:34 内屏布局（8:12 为 Music 示例）、8:36 弹层、9:28 折痕避让。
+参考 Apple 设计团队 [Design for iPhone Duo](https://developer.apple.com/videos/play/tech-talks/111466/) 的折叠屏人机交互原则（控件外缘定位、内屏分栏、弹层限宽与折痕避让），本项目基于 Android Jetpack WindowManager 1.5、安全区 API、Miuix 弹窗体系与 Liquid Glass 材质完成对应实现。
 
-本项目使用 Android 的窗口、折叠能力和安全区 API 实现对应交互，保留原有液态玻璃材质。系统状态栏和系统手势区由 Android 管理。
+## 一、窗口与形态规则
 
-## 展开歌单详情与背景衔接（2026-11-09）
+策略集中在 [`AdaptiveWindowInfo`](../app/src/main/java/com/example/seteasecloudmusic/core/ui/adaptive/AdaptiveLayout.kt)，由真实窗口宽高、多窗口位置与 `FoldingFeature` 动态驱动：
 
-按用户本轮明确要求，以官方视频 8:12 的 Music 专辑详情为参考：展开后让同一歌单的封面、标题和曲目共用一个内容背景。此示例是歌单详情内容重排，首页与详情的导航层级仍保留。
+| 窗口场景 | 导航与操作区 | 内容与歌单详情 | 播放页 |
+|---|---|---|---|
+| **普通手机竖屏** | 悬浮底部 Dock + Mini Player | 单栏下钻 | 竖向封面 / 信息 / 控制，可切歌词页 |
+| **折叠设备合拢外屏** | 外缘悬浮侧边栏（导航组靠下、迷你播放器在其上方） | 单栏下钻 | 竖向封面 / 信息 / 控制 |
+| **展开内屏竖屏** | 保留横向底部 Dock + 限宽 Mini Player | 打开歌单后由详情接管内容区并左右双栏 | 竖向居中限宽列（最大 `680.dp`），可切歌词页 |
+| **宽横屏** | 外缘悬浮侧边栏，内容区避让操作区 | 同上，侧边下方延伸同一封面取色底座 | 专辑页封面与控制双栏；歌词页内容双栏 + 底部玻璃控制带（最大 `960.dp`） |
+| **桌面半折叠（Tabletop）** | 横向导航位于下半屏 | 上半屏封面样式，下半屏标题、播放入口与曲目 | 专辑封面在上半屏，信息/控制与歌词在下半屏 |
+| **书本半折叠（Book）** | 按方向选择横栏或侧栏，浮层避让折痕 | 左右跨折痕双栏 | 封面与控制/歌词跨折痕分区，歌词控制带位于折痕一侧 |
+| **分屏左侧窗口** | 侧边操作区自动镜像至窗口左外缘 | 按实际窗口尺寸重排 | 按实际窗口空间重排 |
 
-- 首页、电台和“我的”打开歌单时，宽屏详情覆盖完整内容区，左侧为封面和播放入口，右侧为曲目。书本/桌面姿态继续通过现有折痕布局定位两块内容。
-- 侧边操作区下方延伸同一封面取色底座，现有玻璃播放条、导航栏继续使用统一背景采样。关闭“取色背景”时两处同步恢复白底。
-- 桌面半折叠时，上半屏按可用高度完整显示所选封面样式，下半屏显示标题、播放入口和曲目；播放入口在初始画面即可操作。
-- 保留三种歌单样式与持久化设置。仅展开双栏将大封面比例从默认 0.68 调整为 0.88；窄屏单栏沿用原比例、红色播放按钮、圆角、阴影与返回动效。
-- 详情返回后保留首页滚动位置；被覆盖的首页保留组合状态，但退出绘制、触控与无障碍树。窗口重排时保留选中歌单及曲目列表状态。
-- `AppleMusicTopBar.kt` 保持与 Intz `7f8dd8f` 一致，原有顶栏字号、渐变和收缩效果保留。本轮仅调整展开详情布局与背景衔接。
+## 二、核心对齐要点
 
-本轮验证覆盖 9 个相关页面、9 种窗口配置，内屏 15 项设备检查和 3 项窗口策略 JVM 测试通过。新增检查覆盖详情占满内容区、侧边背景连续、取色开关同步、折叠选择保留、返回与重新打开，以及桌面姿态初始播放入口可见性。本地报告：`artifacts/expanded-music/final-layout/report.json`。
+### 1. 展开歌单详情与统一取色背景
+- 首页、电台、我的及搜索页共用 `showDetailAlongside`：未选歌单时显示完整内容流；宽屏打开歌单详情后，详情接管完整内容区并左右重排封面与曲目（不将普通列表页与取色详情硬拼并排）。
+- [`ExpandedPlaylistBackdrop.kt`](../app/src/main/java/com/example/seteasecloudmusic/feature/main/ExpandedPlaylistBackdrop.kt) 将当前歌单主色延伸至侧边操作区下方，使玻璃导航与迷你播放器采样到连续色彩；关闭“取色背景”开关时同步恢复当前主题背景色（`AppTheme.colors.background`）。
+- 保留 3 种歌单详情样式与按歌单独立记忆的偏好设置；展开双栏保持大封面比例突出，返回后保留原页面滚动位置，窗口重排保留选中歌单与曲目状态。
 
-最初 Qt 集成模式的模拟器在大字号配置发生无响应和系统服务重启；已保存现场日志，保留同一源码/APK 的 7 项通过结果，并在 `-no-window -gpu host -feature -Vulkan` 重启后的同一 AVD 上通过其余 2 项大字号配置。全程通过 ADB 操作，无需启动 Android Studio。
+### 2. 展开播放页与歌词控制带
+- [`NativePlayerScreen.kt`](../app/src/main/java/com/example/seteasecloudmusic/feature/player/presentation/NativePlayerScreen.kt) 与 [`ExpandedNativePlayer.kt`](../app/src/main/java/com/example/seteasecloudmusic/feature/player/presentation/ExpandedNativePlayer.kt) 统一依据 `useExpandedPlayer` 切换布局，歌词视图状态在窗口重排后保留。
+- 竖屏展开时将歌词、曲目信息与播放控制居中收束在最大 `680.dp` 内容列内，防止进度条与按钮被过度拉伸。
+- 宽横屏进入歌词页后，封面与歌词组成内容区，播放操作集中在最大 `960.dp` 的底部玻璃控制带（[`ExpandedPlaybackBar.kt`](../app/src/main/java/com/example/seteasecloudmusic/feature/player/presentation/ExpandedPlaybackBar.kt)），保留上一首、播放/暂停、下一首、音频输出、歌词、队列与更多入口，按钮触控区不低于 `44.dp`。
+- 桌面半折叠将专辑封面置于上半屏、收藏/更多与播放控制置于下半屏；窄分区自动将音量收纳至独立面板。
 
-## 重新对齐整体布局（2026-11-09）
+### 3. 侧边导航与收缩迷你播放条宽度框架
+- 右侧/外缘侧边栏（[`AdaptiveNavigation.kt`](../app/src/main/java/com/example/seteasecloudmusic/feature/main/AdaptiveNavigation.kt)）保留玻璃透镜滑块与独立搜索入口，迷你播放器随导航进入侧边，不再重复显示底部播放条；短横屏或软键盘压缩高度时，导航与播放入口自动收进 Miuix `WindowListPopup` 菜单确保可达。
+- 横向导航栏与迷你播放条共用 [`HorizontalChromeLayout.kt`](../app/src/main/java/com/example/seteasecloudmusic/feature/main/navigation/HorizontalChromeLayout.kt) 的 `horizontalChromeFrame`：先确定居中的最大 `620.dp` 范围，再在播放条内部为两侧按钮预留 `54.dp` + `10.dp` 间距（例如 `620.dp` 时收缩播放条宽 `492.dp`），避免收缩后播放条侵入左右按钮下方，同时在 1.5 倍大字号中英混排下不发生纵向裁切。
 
-当前布局恢复到下表规则，并保留云端新增的 Apple Music 控件、流体背景、歌单风格切换、预测性返回及切页转场。此前“播放页与云端完全一致”仅描述 11 月 6 日合并时的快照；本次按新的对齐要求调整布局层。
+### 4. 弹层与折痕避让
+- 账户、歌单风格、添加到歌单、歌曲操作、播放队列与目录设置统一走 [`AdaptiveModalSheet.kt`](../app/src/main/java/com/example/seteasecloudmusic/core/ui/adaptive/AdaptiveModalSheet.kt)（基于 Miuix `WindowBottomSheet` / `WindowDialog`），宽屏限宽居中并自动避让折痕。
 
-- 首页、电台和“我的”共用 `showDetailAlongside`：未选歌单时显示完整首页；宽屏打开详情后，详情自身占满内容区并重排封面与曲目双栏，避免把白色首页与取色详情并排拼接。
-- `NativePlayerScreen` 与设备截图共用 `NativePlayerContent`，都按 `useExpandedPlayer` 选择布局。展开竖屏保持竖排，宽横屏或半折叠使用双栏/上下区域，歌词页选择在重排后保留。
-- 桌面半折叠时，专辑封面留在上半屏，歌曲信息中的收藏/更多与播放控件放到下半屏；书本姿态的收起入口移开折痕。
-- 设备检查直接验证生产播放页的布局标签、媒体/控制区与折痕的实际边界，恢复队列、音质和歌词切换交互检查。增加首页详情截图入口，覆盖全部 24 个页面。
+## 三、验证方式
 
-### 歌词页控制区
+构建应用与测试包，运行 JVM 单元测试和折叠屏设备回归（macOS / Linux 使用 `./gradlew`，Windows 使用 `.\gradlew.bat`）：
 
-以官方视频 8:12 左右 Music 示例的控件分组和底部玻璃播放条为依据，将这些原则应用到本项目的展开歌词页。该示例展示的是专辑详情与播放条，本项目歌词页的具体排布是 Android 端的适配实现。
+```bash
+# 构建 Debug APK、测试 APK 并运行 JVM 单元测试
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest --console=plain
 
-- 竖屏将歌词、曲目信息和完整控制区对齐到居中的最大 680dp 内容列，避免展开后进度条和按钮被过度拉开。
-- 展开专辑页采用封面与完整播放控制双栏；进入歌词页后，封面与歌词组成内容区，播放操作集中在最大 960dp 的底部玻璃控制带。
-- 控制带复用云端的进度/音质、播放图标和音量组件，保留上一首、播放/暂停、下一首、音频输出、歌词、队列与更多入口。歌词按钮在宽屏上也能实际切换专辑/歌词视图，状态随窗口重排保留。
-- 底部中间恢复音频输出入口，接入 Android 系统音频输出选择器及系统音量后备入口；播放模式继续通过更多菜单和展开控制带访问。
-- 书本姿态的控制带整体位于单块可用区域，桌面姿态位于下半屏。窄分区将音量放入独立面板，更多菜单继续提供收藏、播放模式、音质和队列。控制带高度随字号增长，按钮保留至少 44dp 的触控范围。
-
-截图先等待点击事件与布局落地，再推进 Compose 动画时钟、等待 Android 绘制帧，确保采集的是歌词切换后的最终画面。设备检查会实际切换歌词、打开更多/音量，并验证控制带内按钮的可见边界。
-
-### 本次验证记录
-
-- 整体布局修复后，全部 24 页在九种配置下完成回归，内屏 11 项设备测试通过。该阶段报告为 `artifacts/duo-realign/final/report.json`。
-- 随后的生产代码修改仅涉及播放页四个文件，其他页面的生产源码哈希与上述完整矩阵相同。最终歌词控制区在同样九种配置下追加专项复验，报告为 `artifacts/duo-realign/verified-lyrics/report.json`；内屏全部 11 项设备检查再次通过。
-- Debug 应用和设备测试 APK 构建通过，19 项 JVM 测试通过。已核对最终报告中的生产源码、检查脚本/测试源码及两份 APK 的 SHA256，全部与当前文件一致。
-- 歌词截图额外断言竖排封面已缩至 54dp 顶栏范围，控制带按钮完整可见，覆盖实际歌词切换、队列、音质、更多及窄分区音量入口。设置页检查兼容已登录/未登录标题，账户浮层检查兼容进入音乐设置的合法操作。
-- 最终复验通过同一 AVD 的后台冷启动完成：`host` GPU、关闭 Vulkan、不加载快照，保留应用数据，运行后恢复原尺寸、字号、旋转与姿态覆盖，全程未启动 Android Studio。
-- 整体预览为 `artifacts/duo-realign/overall-preview.jpg`，歌词细图位于 `artifacts/duo-realign/verified-lyrics/foldable-qa/`。更早的失败或中间截图保留作排查记录，交付效果以本段列出的报告和图片为准。
-
-## 历史：云端播放页合并（2026-11-06）
-
-当时按合并要求，`feature/player` 整个目录与云端 `origin/master` 的 `a8657db` 完全一致，包含 Apple Music 播放控件、流体网格背景和播放器转场实现。本地此前对播放页的独立重排与接口提取由云端版本覆盖；导航适配、迷你播放栏宽度与大字号修复、首页四行推荐继续保留。云端删除的旧 Web 播放器及参考工程也随合并移除。
-
-当时播放页由云端 `NativePlayerScreen` 决定布局：宽度至少 600dp、短横屏宽度至少 480dp，或处于书本/桌面姿态时使用展开播放页。设备截图沿用云端的 `ExpandedNativePlayerContent` 测试入口，未验证主播放页的宽窄分支。该布局与截图入口已在本次修正，以下旧验证仅作为历史记录。
-
-合并后 Debug 应用与设备测试 APK 构建通过，15 项 JVM 测试、内屏全部 10 项设备测试通过。使用现有后台 `emulator-5554` 和 ADB，完成内屏、外屏及横屏下导航、播放页、首页和歌单详情页四个页面的定向截图验证，未启动 Android Studio，运行后恢复设备设置。报告为 `artifacts/merge-cloud-player/report.json`，已核对当前生产源码及两份 APK 的 SHA256；该结果仅覆盖本次定向范围。
-
-## 窗口规则
-
-| 场景 | 导航与操作 | 播放页 |
-| --- | --- | --- |
-| 折叠设备紧凑外屏 | 右侧玻璃操作区，导航组靠侧栏底部排列，迷你播放器在其上方 | 竖向封面/信息/控制布局 |
-| 展开竖屏 | 在充足的纵向空间中保留横向底栏 | 竖向封面/信息/控制布局，可切换歌词页 |
-| 宽横屏 | 右侧操作区，内容避开操作区 | 专辑页封面与播放控制双栏；歌词页使用内容双栏与底部玻璃控制带 |
-| 桌面半折叠 | 横向导航位于下半屏 | 媒体在上，播放控制与歌词在下 |
-| 书本半折叠 | 根据窗口方向选择横栏/侧栏；操作与浮层避让折痕 | 封面与控制/歌词分区，歌词控制带整体位于折痕一侧 |
-| 分屏左侧窗口 | 操作区移向窗口左外缘 | 根据窗口空间重排 |
-| 普通手机竖屏 | 保持底栏 | 保持原生竖向播放页 |
-
-窗口策略集中在 `AdaptiveWindowInfo`。使用 Android 标准的 600dp 窗口宽度类别、可用宽高与折叠姿态决定布局；不依赖设备型号或固定像素分辨率。优先通过 WindowManager 1.5 的受支持姿态识别折叠能力，并保存实际观察到的 FoldingFeature 作为兼容后备；设备提供能力信息时，外屏冷启动也可直接识别。
-
-## 控件与视觉
-
-- 右侧导航保留玻璃透镜滑块和独立搜索入口，导航组靠底部排列。
-- 迷你播放器随导航进入侧边，保留封面、打开播放页、播放/暂停和队列入口；不再同时显示底部播放条。
-- 短横屏将三个导航入口收进菜单，入口功能和顺序保持一致；大字号优先保留图标的触控空间。
-- 键盘进一步压缩侧栏高度时，播放控件也进入导航菜单；极短窗口回退横栏，保证按钮仍可触达。
-- 内容、安全区与操作区分开，背景仍可延伸至玻璃下面；分屏时优先使用远离中线的外缘。
-- 原生播放页保留云端 `AppleMusicPlaybackControls` 与流体背景，布局统一由 `AdaptiveWindowInfo` 决定。
-- 队列和音质面板在可用分区内居中，账户、菜单和确认框继续使用统一折痕避让容器。
-
-## 验证方式
-
-```powershell
-$env:GRADLE_USER_HOME='C:/Users/Administrator/.gradle'
-.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest --console=plain
-python scripts/verify_foldable_layouts.py --adb D:/Android/Sdk/platform-tools/adb.exe --pages chrome,native_music --output artifacts/duo/review
+# 针对导航、播放页与歌单详情的折叠屏矩阵验证
+python3 scripts/verify_foldable_layouts.py --pages chrome,native_music --output artifacts/duo/review
 ```
 
-设备检查包含：导航外缘位置、内容与侧栏不重叠、左侧分屏镜像定位、短屏菜单入口、播放键居中、列表锚点、Activity 重建、折痕分栏、未选择歌单时主页面没有详情占位，以及账户/队列/音质面板。播放页检查生产布局分支、歌词页状态保留、半折叠控制区位置和实际交互。
-
-截图与报告位于忽略的 `artifacts/duo/`，按源码/APK 哈希区分每次复验。最终结果以本轮完成后的报告为准。
-
-## 历史完整矩阵验证结果（云端播放页合并前）
-
-- Debug 应用和设备测试 APK 构建通过，五项 JVM 测试通过。
-- 全部 23 个页面在内外屏、两种横屏、书本/桌面姿态、缩小窗口及内外屏大字号九种配置下通过，共核对 284 张本轮对应截图文件。
-- 内屏十项设备测试通过，包含短屏菜单、左侧分屏外缘定位和歌词页面在宽窄重排后的保留。
-- 外屏冷启动确认折叠能力识别与侧边导航生效；账户、队列、音质面板实际边界均检查折痕避让。
-- 首轮全页面回归发现短横屏播放入口已进入菜单，测试仍按直达按钮操作；修正测试路径，并补齐打开播放浮层后自动关闭菜单的交互后，重新完成上述完整矩阵。
-- 该阶段报告：`artifacts/duo/final/report.json`，已核对该阶段源码和两份 APK 的 SHA256；预览：`artifacts/duo/final/preview.jpg`。
-
-本轮使用无窗口 `emulator-5556` 与 ADB，全程由脚本构建、切换姿态和截图，没有启动 Android Studio。
-
-## 迷你播放器收缩宽度修复
-
-大屏中导航和播放条分别限宽，原先播放条先增加两侧内边距、再限制最大宽度，导致较宽窗口中的内边距被限宽抵消。收缩后的播放条因此仍可能与整个导航框一样宽，进入两侧按钮下面。
-
-导航和播放条现共用 `horizontalChromeFrame`：先确定居中的最大 620dp 范围，再在播放条内部为每侧按钮预留 54dp 和 10dp 间距。例如导航框宽 620dp 时，收缩播放条宽 492dp；较窄窗口与折叠分区则随实际可用宽度缩小。收缩进度限制在 0–1 范围内，保持原有动画与安全区处理。
-
-同时明确歌名、歌手及导航标签行高，并去掉播放条两行文字多余的字体留白和上下内边距，保持字号缩放与单行省略，在固定高度内容纳 1.5 倍字号的中英混排。
-
-设备回归使用实际 `SearchMiniPlayerBar`，覆盖 280/320/443/600/851/1200dp、1.0/1.5 倍字号与展开/收缩两种状态，共 24 组布局。检查播放条居中、两侧按钮间距、播放按钮边界和文字实际可见行高度；导航回归兼容已有非空播放队列。
-
-此次修复验证通过：Debug 应用与设备测试 APK 构建、五项 JVM 测试、内屏全部 11 项设备检查，以及九种配置的导航定向复验。测试背景与玻璃控件分层，文字检查允许正常的单行省略，按可见段落实际高度检查纵向裁切。
-
-最终报告位于 `artifacts/miniplayer-width/release-review/report.json`，已核对源码和两份 APK 的 SHA256。通过已有 `emulator-5554` 的 ADB 滑动触发真实首页收缩，截图确认按钮与播放条之间保留间距；完整截图为 `artifacts/miniplayer-width/actual-compact.png`，底部效果预览为 `artifacts/miniplayer-width/preview.png`。核对后已恢复原旋转设置。
+完整 9 组窗口配置、后台模拟器启动与 ADB 调试命令见 [后台模拟器调试](后台模拟器调试.md)。验证报告与截图默认输出至 Git 忽略的 `artifacts/` 目录，并记录源码与 APK 的 SHA256 哈希。

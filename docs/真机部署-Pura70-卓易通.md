@@ -60,10 +60,9 @@ pwsh scripts/deploy-zhuoyitong.ps1
 ## 已验证的能力边界
 
 - ✅ **部署**：构建产物一键装进卓易通容器（本脚本，实测含覆盖重装）
-- ✅ **运行验证**：app 在容器内启动、Compose UI 渲染、经容器出站 NAT 访问
-  `BASE_URL(57.158.26.135:3000)` 拉到真实歌单数据（"说唱热门榜第一名/南征北战NZBZ/STAY…"）
+- ✅ **运行验证**：app 在容器内启动、Compose UI 渲染、正常拉取真实歌单数据（当前默认启用本地直连网易云引擎；切换外部代理模式时经容器出站 NAT 访问 `BASE_URL` / `BACKUP_BASE_URL`）
 - ✅ **UI 级自动化**：`uitest dumpLayout` 可**透视容器内安卓 UI 树**（`android.widget.*`），
-  意味着可以继续写脚本自动化 app 内操作（点歌、切页……），控件树转储在 `%TEMP%/setease_last_layout.json`
+  意味着可以继续写脚本自动化 app 内操作（点歌、切页……），控件树转储在 `$env:TEMP/setease_uitest_dump.json`（macOS 为 `/tmp/setease_uitest_dump.json`）
 - ❌ **adb / JDWP 断点 / logcat / 应用私有目录**：容器无调试通道（见上表），
   断点级调试用模拟器；如需真机侧运行日志，可后续在 app 内嵌 debug-only 日志回传桥（出站 NAT 已验证可用）
 
@@ -75,7 +74,7 @@ pwsh scripts/deploy-zhuoyitong.ps1
 | `list targets` 为空 | 换数据线/口；确认手机 USB 调试开关未回退；保持"传输文件"模式 |
 | 文件列表里找不到 APK | 媒体库扫描延迟：等 30s 重跑；或手机上手动打开一次文件管理再跑 |
 | 安装按钮文案不同 | 把 `$env:TEMP/setease_uitest_dump.json` 里的按钮文字告诉我，加进脚本正则 |
-| 构建失败 JDK | 确认 JDK ≥ 21（AGP 9.3.2 要求）；或 `-SkipBuild` |
+| 构建失败 JDK | 确认 JDK ≥ 21（AGP 9.5.3 要求）；或 `-SkipBuild` |
 | mac 上 hdc 无执行权限 | `chmod +x tools/hdc/hdc`（脚本也会自动补） |
 
 ## 工具链出处
